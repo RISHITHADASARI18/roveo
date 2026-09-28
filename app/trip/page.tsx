@@ -100,23 +100,31 @@ function TripContent(){
       <div className="trip-main">
         <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
 
-        <div id="places-to-explore" className="trip-section-head"><div><span className="eyebrow">01 · DISCOVER</span><h2>Places to explore</h2></div><span className="live-badge">{loading?"Searching…":places.length+" places found"}</span></div>
-        <p className="trip-status">{status}</p>
-        <div className="place-grid">{places.slice(0,30).map(place=><article className="place-card" key={place.id}><div className="place-icon">✦</div><div className="place-copy"><span>{place.type.replaceAll("_"," ")}</span><h3>{place.name}</h3><small>{place.lat.toFixed(3)}, {place.lon.toFixed(3)}</small></div><span className="place-distance">{geo?distance({id:"g",name:"g",type:"g",lat:geo.lat,lon:geo.lon},place).toFixed(1)+" km":""}</span></article>)}</div>
-
-        <div className="trip-section-head itinerary-head"><div><span className="eyebrow">02 · SMART ITINERARY</span><h2>Where to visit each day</h2><p className="section-note">Roveo keeps nearby places together so you spend more time exploring and less time travelling.</p></div><span className="live-badge">{maxPerDay} places/day target</span></div>
-
-        <div className="itinerary">{dayPlans.map((day,dayIndex)=>{
-          const totalKm=day.places.length>1?day.places.slice(1).reduce((sum,p,i)=>sum+distance(day.places[i],p),0):0;
-          return <article className="day-card" key={dayIndex}>
-            <div className="day-top"><div><div className="day-number">DAY {dayIndex+1}</div><h3>{dayIndex===0?"Arrival & nearby highlights":dayIndex===days-1?"Final discoveries & return":"Explore one area at a time"}</h3></div><div className="day-stats"><strong>{day.places.length} places</strong><span>~{totalKm.toFixed(1)} km between stops</span></div></div>
-            <div className="day-places">{day.places.map((place,placeIndex)=><div className="planned-place" key={place.id}><div className="place-order">{placeIndex+1}</div><div><strong>{place.name}</strong><small>{place.type.replaceAll("_"," ")}</small></div><div className="place-actions"><button type="button" onClick={()=>removePlace(dayIndex,place.id)}>Remove</button>{dayIndex>0&&<button type="button" onClick={()=>movePlace(dayIndex,place.id,dayIndex-1)}>← Day {dayIndex}</button>}{dayIndex<days-1&&<button type="button" onClick={()=>movePlace(dayIndex,place.id,dayIndex+2)}>Day {dayIndex+2} →</button>}</div></div>)}</div>
-            {!day.places.length&&<p className="empty-day">No places planned. Add one from the discovery list below.</p>}
-            <div className="day-footer"><button type="button" onClick={()=>setEditingDay(editingDay===dayIndex?null:dayIndex)}>{editingDay===dayIndex?"Close":"Add places"}</button><button type="button" onClick={()=>regenerateDay(dayIndex)}>↻ Regenerate day</button></div>
-            {editingDay===dayIndex&&<div className="add-place-panel">{unplanned.slice(0,12).map(place=><button type="button" key={place.id} disabled={day.places.length>=maxPerDay} onClick={()=>addPlace(dayIndex,place)}><span>+ {place.name}</span><small>{geo?distance({id:"g",name:"g",type:"g",lat:geo.lat,lon:geo.lon},place).toFixed(1)+" km away":""}</small></button>)}</div>}
-          </article>
-        })}</div>
-      </div>
+        <section className="trip-hub">
+          <span className="eyebrow">YOUR TRIP WORKSPACE</span>
+          <h2>Plan the details separately.</h2>
+          <p>Keep discovery and day-by-day planning focused on their own pages. Your trip choices are carried forward automatically.</p>
+          <div className="trip-hub-grid">
+            <a className="trip-hub-card" href={"/places?"+params.toString()}>
+              <span className="trip-hub-number">01</span>
+              <div>
+                <span className="eyebrow">DISCOVER</span>
+                <h3>Places to explore</h3>
+                <p>Find major attractions and smaller local places around your destination, with filters and an interactive map.</p>
+              </div>
+              <strong>Explore places →</strong>
+            </a>
+            <a className="trip-hub-card" href={"/itinerary?"+params.toString()}>
+              <span className="trip-hub-number">02</span>
+              <div>
+                <span className="eyebrow">SMART ITINERARY</span>
+                <h3>Where to visit each day</h3>
+                <p>Build your Day 1, Day 2 and onward plan, then move, remove, add or regenerate places as your trip changes.</p>
+              </div>
+              <strong>Build itinerary →</strong>
+            </a>
+          </div>
+        </section>
 
       <aside className="trip-side">
         <div className="map-card"><div className="map-heading"><div><span className="eyebrow">03 · MAP</span><h2>Locate the trip</h2></div><span className="map-pin">●</span></div>{geo?<iframe title="Roveo trip map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}{geo&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+geo.lat+"&mlon="+geo.lon+"#map=12/"+geo.lat+"/"+geo.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}</div>
