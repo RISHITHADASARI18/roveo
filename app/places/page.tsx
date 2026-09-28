@@ -156,7 +156,7 @@ function PlacesContent(){
     <section className="places-hero">
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
-        <h1>Places to <span>explore.</span></h1>
+        <h1>Places to <span>Explore.</span></h1>
         <p>Explore the destination properly — from the main attractions everyone knows to smaller mapped places nearby.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
