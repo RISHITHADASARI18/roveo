@@ -13,6 +13,11 @@ type Place = {
   lat:number;
   lon:number;
   distance:number;
+  description?:string;
+  openingHours?:string;
+  website?:string;
+  wikipedia?:string;
+  address?:string;
 };
 
 type GeoPoint={lat:number;lon:number};
@@ -89,7 +94,8 @@ function PlacesContent(){
             const pLat=Number(item.lat??item.center?.lat),pLon=Number(item.lon??item.center?.lon);
             const tags=item.tags||{};
             const type=tags.tourism||tags.historic||tags.leisure||tags.natural||tags.amenity||"place";
-            return {id:String(item.type||"x")+"-"+String(item.id),name:tags.name||tags["name:en"]||"",type,group:classify(tags),lat:pLat,lon:pLon,distance:haversine({lat,lon},{lat:pLat,lon:pLon})};
+            const address=[tags["addr:housenumber"],tags["addr:street"],tags["addr:city"]].filter(Boolean).join(", ");
+            return {id:String(item.type||"x")+"-"+String(item.id),name:tags.name||tags["name:en"]||"",type,group:classify(tags),lat:pLat,lon:pLon,distance:haversine({lat,lon},{lat:pLat,lon:pLon}),description:tags.description||tags["description:en"],openingHours:tags.opening_hours,website:tags.website||tags.contact?.website,wikipedia:tags.wikipedia,address};
           })
           .filter((p:Place)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.distance<=30)
           .filter((p:Place,i:number,a:Place[])=>a.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase())===i)
@@ -147,13 +153,13 @@ function PlacesContent(){
       {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
       <div className="places-result-head"><div><span className="eyebrow">DISCOVERY LIST</span><h2>{loading?"Searching…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
-      <p className="places-message">{message}</p>
+      <p className="places-message">{message}</p><p className="places-detail-note">Each place card shows the available real-world details from the mapped place record, such as a description, address, opening hours and official or reference links. Details vary by place.</p>
 
       <div className="places-grid">
         {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a wider radius or a different category/search.</span></div>}
         {visible.map(place=><article className={"explore-card"+(added.includes(place.id)?" selected":"")} key={place.id}>
           <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
-          <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p>{place.group} · mapped location · {place.lat.toFixed(3)}, {place.lon.toFixed(3)}</p><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)}>{added.includes(place.id)?"✓ Added to selection":"+ Add to trip"}</button><a href={"https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon} target="_blank" rel="noreferrer">View map ↗</a></div></div>
+          <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p className="explore-description">{place.description||("A "+place.group.toLowerCase()+" location mapped near "+destination+".")}</p><div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)}>{added.includes(place.id)?"✓ Added to selection":"+ Add to trip"}</button><a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>{place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}</div></div>
         </article>)}
       </div>
 
