@@ -90,6 +90,7 @@ function TripContent(){
   return <main className="trip-page">
     <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href="/trip">My plan</a></div></nav>
 
+    <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href="#places-to-explore">Next →</a></div>
     <section className="trip-hero">
       <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{destination||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {destination||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally · {stay}</p></div>
       <div className="budget-card"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>≈ ₹{money(budget/days)} / day for the group</small></div>
@@ -99,7 +100,7 @@ function TripContent(){
       <div className="trip-main">
         <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
 
-        <div className="trip-section-head"><div><span className="eyebrow">01 · DISCOVER</span><h2>Places to explore</h2></div><span className="live-badge">{loading?"Searching…":places.length+" places found"}</span></div>
+        <div id="places-to-explore" className="trip-section-head"><div><span className="eyebrow">01 · DISCOVER</span><h2>Places to explore</h2></div><span className="live-badge">{loading?"Searching…":places.length+" places found"}</span></div>
         <p className="trip-status">{status}</p>
         <div className="place-grid">{places.slice(0,30).map(place=><article className="place-card" key={place.id}><div className="place-icon">✦</div><div className="place-copy"><span>{place.type.replaceAll("_"," ")}</span><h3>{place.name}</h3><small>{place.lat.toFixed(3)}, {place.lon.toFixed(3)}</small></div><span className="place-distance">{geo?distance({id:"g",name:"g",type:"g",lat:geo.lat,lon:geo.lon},place).toFixed(1)+" km":""}</span></article>)}</div>
 
