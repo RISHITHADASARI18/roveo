@@ -27,7 +27,6 @@ function ItineraryContent(){
   const [plans,setPlans]=useState<any[][]>([]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Building your itinerary…");
-  const [editing,setEditing]=useState<number|null>(null);
 
   useEffect(()=>{
     let stopped=false;
@@ -80,7 +79,6 @@ function ItineraryContent(){
 
   const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(places.length,days*4)/days)));
   const planned=plans.flat();
-  const available=places.filter((p:any)=>!planned.some((x:any)=>x.id===p.id));
 
   function remove(day:number,id:string){
     setPlans(current=>current.map((items,index)=>index===day?items.filter((p:any)=>p.id!==id):items));
@@ -92,13 +90,8 @@ function ItineraryContent(){
     setPlans(current=>current.map((items,index)=>index===from?items.filter((p:any)=>p.id!==id):index===to?[...items,place]:items));
   }
 
-  function add(day:number,place:any){
-    if(plans[day]?.length>=maxPerDay)return;
-    setPlans(current=>current.map((items,index)=>index===day?[...items,place]:items));
-  }
-
   function regenerate(day:number){
-    const replacement=[...available,...plans.flatMap((items,index)=>index===day?[]:items)].slice(0,maxPerDay);
+    const replacement=places.filter((p:any)=>!plans.flatMap((items,index)=>index===day?[]:items).some((x:any)=>x.id===p.id)).slice(0,maxPerDay);
     setPlans(current=>current.map((items,index)=>index===day?replacement:items));
   }
 
@@ -124,7 +117,7 @@ function ItineraryContent(){
     <section className="itinerary-layout">
       <div className="itinerary-main">
         <div className="itinerary-intro">
-          <div><span className="eyebrow">YOUR PLAN</span><h2>One day at a time.</h2><p>{loading?message:"Roveo keeps nearby places together so you spend more time exploring and less time travelling."}</p></div>
+          <div><span className="eyebrow">YOUR RECOMMENDED ITINERARY</span><h2>We planned the places for you.</h2><p>{loading?message:"Roveo automatically selects nearby places and groups them into each day to reduce unnecessary travel."}</p></div>
           <div className="itinerary-count"><strong>{planned.length}</strong><span>places planned</span></div>
         </div>
 
@@ -155,15 +148,9 @@ function ItineraryContent(){
               {!items.length&&<p className="empty-day">No places planned for this day yet.</p>}
 
               <div className="day-footer">
-                <button type="button" onClick={()=>setEditing(editing===day?null:day)}>{editing===day?"Close":"Add places"}</button>
+                <span className="auto-plan-note">✓ Roveo selected these places automatically</span>
                 <button type="button" onClick={()=>regenerate(day)}>↻ Regenerate day</button>
               </div>
-
-              {editing===day&&<div className="add-place-panel">
-                {available.slice(0,16).map((place:any)=><button type="button" key={place.id} disabled={items.length>=maxPerDay} onClick={()=>add(day,place)}>
-                  <span>+ {place.name}</span><small>{center?km(center,place).toFixed(1)+" km away":""}</small>
-                </button>)}
-              </div>}
             </article>;
           })}
         </div>
