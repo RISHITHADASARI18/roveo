@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Place={id:string;name:string;type:string;lat:number;lon:number};
@@ -81,7 +81,7 @@ function ItineraryContent(){
     return()=>{cancelled=true};
   },[destination,days]);
 
-  function makePlans(list:Place[],count:number,center:Geo){
+  function makePlans(list:Place[],count:number,center:Geo):Day[]{
     if(!list.length)return Array.from({length:count},()=>({places:[]}));
     const sorted=[...list].sort((a,b)=>{
       const da=Math.hypot(a.lat-center.lat,a.lon-center.lon);
@@ -132,7 +132,7 @@ function ItineraryContent(){
     ?"https://www.openstreetmap.org/export/embed.html?bbox="+(geo.lon-.12)+"%2C"+(geo.lat-.08)+"%2C"+(geo.lon+.12)+"%2C"+(geo.lat+.08)+"&layer=mapnik&marker="+geo.lat+"%2C"+geo.lon
     :"";
 
-  const plannedCount=useMemo(()=>allPlanned.length,[allPlanned.length]);
+  const plannedCount=allPlanned.length;
 
   return <main className="itinerary-page">
     <nav className="dashboard-nav">
