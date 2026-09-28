@@ -123,7 +123,7 @@ function PlacesContent(){
 
     <div className="page-navigation places-navigation">
       <a className="page-nav secondary" href={"/trip?"+params.toString()}>← Back to plan</a>
-      <a className="page-nav primary" href={"/trip?"+params.toString()}>← Return to itinerary</a>
+      <a className="page-nav primary" href={"/itinerary?"+params.toString()}>Next: itinerary →</a>
     </div>
 
     <section className="places-hero">
@@ -159,7 +159,7 @@ function PlacesContent(){
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>
-        <a className="primary-button" href={"/trip?"+params.toString()}>Back to itinerary <span>→</span></a>
+        <a className="primary-button" href={"/itinerary?"+params.toString()}>Build the itinerary <span>→</span></a>
       </section>
     </section>
   </main>
