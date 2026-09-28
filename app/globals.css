@@ -63,3 +63,8 @@ footer p,footer a{font-size:12px;color:#7b919c}
 footer a:hover{color:#1676a5}
 @media(max-width:800px){.navbar{padding:0 5vw}.nav-links{gap:12px}.nav-links>a:first-child{display:none}.hero{grid-template-columns:1fr;padding:65px 7vw}.hero-card{justify-self:stretch}.steps{grid-template-columns:1fr}.cta{margin:0 5vw 50px;align-items:flex-start;flex-direction:column}h1{letter-spacing:-2.5px}}
 @media(max-width:480px){.navbar{height:68px}.brand{font-size:19px}.brand-mark{width:30px;height:30px}.nav-links{font-size:12px}.dashboard-link{display:none}.hero{padding-top:55px}.hero-card{padding:22px}.hero-card h2{font-size:26px}.route{grid-template-columns:1fr .25fr 1fr}.quote-section,.how-section{padding:75px 7vw}.mini-grid span{font-size:8px}}
+
+.placeholder-page{min-height:100vh;display:grid;place-items:center;padding:30px;background:linear-gradient(135deg,#f8fdff 0%,#e8f8ff 100%)}
+.placeholder-card{width:min(520px,92vw);background:white;border:1px solid #d9edf5;border-radius:28px;padding:42px;box-shadow:0 30px 70px rgba(28,96,125,.13)}
+.placeholder-card h1{font-size:44px;letter-spacing:-2px;margin:35px 0 12px}
+.placeholder-card p{color:#6c828e;line-height:1.7;margin:0 0 28px;font-size:16px}
