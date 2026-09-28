@@ -138,3 +138,9 @@ footer a:hover{color:#1676a5}
 @media(max-width:600px){.itinerary-hero{padding:50px 5vw}.itinerary-hero h1{letter-spacing:-2px}.itinerary-layout{padding:35px 5vw 70px}.itinerary-intro{align-items:flex-start;flex-direction:column}.itinerary-day-head{flex-direction:column}.day-stats{align-items:flex-start}.itinerary-day .planned-place{grid-template-columns:30px 1fr}.itinerary-day .place-actions{grid-column:2;justify-content:flex-start}.itinerary-day .add-place-panel{grid-template-columns:1fr}.itinerary-day .day-footer{flex-wrap:wrap}.itinerary-day .day-footer button:last-child{margin-left:0}.itinerary-map-card iframe{height:300px}}
 
 .auto-plan-note{font-size:10px;font-weight:800;color:#5f8797;display:flex;align-items:center;gap:5px}.itinerary-day .day-footer{justify-content:space-between}.itinerary-day .day-footer button{margin-left:auto}
+
+.explore-description{font-size:11px!important;line-height:1.65!important;color:#627d8a!important;min-height:38px}
+.explore-facts{display:flex;flex-direction:column;gap:5px;margin:10px 0;color:#718a95;font-size:9px;line-height:1.5}
+.explore-actions{flex-wrap:wrap}
+.explore-actions a{font-size:9px}
+.places-detail-note{max-width:780px;margin:-4px 0 20px;color:#80949d;font-size:10px;line-height:1.6}
