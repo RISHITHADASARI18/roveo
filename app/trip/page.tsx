@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Place = { id: string; name: string; type: string; lat: number; lon: number };
@@ -10,7 +10,7 @@ function money(value: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value);
 }
 
-export default function TripPage() {
+function TripContent() {
   const params = useSearchParams();
   const source = params.get("source") || "";
   const destination = params.get("destination") || "";
@@ -116,5 +116,13 @@ export default function TripPage() {
         </aside>
       </section>
     </main>
+  );
+}
+
+export default function TripPage() {
+  return (
+    <Suspense fallback={<main className="trip-page"><div className="map-loading">Loading your trip planner…</div></main>}>
+      <TripContent />
+    </Suspense>
   );
 }
