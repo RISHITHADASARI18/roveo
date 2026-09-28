@@ -1,4 +1,29 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
 export default function DashboardPage() {
+  const router = useRouter();
+  const [stay, setStay] = useState("Hotel");
+  const [source, setSource] = useState("");
+  const [destination, setDestination] = useState("");
+  const [days, setDays] = useState("5");
+  const [people, setPeople] = useState("4");
+  const [budget, setBudget] = useState("");
+  const [travel, setTravel] = useState("");
+  const [error, setError] = useState("");
+
+  function buildTrip() {
+    if (!source.trim() || !destination.trim() || !days || !people || !budget || !travel) {
+      setError("Please fill in your route, trip details and travel preference first.");
+      return;
+    }
+    setError("");
+    const params = new URLSearchParams({ source: source.trim(), destination: destination.trim(), days, people, budget, travel, stay });
+    router.push("/trip?" + params.toString());
+  }
+
   return (
     <main className="dashboard-page">
       <nav className="dashboard-nav">
@@ -9,47 +34,46 @@ export default function DashboardPage() {
           <a href="/">Home</a>
         </div>
       </nav>
-
       <section className="planner">
         <div className="planner-heading">
           <span className="eyebrow">YOUR TRIP STARTS HERE</span>
           <h1>Plan the journey.<br /><span>We’ll shape the trip.</span></h1>
           <p>Tell Roveo where you’re going, how you want to travel, and what you want to spend. We’ll use that to build an efficient day-by-day plan.</p>
         </div>
-
         <div className="planner-card">
           <div className="form-section">
             <div className="form-title"><span>01</span><div><h2>Where are you going?</h2><p>Start with your route.</p></div></div>
             <div className="input-grid two">
-              <label><span>📍 Source</span><input placeholder="Starting location" /></label>
-              <label><span>🎯 Destination</span><input placeholder="Where do you want to go?" /></label>
+              <label><span>📍 Source</span><input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Starting location" /></label>
+              <label><span>🎯 Destination</span><input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Where do you want to go?" /></label>
             </div>
           </div>
-
           <div className="form-section">
             <div className="form-title"><span>02</span><div><h2>Tell us about the trip</h2><p>These details help us plan realistically.</p></div></div>
             <div className="input-grid four">
-              <label><span>📅 Days</span><input type="number" min="1" placeholder="5" /></label>
-              <label><span>👥 People</span><input type="number" min="1" placeholder="4" /></label>
-              <label><span>💰 Total budget</span><input type="number" min="0" placeholder="₹ 40,000" /></label>
-              <label><span>🚗 Travel preference</span><select defaultValue=""><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
+              <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} /></label>
+              <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} /></label>
+              <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
+              <label><span>🚗 Travel preference</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
             </div>
           </div>
-
           <div className="form-section">
             <div className="form-title"><span>03</span><div><h2>Where will you stay?</h2><p>Pick the kind of stay that suits your trip.</p></div></div>
             <div className="choice-grid">
-              {["🏨 Hotel","🏠 Homestay","🛏️ Hostel","🏕️ Other"].map((stay) => <button type="button" key={stay}>{stay}</button>)}
+              {["Hotel", "Homestay", "Hostel", "Other"].map((item) => (
+                <button className={stay === item ? "selected" : ""} type="button" key={item} onClick={() => setStay(item)}>
+                  {item === "Hotel" ? "🏨" : item === "Homestay" ? "🏠" : item === "Hostel" ? "🛏️" : "🏕️"} {item}
+                </button>
+              ))}
             </div>
           </div>
-
           <div className="planner-action">
-            <div><strong>Ready to build your trip?</strong><span>Roveo will organize places, routes, stays and your daily plan around your choices.</span></div>
-            <button className="plan-button" type="button">Find places & build my trip <span>→</span></button>
+            <div><strong>Ready to build your trip?</strong><span>Roveo will find real places, locate your destination, organize nearby stops and shape a daily route.</span></div>
+            <button className="plan-button" type="button" onClick={buildTrip}>Find places &amp; build my trip <span>→</span></button>
           </div>
+          {error && <p className="planner-error">{error}</p>}
         </div>
       </section>
-
       <section className="how-dashboard">
         <div className="section-heading left"><span className="eyebrow">WHAT ROVEO WILL DO</span><h2>From your choices to a smarter itinerary.</h2></div>
         <div className="dashboard-features">
@@ -61,7 +85,6 @@ export default function DashboardPage() {
           <article><span>06</span><h3>Adjust anytime</h3><p>Add, remove or reorder places and rebuild the itinerary around your changes.</p></article>
         </div>
       </section>
-
       <section className="trip-preview" id="trips">
         <div><span className="eyebrow">YOUR TRIPS</span><h2>Your planned adventures will live here.</h2><p>Once you create a trip, Roveo will keep the itinerary, places, stay and budget together in one workspace.</p></div>
         <div className="empty-trip"><span>✦</span><strong>No trips yet</strong><small>Your first adventure is one plan away.</small></div>
