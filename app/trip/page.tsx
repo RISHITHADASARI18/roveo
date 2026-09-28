@@ -98,7 +98,7 @@ function TripContent(){
       <div className="trip-main">
         <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🚗 {travel}</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
 
-        <div className="trip-section-head"><div><span className="eyebrow">01 · DISCOVER</span><h2>Places worth visiting</h2></div><span className="live-badge">{loading?"Searching…":places.length+" places found"}</span></div>
+        <div className="trip-section-head"><div><span className="eyebrow">01 · DISCOVER</span><h2>Places to explore</h2></div><span className="live-badge">{loading?"Searching…":places.length+" places found"}</span></div>
         <p className="trip-status">{status}</p>
         <div className="place-grid">{places.slice(0,30).map(place=><article className="place-card" key={place.id}><div className="place-icon">✦</div><div className="place-copy"><span>{place.type.replaceAll("_"," ")}</span><h3>{place.name}</h3><small>{place.lat.toFixed(3)}, {place.lon.toFixed(3)}</small></div><span className="place-distance">{geo?distance({id:"g",name:"g",type:"g",lat:geo.lat,lon:geo.lon},place).toFixed(1)+" km":""}</span></article>)}</div>
 
