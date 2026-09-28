@@ -76,6 +76,7 @@ export default function DashboardPage() {
           {error && <p className="planner-error">{error}</p>}
         </div>
       </section>
+      <div className="page-navigation"><button type="button" className="page-nav secondary" onClick={() => router.push("/")}>← Back</button><button type="button" className="page-nav primary" onClick={buildTrip}>Next →</button></div>
       <section className="how-dashboard">
         <div className="section-heading left"><span className="eyebrow">WHAT ROVEO WILL DO</span><h2>From your choices to a smarter itinerary.</h2></div>
         <div className="dashboard-features">
