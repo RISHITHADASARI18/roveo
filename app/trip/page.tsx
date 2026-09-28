@@ -125,6 +125,7 @@ function TripContent(){
             </a>
           </div>
         </section>
+      </div>
 
       <aside className="trip-side">
         <div className="map-card"><div className="map-heading"><div><span className="eyebrow">03 · MAP</span><h2>Locate the trip</h2></div><span className="map-pin">●</span></div>{geo?<iframe title="Roveo trip map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}{geo&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+geo.lat+"&mlon="+geo.lon+"#map=12/"+geo.lat+"/"+geo.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}</div>
