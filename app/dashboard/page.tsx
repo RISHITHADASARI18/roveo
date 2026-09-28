@@ -12,15 +12,16 @@ export default function DashboardPage() {
   const [people, setPeople] = useState("4");
   const [budget, setBudget] = useState("");
   const [travel, setTravel] = useState("");
+  const [localTravel, setLocalTravel] = useState("");
   const [error, setError] = useState("");
 
   function buildTrip() {
-    if (!source.trim() || !destination.trim() || !days || !people || !budget || !travel) {
-      setError("Please fill in your route, trip details and travel preference first.");
+    if (!source.trim() || !destination.trim() || !days || !people || !budget || !travel || !localTravel) {
+      setError("Please fill in your route, trip details and both travel preferences first.");
       return;
     }
     setError("");
-    const params = new URLSearchParams({ source: source.trim(), destination: destination.trim(), days, people, budget, travel, stay });
+    const params = new URLSearchParams({ source: source.trim(), destination: destination.trim(), days, people, budget, travel, localTravel, stay });
     router.push("/trip?" + params.toString());
   }
 
@@ -49,12 +50,13 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="form-section">
-            <div className="form-title"><span>02</span><div><h2>Tell us about the trip</h2><p>These details help us plan realistically.</p></div></div>
+            <div className="form-title"><span>02</span><div><h2>Tell us about the trip</h2><p>These details help us plan realistically, including how you reach and move around the destination.</p></div></div>
             <div className="input-grid four">
               <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} /></label>
               <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} /></label>
               <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
-              <label><span>🚗 Travel preference</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
+              <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
+              <label><span>🗺️ How will you get around?</span><select value={localTravel} onChange={(e) => setLocalTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Taxi</option><option>Public transport</option><option>Walking</option><option>Bike</option></select></label>
             </div>
           </div>
           <div className="form-section">
