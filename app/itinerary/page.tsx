@@ -3,18 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-type Place={id:string;name:string;type:string;lat:number;lon:number};
-type Geo={lat:number;lon:number};
-type Day={places:Place[]};
-
-function distance(a:Place,b:Place){
-  const r=6371,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
-  const x=Math.sin(dLat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLon/2)**2;
-  return 2*r*Math.asin(Math.sqrt(x));
-}
-
-function money(value:number){
-  return new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(value);
+function km(a:any,b:any){
+  const p=Math.PI/180;
+  const lat=(b.lat-a.lat)*p;
+  const lon=(b.lon-a.lon)*p;
+  const x=Math.sin(lat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(lon/2)**2;
+  return 6371*2*Math.asin(Math.sqrt(x));
 }
 
 function ItineraryContent(){
@@ -28,111 +22,82 @@ function ItineraryContent(){
   const localTravel=params.get("localTravel")||"Taxi";
   const stay=params.get("stay")||"Hotel";
 
-  const [geo,setGeo]=useState<Geo|null>(null);
-  const [places,setPlaces]=useState<Place[]>([]);
-  const [dayPlans,setDayPlans]=useState<Day[]>([]);
+  const [center,setCenter]=useState<any>(null);
+  const [places,setPlaces]=useState<any[]>([]);
+  const [plans,setPlans]=useState<any[][]>([]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Building your itinerary…");
-  const [editingDay,setEditingDay]=useState<number|null>(null);
+  const [editing,setEditing]=useState<number|null>(null);
 
   useEffect(()=>{
-    let cancelled=false;
+    let stopped=false;
     async function load(){
       if(!destination){setLoading(false);setMessage("No destination was provided.");return;}
       try{
         setLoading(true);
-        setMessage("Locating your destination…");
-        const geoRes=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
-        if(!geoRes.ok)throw new Error("Could not locate the destination.");
-        const results=await geoRes.json();
-        if(!results[0])throw new Error("Destination was not found. Try a city or landmark.");
-        const located={lat:Number(results[0].lat),lon:Number(results[0].lon)};
-        if(cancelled)return;
-        setGeo(located);
-        setMessage("Finding nearby places and grouping them into days…");
+        const geo=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
+        if(!geo.ok)throw new Error("Could not locate the destination.");
+        const results=await geo.json();
+        if(!results[0])throw new Error("Destination was not found.");
+        const point={lat:Number(results[0].lat),lon:Number(results[0].lon)};
+        if(stopped)return;
+        setCenter(point);
+        setMessage("Finding nearby places…");
 
-        const query='[out:json][timeout:45];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork|information"](around:30000,'+located.lat+','+located.lon+');nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:30000,'+located.lat+','+located.lon+');nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:30000,'+located.lat+','+located.lon+');nwr["natural"~"waterfall|peak|cave|beach"](around:30000,'+located.lat+','+located.lon+');nwr["amenity"~"place_of_worship|arts_centre|theatre|community_centre"](around:30000,'+located.lat+','+located.lon+'););out center tags;';
-
-        const res=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(query));
-        if(!res.ok)throw new Error("Places service is temporarily unavailable. Please try again.");
+        const q='[out:json][timeout:45];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork"](around:30000,'+point.lat+','+point.lon+');nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:30000,'+point.lat+','+point.lon+');nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:30000,'+point.lat+','+point.lon+');nwr["natural"~"waterfall|peak|cave|beach"](around:30000,'+point.lat+','+point.lon+');nwr["amenity"~"place_of_worship|arts_centre|theatre"](around:30000,'+point.lat+','+point.lon+'););out center tags;';
+        const res=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q));
+        if(!res.ok)throw new Error("Places service is temporarily unavailable.");
         const data=await res.json();
-        const mapped:Place[]=(data.elements||[])
-          .map((item:any)=>({
-            id:String(item.type||"x")+"-"+String(item.id),
-            name:item.tags?.name||item.tags?.["name:en"]||"",
-            type:item.tags?.tourism||item.tags?.historic||item.tags?.leisure||item.tags?.natural||item.tags?.amenity||"place",
-            lat:Number(item.lat??item.center?.lat),
-            lon:Number(item.lon??item.center?.lon)
-          }))
-          .filter((p:Place)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon))
-          .filter((p:Place,i:number,a:Place[])=>a.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase())===i);
 
-        if(cancelled)return;
-        setPlaces(mapped);
-        setDayPlans(makePlans(mapped,days,located));
-        setMessage(mapped.length?"Plan ready — nearby places are grouped together to reduce unnecessary travel.":"No mapped places were found nearby.");
-      }catch(e){
-        if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");
+        const found=(data.elements||[]).map((item:any)=>({
+          id:String(item.type||"x")+"-"+String(item.id),
+          name:item.tags?.name||item.tags?.["name:en"]||"",
+          type:item.tags?.tourism||item.tags?.historic||item.tags?.leisure||item.tags?.natural||item.tags?.amenity||"place",
+          lat:Number(item.lat??item.center?.lat),
+          lon:Number(item.lon??item.center?.lon)
+        })).filter((p:any)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon))
+          .filter((p:any,i:number,a:any[])=>a.findIndex((x:any)=>x.name.toLowerCase()===p.name.toLowerCase())===i)
+          .sort((a:any,b:any)=>km(point,a)-km(point,b));
+
+        if(stopped)return;
+        setPlaces(found);
+        const per=Math.max(2,Math.min(5,Math.ceil(Math.min(found.length,days*4)/days)));
+        const next=Array.from({length:days},()=>[] as any[]);
+        found.slice(0,days*per).forEach((place:any,index:number)=>next[index%days].push(place));
+        setPlans(next);
+        setMessage(found.length?"Nearby places have been grouped across your days.":"No mapped places were found nearby.");
+      }catch(error){
+        if(!stopped)setMessage(error instanceof Error?error.message:"Something went wrong.");
       }finally{
-        if(!cancelled)setLoading(false);
+        if(!stopped)setLoading(false);
       }
     }
     load();
-    return()=>{cancelled=true};
+    return()=>{stopped=true};
   },[destination,days]);
 
-  function makePlans(list:Place[],count:number,center:Geo):Day[]{
-    if(!list.length)return Array.from({length:count},()=>({places:[]}));
-    const sorted=[...list].sort((a,b)=>{
-      const da=Math.hypot(a.lat-center.lat,a.lon-center.lon);
-      const db=Math.hypot(b.lat-center.lat,b.lon-center.lon);
-      return da-db;
-    });
-    const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(sorted.length,count*4)/count)));
-    const plans=Array.from({length:count},()=>({places:[] as Place[]}));
-    sorted.slice(0,count*maxPerDay).forEach((place,index)=>plans[index%count].places.push(place));
-    plans.forEach(day=>day.places.sort((a,b)=>a.lat-b.lat||a.lon-b.lon));
-    return plans;
-  }
-
   const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(places.length,days*4)/days)));
-  const allPlanned=dayPlans.flatMap(day=>day.places);
-  const selectedIds=new Set(allPlanned.map(place=>place.id));
-  const unplanned=places.filter(place=>!selectedIds.has(place.id));
+  const planned=plans.flat();
+  const available=places.filter((p:any)=>!planned.some((x:any)=>x.id===p.id));
 
-  function removePlace(day:number,id:string){
-    setDayPlans(current=>current.map((item,index)=>index===day?{places:item.places.filter(place=>place.id!==id)}:item));
+  function remove(day:number,id:string){
+    setPlans(current=>current.map((items,index)=>index===day?items.filter((p:any)=>p.id!==id):items));
+  }
+  function move(from:number,id:string,to:number){
+    const place=plans[from]?.find((p:any)=>p.id===id);
+    if(!place||plans[to]?.length>=maxPerDay)return;
+    setPlans(current=>current.map((items,index)=>index===from?items.filter((p:any)=>p.id!==id):index===to?[...items,place]:items));
+  }
+  function add(day:number,place:any){
+    if(plans[day]?.length>=maxPerDay)return;
+    setPlans(current=>current.map((items,index)=>index===day?[...items,place]:items));
+  }
+  function regenerate(day:number){
+    const replacement=[...available,...plans.flatMap((items,index)=>index===day?[]:items)].slice(0,maxPerDay);
+    setPlans(current=>current.map((items,index)=>index===day?replacement:items));
   }
 
-  function movePlace(from:number,id:string,to:number){
-    if(from===to)return;
-    const place=dayPlans[from]?.places.find(item=>item.id===id);
-    if(!place||dayPlans[to]?.places.length>=maxPerDay)return;
-    setDayPlans(current=>current.map((item,index)=>
-      index===from?{places:item.places.filter(p=>p.id!==id)}:
-      index===to?{places:[...item.places,place]}:item
-    ));
-  }
-
-  function addPlace(day:number,place:Place){
-    if(dayPlans[day].places.length>=maxPerDay)return;
-    setDayPlans(current=>current.map((item,index)=>index===day?{places:[...item.places,place]}:item));
-  }
-
-  function regenerateDay(day:number){
-    const available=[...unplanned,...dayPlans.flatMap((item,index)=>index===day?[]:item.places)];
-    const center=geo||{lat:0,lon:0};
-    const replacement=available
-      .sort((a,b)=>Math.hypot(a.lat-center.lat,a.lon-center.lon)-Math.hypot(b.lat-center.lat,b.lon-center.lon))
-      .slice(0,maxPerDay);
-    setDayPlans(current=>current.map((item,index)=>index===day?{places:replacement}:item));
-  }
-
-  const mapUrl=geo
-    ?"https://www.openstreetmap.org/export/embed.html?bbox="+(geo.lon-.12)+"%2C"+(geo.lat-.08)+"%2C"+(geo.lon+.12)+"%2C"+(geo.lat+.08)+"&layer=mapnik&marker="+geo.lat+"%2C"+geo.lon
-    :"";
-
-  const plannedCount=allPlanned.length;
+  const mapUrl=center?"https://www.openstreetmap.org/export/embed.html?bbox="+(center.lon-.12)+"%2C"+(center.lat-.08)+"%2C"+(center.lon+.12)+"%2C"+(center.lat+.08)+"&layer=mapnik&marker="+center.lat+"%2C"+center.lon:"";
 
   return <main className="itinerary-page">
     <nav className="dashboard-nav">
@@ -146,80 +111,33 @@ function ItineraryContent(){
     </div>
 
     <section className="itinerary-hero">
-      <div>
-        <span className="eyebrow">02 · SMART ITINERARY</span>
-        <h1>Where to visit <span>each day.</span></h1>
-        <p>{destination||"Your destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"}</p>
-      </div>
-      <div className="itinerary-budget"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>{travel} to destination · {localTravel} locally · {stay}</small></div>
+      <div><span className="eyebrow">02 · SMART ITINERARY</span><h1>Where to visit <span>each day.</span></h1><p>{destination||"Your destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"}</p></div>
+      <div className="itinerary-budget"><span>TRIP BUDGET</span><strong>₹{new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget)}</strong><small>{travel} to destination · {localTravel} locally · {stay}</small></div>
     </section>
 
     <section className="itinerary-layout">
       <div className="itinerary-main">
-        <div className="itinerary-intro">
-          <div><span className="eyebrow">YOUR PLAN</span><h2>One day at a time.</h2><p>{loading?message:"Roveo keeps nearby places together so you spend more time exploring and less time travelling."}</p></div>
-          <div className="itinerary-count"><strong>{plannedCount}</strong><span>places planned</span></div>
-        </div>
+        <div className="itinerary-intro"><div><span className="eyebrow">YOUR PLAN</span><h2>One day at a time.</h2><p>{loading?message:"Roveo keeps nearby places together so you spend more time exploring and less time travelling."}</p></div><div className="itinerary-count"><strong>{planned.length}</strong><span>places planned</span></div></div>
 
-        {loading&&<div className="itinerary-loading">{message}</div>}
-        {!loading&&!dayPlans.length&&<div className="itinerary-loading">{message}</div>}
+        {!loading&&!plans.length&&<div className="itinerary-loading">{message}</div>}
 
         <div className="itinerary-days">
-          {dayPlans.map((day,dayIndex)=>{
-            const totalKm=day.places.length>1?day.places.slice(1).reduce((sum,place,index)=>sum+distance(day.places[index],place),0):0;
-            return <article className="itinerary-day" key={dayIndex}>
-              <div className="itinerary-day-head">
-                <div><span className="day-number">DAY {dayIndex+1}</span><h3>{dayIndex===0?"Arrival & nearby highlights":dayIndex===days-1?"Final discoveries & return":"Explore one area at a time"}</h3></div>
-                <div className="day-stats"><strong>{day.places.length} places</strong><span>~{totalKm.toFixed(1)} km between stops</span></div>
-              </div>
-
-              <div className="planned-place-list">
-                {day.places.map((place,index)=><div className="planned-place" key={place.id}>
-                  <div className="place-order">{index+1}</div>
-                  <div><strong>{place.name}</strong><small>{place.type.replaceAll("_"," ")}</small></div>
-                  <div className="place-actions">
-                    <button type="button" onClick={()=>removePlace(dayIndex,place.id)}>Remove</button>
-                    {dayIndex>0&&<button type="button" onClick={()=>movePlace(dayIndex,place.id,dayIndex-1)}>← Day {dayIndex}</button>}
-                    {dayIndex<days-1&&<button type="button" onClick={()=>movePlace(dayIndex,place.id,dayIndex+1)}>Day {dayIndex+2} →</button>}
-                  </div>
-                </div>)}
-              </div>
-
-              {!day.places.length&&<p className="empty-day">No places planned for this day yet.</p>}
-
-              <div className="day-footer">
-                <button type="button" onClick={()=>setEditingDay(editingDay===dayIndex?null:dayIndex)}>{editingDay===dayIndex?"Close":"Add places"}</button>
-                <button type="button" onClick={()=>regenerateDay(dayIndex)}>↻ Regenerate day</button>
-              </div>
-
-              {editingDay===dayIndex&&<div className="add-place-panel">
-                {unplanned.slice(0,16).map(place=><button type="button" key={place.id} disabled={day.places.length>=maxPerDay} onClick={()=>addPlace(dayIndex,place)}>
-                  <span>+ {place.name}</span><small>{geo?distance({id:"center",name:"center",type:"center",lat:geo.lat,lon:geo.lon},place).toFixed(1)+" km away":""}</small>
-                </button>)}
-              </div>}
-            </article>;
-          })}
+          {plans.map((items,day)=>{const total=items.length>1?items.slice(1).reduce((sum:number,p:any,index:number)=>sum+km(items[index],p),0):0;return <article className="itinerary-day" key={day}>
+            <div className="itinerary-day-head"><div><span className="day-number">DAY {day+1}</span><h3>{day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time"}</h3></div><div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km between stops</span></div></div>
+            <div className="planned-place-list">{items.map((place:any,index:number)=><div className="planned-place" key={place.id}>
+              <div className="place-order">{index+1}</div><div><strong>{place.name}</strong><small>{String(place.type).replaceAll("_"," ")}</small></div>
+              <div className="place-actions"><button type="button" onClick={()=>remove(day,place.id)}>Remove</button>{day>0&&<button type="button" onClick={()=>move(day,place.id,day-1)}>← Day {day}</button>}{day<days-1&&<button type="button" onClick={()=>move(day,place.id,day+1)}>Day {day+2} →</button>}</div>
+            </div>)}</div>
+            {!items.length&&<p className="empty-day">No places planned for this day yet.</p>}
+            <div className="day-footer"><button type="button" onClick={()=>setEditing(editing===day?null:day)}>{editing===day?"Close":"Add places"}</button><button type="button" onClick={()=>regenerate(day)}>↻ Regenerate day</button></div>
+            {editing===day&&<div className="add-place-panel">{available.slice(0,16).map((place:any)=><button type="button" key={place.id} disabled={items.length>=maxPerDay} onClick={()=>add(day,place)}><span>+ {place.name}</span><small>{center?km(center,place).toFixed(1)+" km away":""}</small></button>)}</div>}
+          </article>})}
         </div>
       </div>
 
       <aside className="itinerary-side">
-        <div className="itinerary-map-card">
-          <span className="eyebrow">03 · MAP</span>
-          <h2>Your trip area</h2>
-          {geo?<iframe title="Roveo itinerary map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}
-          {geo&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+geo.lat+"&mlon="+geo.lon+"#map=12/"+geo.lat+"/"+geo.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
-        </div>
-
-        <div className="budget-breakdown">
-          <span className="eyebrow">04 · TRIP DETAILS</span>
-          <h2>Your preferences</h2>
-          <div><span>Starting point</span><strong>{source||"—"}</strong></div>
-          <div><span>Stay</span><strong>{stay}</strong></div>
-          <div><span>Travel to destination</span><strong>{travel}</strong></div>
-          <div><span>Getting around</span><strong>{localTravel}</strong></div>
-          <div><span>Travellers</span><strong>{people}</strong></div>
-          <div><span>Budget</span><strong>₹{money(budget)}</strong></div>
-        </div>
+        <div className="itinerary-map-card"><span className="eyebrow">03 · MAP</span><h2>Your trip area</h2>{center?<iframe title="Roveo itinerary map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}{center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}</div>
+        <div className="budget-breakdown"><span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2><div><span>Starting point</span><strong>{source||"—"}</strong></div><div><span>Stay</span><strong>{stay}</strong></div><div><span>Travel to destination</span><strong>{travel}</strong></div><div><span>Getting around</span><strong>{localTravel}</strong></div><div><span>Travellers</span><strong>{people}</strong></div><div><span>Budget</span><strong>₹{new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget)}</strong></div></div>
       </aside>
     </section>
   </main>;
