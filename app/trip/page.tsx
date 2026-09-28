@@ -90,7 +90,7 @@ function TripContent(){
   return <main className="trip-page">
     <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href="/trip">My plan</a></div></nav>
 
-    <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href="#places-to-explore">Next →</a></div>
+    <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
     <section className="trip-hero">
       <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{destination||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {destination||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally · {stay}</p></div>
       <div className="budget-card"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>≈ ₹{money(budget/days)} / day for the group</small></div>
