@@ -2,24 +2,31 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 
 type Place = {
   id:string;
   name:string;
   type:string;
+  group:"Attraction"|"History"|"Nature"|"Culture"|"Activity";
   lat:number;
   lon:number;
   distance:number;
 };
 
+type GeoPoint={lat:number;lon:number};
+
 const categories=[
   {key:"all",label:"All places"},
-  {key:"tourism",label:"Attractions"},
-  {key:"historic",label:"History"},
-  {key:"leisure",label:"Nature & parks"},
+  {key:"Attraction",label:"Main attractions"},
+  {key:"History",label:"History & landmarks"},
+  {key:"Nature",label:"Nature & viewpoints"},
+  {key:"Culture",label:"Culture & local spots"},
+  {key:"Activity",label:"Activities"},
 ];
 
-function haversine(a:{lat:number;lon:number},b:{lat:number;lon:number}){
+function haversine(a:GeoPoint,b:GeoPoint){
   const r=6371,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
   const x=Math.sin(dLat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLon/2)**2;
   return 2*r*Math.asin(Math.sqrt(x));
@@ -29,6 +36,47 @@ function titleCase(value:string){
   return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
 }
 
+function classify(tags:any):Place["group"]{
+  const tourism=tags.tourism||"";
+  const historic=tags.historic||"";
+  const leisure=tags.leisure||"";
+  const natural=tags.natural||"";
+  const amenity=tags.amenity||"";
+  if(["attraction","theme_park","museum","zoo","aquarium","gallery","viewpoint"].includes(tourism))return "Attraction";
+  if(["monument","memorial","castle","ruins","archaeological_site","fort","yes"].includes(historic))return "History";
+  if(["park","nature_reserve","garden","beach","water_park"].includes(leisure)||["waterfall","peak","cave","beach"].includes(natural))return "Nature";
+  if(["place_of_worship","arts_centre","theatre","community_centre"].includes(amenity)||["artwork","information"].includes(tourism))return "Culture";
+  return "Activity";
+}
+
+function FitMap({points}:{points:GeoPoint[]}){
+  const map=useMap();
+  useEffect(()=>{
+    if(points.length)map.fitBounds(points.map(p=>[p.lat,p.lon] as [number,number]),{padding:[35,35],maxZoom:13});
+  },[map,points]);
+  return null;
+}
+
+function ExploreMap({center,places,selected,onToggle}:{center:GeoPoint;places:Place[];selected:string[];onToggle:(id:string)=>void}){
+  return <div className="explore-map">
+    <MapContainer center={[center.lat,center.lon]} zoom={12} scrollWheelZoom className="leaflet-map">
+      <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+      <FitMap points={[center,...places.map(p=>({lat:p.lat,lon:p.lon}))]}/>
+      <CircleMarker center={[center.lat,center.lon]} radius={9} pathOptions={{color:"#1676a5",fillColor:"#1676a5",fillOpacity:.95}}>
+        <Popup><strong>Destination</strong><br/>{center.lat.toFixed(4)}, {center.lon.toFixed(4)}</Popup>
+      </CircleMarker>
+      {places.map(place=><CircleMarker key={place.id} center={[place.lat,place.lon]} radius={selected.includes(place.id)?8:6} pathOptions={{color:selected.includes(place.id)?"#0c5c83":"#e38b4a",fillColor:selected.includes(place.id)?"#0c5c83":"#e38b4a",fillOpacity:.9}}>
+        <Popup>
+          <strong>{place.name}</strong><br/>
+          {place.group} · {place.distance.toFixed(1)} km away
+          <br/><button className="map-add-button" onClick={()=>onToggle(place.id)}>{selected.includes(place.id)?"✓ Selected":"+ Add to trip"}</button>
+        </Popup>
+      </CircleMarker>)}
+    </MapContainer>
+    <div className="map-legend"><span><i className="destination-dot"/>Destination</span><span><i className="place-dot"/>Places</span><span>{places.length} pins shown</span></div>
+  </div>
+}
+
 function PlacesContent(){
   const params=useSearchParams();
   const destination=params.get("destination")||"";
@@ -36,6 +84,7 @@ function PlacesContent(){
   const days=Number(params.get("days"))||1;
   const people=Number(params.get("people"))||1;
   const [places,setPlaces]=useState<Place[]>([]);
+  const [center,setCenter]=useState<GeoPoint|null>(null);
   const [category,setCategory]=useState("all");
   const [search,setSearch]=useState("");
   const [radius,setRadius]=useState("30");
@@ -54,8 +103,11 @@ function PlacesContent(){
         const geoResults=await geoRes.json();
         if(!geoResults[0])throw new Error("Destination was not found. Try a city or landmark.");
         const lat=Number(geoResults[0].lat),lon=Number(geoResults[0].lon);
-        setMessage("Finding attractions, historic places and parks nearby…");
-        const query='[out:json][timeout:30];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park"](around:30000,'+lat+','+lon+');nwr["historic"~"monument|castle|ruins|archaeological_site"](around:30000,'+lat+','+lon+');nwr["leisure"~"park|nature_reserve"](around:30000,'+lat+','+lon+'););out center tags;';
+        if(cancelled)return;
+        setCenter({lat,lon});
+        setMessage("Finding major attractions and smaller local places nearby…");
+
+        const query='[out:json][timeout:45];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork|information"](around:30000,'+lat+','+lon+');nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:30000,'+lat+','+lon+');nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:30000,'+lat+','+lon+');nwr["natural"~"waterfall|peak|cave|beach"](around:30000,'+lat+','+lon+');nwr["amenity"~"place_of_worship|arts_centre|theatre|community_centre"](around:30000,'+lat+','+lon+'););out center tags;';
         const res=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(query));
         if(!res.ok)throw new Error("Places service is temporarily unavailable. Please try again.");
         const data=await res.json();
@@ -63,16 +115,16 @@ function PlacesContent(){
           .map((item:any)=>{
             const pLat=Number(item.lat??item.center?.lat),pLon=Number(item.lon??item.center?.lon);
             const tags=item.tags||{};
-            const type=tags.tourism||tags.historic||tags.leisure||"place";
-            return {id:String(item.type||"x")+"-"+String(item.id),name:tags.name||tags["name:en"]||"",type,lat:pLat,lon:pLon,distance:haversine({lat,lon},{lat:pLat,lon:pLon})};
+            const type=tags.tourism||tags.historic||tags.leisure||tags.natural||tags.amenity||"place";
+            return {id:String(item.type||"x")+"-"+String(item.id),name:tags.name||tags["name:en"]||"",type,group:classify(tags),lat:pLat,lon:pLon,distance:haversine({lat,lon},{lat:pLat,lon:pLon})};
           })
           .filter((p:Place)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.distance<=30)
           .filter((p:Place,i:number,a:Place[])=>a.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase())===i)
           .sort((a:Place,b:Place)=>a.distance-b.distance)
-          .slice(0,120);
+          .slice(0,250);
         if(cancelled)return;
         setPlaces(mapped);
-        setMessage(mapped.length?mapped.length+" real mapped places found around "+destination+".":"No mapped places were found nearby.");
+        setMessage(mapped.length?mapped.length+" mapped places found — major attractions and smaller nearby spots are included.":"No mapped places were found nearby.");
       }catch(e){if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");}
       finally{if(!cancelled)setLoading(false);}
     }
@@ -81,7 +133,7 @@ function PlacesContent(){
   },[destination]);
 
   const visible=useMemo(()=>places.filter(p=>
-    (category==="all"||p.type===category)&&
+    (category==="all"||p.group===category)&&
     p.distance<=Number(radius)&&
     p.name.toLowerCase().includes(search.toLowerCase())
   ),[places,category,radius,search]);
@@ -105,7 +157,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>explore.</span></h1>
-        <p>Discover real places around <strong>{destination||"your destination"}</strong>, then choose the ones you want Roveo to consider for your trip.</p>
+        <p>Explore the destination properly — from the main attractions everyone knows to smaller mapped places nearby.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
     </section>
@@ -115,11 +167,11 @@ function PlacesContent(){
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search places…" aria-label="Search places"/></div>
         <div className="filter-row">
           {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
-          <label className="radius-filter">Within
-            <select value={radius} onChange={e=>setRadius(e.target.value)}><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option><option value="30">30 km</option></select>
-          </label>
+          <label className="radius-filter">Within<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option><option value="30">30 km</option></select></label>
         </div>
       </div>
+
+      {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
       <div className="places-result-head"><div><span className="eyebrow">DISCOVERY LIST</span><h2>{loading?"Searching…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
       <p className="places-message">{message}</p>
@@ -127,8 +179,8 @@ function PlacesContent(){
       <div className="places-grid">
         {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a wider radius or a different category/search.</span></div>}
         {visible.map(place=><article className={"explore-card"+(added.includes(place.id)?" selected":"")} key={place.id}>
-          <div className="explore-visual"><span>✦</span><small>{titleCase(place.type)}</small></div>
-          <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p>Mapped destination place · {place.lat.toFixed(3)}, {place.lon.toFixed(3)}</p><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)}>{added.includes(place.id)?"✓ Added to selection":"+ Add to trip"}</button><a href={"https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon} target="_blank" rel="noreferrer">View map ↗</a></div></div>
+          <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
+          <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p>{place.group} · mapped location · {place.lat.toFixed(3)}, {place.lon.toFixed(3)}</p><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)}>{added.includes(place.id)?"✓ Added to selection":"+ Add to trip"}</button><a href={"https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon} target="_blank" rel="noreferrer">View map ↗</a></div></div>
         </article>)}
       </div>
 
@@ -139,6 +191,5 @@ function PlacesContent(){
     </section>
   </main>
 }
-
 
 export default function PlacesPage(){return <Suspense fallback={<main className="places-page"><div className="map-loading">Loading places to explore…</div></main>}><PlacesContent/></Suspense>}
