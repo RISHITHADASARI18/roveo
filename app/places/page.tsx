@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Place = {
@@ -29,7 +29,7 @@ function titleCase(value:string){
   return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
 }
 
-export default function PlacesPage(){
+function PlacesContent(){
   const params=useSearchParams();
   const destination=params.get("destination")||"";
   const source=params.get("source")||"";
@@ -139,3 +139,6 @@ export default function PlacesPage(){
     </section>
   </main>
 }
+
+
+export default function PlacesPage(){return <Suspense fallback={<main className="places-page"><div className="map-loading">Loading places to explore…</div></main>}><PlacesContent/></Suspense>}
