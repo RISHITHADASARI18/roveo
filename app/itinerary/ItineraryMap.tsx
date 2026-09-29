@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 type Point = {
@@ -13,6 +13,55 @@ type Point = {
   day?: number;
   order?: number;
 };
+
+type RouteLeg = {
+  id?: number;
+  dayId: number;
+  fromItemId: number;
+  toItemId: number;
+  mode: "DRIVE" | "WALK" | "BICYCLE";
+  distanceKm: number;
+  durationMinutes: number;
+  encodedPolyline?: string;
+};
+
+function decodePolyline(encoded: string, precision = 6): Array<[number, number]> {
+  const factor = Math.pow(10, precision);
+  const coordinates: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lon = 0;
+
+  while (index < encoded.length) {
+    let shift = 0;
+    let result = 0;
+    let byte = 0;
+
+    do {
+      if (index >= encoded.length) return coordinates;
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      if (index >= encoded.length) return coordinates;
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    lon += result & 1 ? ~(result >> 1) : result >> 1;
+    coordinates.push([lat / factor, lon / factor]);
+  }
+
+  return coordinates;
+}
 
 function FitMap({ points }: { points: Array<{ lat: number; lon: number }> }) {
   const map = useMap();
@@ -31,13 +80,23 @@ function FitMap({ points }: { points: Array<{ lat: number; lon: number }> }) {
 export default function ItineraryMap({
   center,
   places,
+  routes,
 }: {
   center: { lat: number; lon: number };
   places: Point[];
+  routes: RouteLeg[];
 }) {
   const points = places.filter(
     (place) => Number.isFinite(place.lat) && Number.isFinite(place.lon)
   );
+
+  const routeLines = routes
+    .filter((route) => typeof route.encodedPolyline === "string" && route.encodedPolyline)
+    .map((route) => ({
+      ...route,
+      positions: decodePolyline(route.encodedPolyline as string),
+    }))
+    .filter((route) => route.positions.length > 1);
 
   return (
     <div className="explore-map itinerary-leaflet-map">
@@ -53,6 +112,26 @@ export default function ItineraryMap({
         />
 
         <FitMap points={[center, ...points]} />
+
+        {routeLines.map((route) => (
+          <Polyline
+            key={String(route.id ?? route.fromItemId + "-" + route.toItemId + "-" + route.mode)}
+            positions={route.positions}
+            pathOptions={{ weight: 5, opacity: 0.75 }}
+          >
+            <Popup>
+              <strong>Travel between stops</strong>
+              <br />
+              {route.distanceKm.toFixed(1)} km · {route.durationMinutes} min
+              <br />
+              {route.mode === "DRIVE"
+                ? "Driving"
+                : route.mode === "WALK"
+                  ? "Walking"
+                  : "Bicycle"}
+            </Popup>
+          </Polyline>
+        ))}
 
         <CircleMarker
           center={[center.lat, center.lon]}
@@ -114,6 +193,7 @@ export default function ItineraryMap({
           Planned places
         </span>
         <span>{points.length} places pinned</span>
+        {routes.length ? <span>{routes.length} route legs</span> : null}
       </div>
     </div>
   );
