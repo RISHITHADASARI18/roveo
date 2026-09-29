@@ -26,7 +26,10 @@ function ItineraryContent(){
   const [places,setPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<any[][]>([]);
   const [loading,setLoading]=useState(true);
+  const tripId=params.get("tripId")||"";
   const [message,setMessage]=useState("Building your itinerary…");
+  const [saving,setSaving]=useState(false);
+  const [saveMessage,setSaveMessage]=useState("");
 
   useEffect(()=>{
     let stopped=false;
@@ -66,6 +69,7 @@ function ItineraryContent(){
         const next=Array.from({length:days},()=>[] as any[]);
         found.slice(0,days*per).forEach((place:any,index:number)=>next[index%days].push(place));
         setPlans(next);
+        await loadSavedItinerary();
         setMessage(found.length?"Nearby places have been grouped across your days.":"No mapped places were found nearby.");
       }catch(error){
         if(!stopped)setMessage(error instanceof Error?error.message:"Something went wrong.");
@@ -78,6 +82,73 @@ function ItineraryContent(){
   },[destination,days]);
 
   const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(places.length,days*4)/days)));
+
+  async function saveItinerary(){
+    if(!tripId){
+      setSaveMessage("This trip has no saved trip ID yet. Please start from the dashboard.");
+      return;
+    }
+    setSaving(true);
+    setSaveMessage("");
+    try{
+      const savedPlaces=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/places");
+      if(!savedPlaces.ok)throw new Error("Could not load saved places for this trip.");
+      const placeData=await savedPlaces.json();
+      const byProviderId=new Map<string,any>();
+      const byName=new Map<string,any>();
+      for(const place of placeData.places||[]){
+        if(place.providerPlaceId)byProviderId.set(String(place.providerPlaceId),place);
+        byName.set(String(place.name).toLowerCase(),place);
+      }
+      const payloadDays=plans.map((items,dayIndex)=>({
+        dayNumber:dayIndex+1,
+        items:items.map((place:any,index:number)=>{
+          const saved=byProviderId.get(String(place.id))||byName.get(String(place.name).toLowerCase());
+          if(!saved)throw new Error("Save the places from the Explore page before saving this itinerary.");
+          return {
+            tripPlaceId:Number(saved.id),
+            position:index+1
+          };
+        })
+      }));
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({days:payloadDays})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not save the itinerary.");
+      setSaveMessage("Itinerary saved to your trip.");
+    }catch(error){
+      setSaveMessage(error instanceof Error?error.message:"Could not save the itinerary.");
+    }finally{
+      setSaving(false);
+    }
+  }
+
+  async function loadSavedItinerary(){
+    if(!tripId)return;
+    try{
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary");
+      if(!res.ok)return;
+      const data=await res.json();
+      if(!Array.isArray(data.days)||!data.days.length)return;
+      const restored=data.days.map((day:any)=>({
+        ...day,
+        items:(day.items||[]).map((item:any)=>item.place?{
+          id:String(item.tripPlaceId),
+          name:item.place.name,
+          type:item.place.category||"place",
+          lat:Number(item.place.latitude),
+          lon:Number(item.place.longitude)
+        }:null).filter(Boolean)
+      }));
+      setPlans(restored.map((day:any)=>day.items));
+      setMessage("Loaded your saved itinerary.");
+    }catch{
+      // Keep the generated itinerary if the saved version cannot be loaded.
+    }
+  }
   const planned=plans.flat();
 
   function remove(day:number,id:string){
@@ -123,6 +194,8 @@ function ItineraryContent(){
 
         {loading&&<div className="itinerary-loading">{message}</div>}
         {!loading&&!plans.length&&<div className="itinerary-loading">{message}</div>}
+
+        <div className="itinerary-save-row"><button type="button" className="primary-button" onClick={saveItinerary} disabled={saving}>{saving?"Saving…":"Save itinerary"}</button>{saveMessage&&<span>{saveMessage}</span>}</div>
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
