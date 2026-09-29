@@ -26,6 +26,36 @@ function TripContent(){
   const [loading,setLoading]=useState(true);
   const [status,setStatus]=useState("Finding your destination…");
   const [editingDay,setEditingDay]=useState<number|null>(null);
+  const [budgetItems,setBudgetItems]=useState({
+    destinationTravel:0, accommodation:0, localTransport:0, food:0,
+    activities:0, other:0, contingency:0
+  });
+  const [budgetLoading,setBudgetLoading]=useState(true);
+  const [budgetSaving,setBudgetSaving]=useState(false);
+  const [budgetMessage,setBudgetMessage]=useState("");
+
+  useEffect(()=>{
+    let cancelled=false;
+    async function loadBudget(){
+      const tripId=params.get("tripId");
+      if(!tripId){setBudgetLoading(false);return;}
+      try{
+        const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/budget");
+        if(!res.ok)throw new Error("Could not load budget.");
+        const data=await res.json();
+        if(cancelled)return;
+        if(data.budget?.items){
+          const next:any={...budgetItems};
+          for(const item of data.budget.items)next[item.category]=Number(item.amount)||0;
+          setBudgetItems(next);
+        }
+      }catch(error){
+        if(!cancelled)setBudgetMessage(error instanceof Error?error.message:"Could not load budget.");
+      }finally{if(!cancelled)setBudgetLoading(false);}
+    }
+    loadBudget();
+    return()=>{cancelled=true};
+  },[params]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -87,6 +117,31 @@ function TripContent(){
     setDayPlans(current=>current.map((d,i)=>i===day?{places:replacement}:d));
   }
 
+  const plannedBudget=Object.values(budgetItems).reduce((sum,value)=>sum+Number(value||0),0);
+  const remainingBudget=budget-plannedBudget;
+  const budgetPerPerson=people?plannedBudget/people:plannedBudget;
+  const budgetPerDay=days?plannedBudget/days:plannedBudget;
+
+  function updateBudgetItem(key:string,value:string){
+    const amount=Math.max(0,Number(value)||0);
+    setBudgetItems(current=>({...current,[key]:amount}));
+  }
+
+  async function saveBudget(){
+    const tripId=params.get("tripId");
+    if(!tripId)return;
+    setBudgetSaving(true);setBudgetMessage("");
+    try{
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/budget",{
+        method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(budgetItems)
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not save budget.");
+      setBudgetMessage("Budget saved.");
+    }catch(error){setBudgetMessage(error instanceof Error?error.message:"Could not save budget.");}
+    finally{setBudgetSaving(false);}
+  }
+
   return <main className="trip-page">
     <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href="/trip">My plan</a></div></nav>
 
@@ -99,6 +154,33 @@ function TripContent(){
     <section className="trip-layout">
       <div className="trip-main">
         <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
+
+        <section className="budget-planner">
+          <div className="section-heading left">
+            <span className="eyebrow">04 · BUDGET BREAKDOWN</span>
+            <h2>Where should the money go?</h2>
+            <p>Enter your expected costs. Roveo calculates the planned total, per-person amount, daily amount and what remains from your trip budget.</p>
+          </div>
+          <div className="budget-input-grid">
+            {[
+              ["destinationTravel","Travel to destination"],
+              ["accommodation","Accommodation"],
+              ["localTransport","Local transport"],
+              ["food","Food"],
+              ["activities","Activities & tickets"],
+              ["other","Other"],
+              ["contingency","Emergency / contingency"]
+            ].map(([key,label])=><label key={key}><span>{label}</span><div><b>₹</b><input type="number" min="0" value={budgetItems[key as keyof typeof budgetItems]} onChange={e=>updateBudgetItem(key,e.target.value)}/></div></label>)}
+          </div>
+          <div className="budget-live-summary">
+            <div><span>Trip budget</span><strong>₹{money(budget)}</strong></div>
+            <div><span>Planned</span><strong>₹{money(plannedBudget)}</strong></div>
+            <div><span>Per person</span><strong>₹{money(budgetPerPerson)}</strong></div>
+            <div><span>Per day</span><strong>₹{money(budgetPerDay)}</strong></div>
+            <div className={remainingBudget<0?"over-budget":""}><span>{remainingBudget>=0?"Remaining":"Over budget"}</span><strong>₹{money(Math.abs(remainingBudget))}</strong></div>
+          </div>
+          <div className="budget-save-row"><button type="button" className="plan-button" onClick={saveBudget} disabled={budgetSaving||budgetLoading}>{budgetSaving?"Saving…":"Save budget"}</button>{budgetMessage&&<span>{budgetMessage}</span>}</div>
+        </section>
 
         <section className="trip-hub">
           <span className="eyebrow">YOUR TRIP WORKSPACE</span>
