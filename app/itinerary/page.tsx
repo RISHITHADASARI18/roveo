@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -10,6 +11,8 @@ function km(a:any,b:any){
   const x=Math.sin(lat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(lon/2)**2;
   return 6371*2*Math.asin(Math.sqrt(x));
 }
+
+const ItineraryMap = dynamic(() => import("./ItineraryMap"), { ssr: false });
 
 function ItineraryContent(){
   const params=useSearchParams();
@@ -166,7 +169,15 @@ function ItineraryContent(){
     setPlans(current=>current.map((items,index)=>index===day?replacement:items));
   }
 
-  const mapUrl=center?"https://www.openstreetmap.org/export/embed.html?bbox="+(center.lon-.12)+"%2C"+(center.lat-.08)+"%2C"+(center.lon+.12)+"%2C"+(center.lat+.08)+"&layer=mapnik&marker="+center.lat+"%2C"+center.lon:"";
+  const mapPlaces=plans.flatMap((items,dayIndex)=>items.map((place:any,index:number)=>({
+    id:String(place.id),
+    name:place.name,
+    type:place.type,
+    lat:Number(place.lat),
+    lon:Number(place.lon),
+    day:dayIndex+1,
+    order:index+1,
+  })));
   const formattedBudget=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget);
 
   return <main className="itinerary-page">
@@ -232,7 +243,7 @@ function ItineraryContent(){
       <aside className="itinerary-side">
         <div className="itinerary-map-card">
           <span className="eyebrow">03 · MAP</span><h2>Your trip area</h2>
-          {center?<iframe title="Roveo itinerary map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}
+          {center?<ItineraryMap center={center} places={mapPlaces}/>:<div className="map-loading">Locating destination…</div>}
           {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
         </div>
 
