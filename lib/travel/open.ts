@@ -38,13 +38,26 @@ export const openTravelProvider: TravelProvider = {
       request.origin.longitude + "," + request.origin.latitude,
       request.destination.longitude + "," + request.destination.latitude,
     ].join(";");
-    const url = OSRM_URL + "/route/v1/" + profile + "/" + coordinates + "?overview=false&alternatives=false";
+    const url =
+      OSRM_URL +
+      "/route/v1/" +
+      profile +
+      "/" +
+      coordinates +
+      "?overview=full&geometries=polyline6&alternatives=false";
+
     const data = await osrmFetch(url);
     if (data.code !== "Ok" || !data.routes?.[0]) {
       throw new Error(data.message || "Open routing service returned no route.");
     }
+
     const route = data.routes[0];
-    return { provider: "open", distanceMeters: Number(route.distance ?? 0), durationSeconds: Number(route.duration ?? 0) };
+    return {
+      provider: "open",
+      distanceMeters: Number(route.distance ?? 0),
+      durationSeconds: Number(route.duration ?? 0),
+      encodedPolyline: typeof route.geometry === "string" ? route.geometry : undefined,
+    };
   },
 
   async searchPlaces(request: PlaceSearchRequest): Promise<TravelPlace[]> {
