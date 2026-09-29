@@ -63,3 +63,21 @@ CREATE INDEX IF NOT EXISTS itinerary_days_trip_id_idx
 
 CREATE INDEX IF NOT EXISTS itinerary_items_day_id_idx
   ON itinerary_items (day_id);
+
+
+CREATE TABLE IF NOT EXISTS trip_budgets (
+  id BIGSERIAL PRIMARY KEY,
+  trip_id BIGINT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  destination_travel NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (destination_travel >= 0),
+  accommodation NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (accommodation >= 0),
+  local_transport NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (local_transport >= 0),
+  food NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (food >= 0),
+  activities NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (activities >= 0),
+  other NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (other >= 0),
+  contingency NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (contingency >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(trip_id)
+);
+
+CREATE INDEX IF NOT EXISTS trip_budgets_trip_id_idx ON trip_budgets(trip_id);
