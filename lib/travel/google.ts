@@ -35,7 +35,9 @@ async function googleFetch(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Google travel API failed (${response.status}): ${body.slice(0, 500)}`);
+    throw new Error(
+      `Google travel API failed (${response.status}): ${body.slice(0, 500)}`,
+    );
   }
 
   return response.json();
@@ -43,19 +45,26 @@ async function googleFetch(
 
 export const googleTravelProvider: TravelProvider = {
   async computeRoute(request: RouteRequest): Promise<RouteResult> {
+    const routeRequest: Record<string, unknown> = {
+      origin: { location: { latLng: request.origin } },
+      destination: { location: { latLng: request.destination } },
+      travelMode: request.mode,
+      computeAlternativeRoutes: false,
+      units: "METRIC",
+    };
+
+    // Google Routes only supports routingPreference for driving-style
+    // routes. Keeping it out of walking, cycling and transit requests
+    // prevents invalid requests for those travel modes.
+    if (request.mode === "DRIVE") {
+      routeRequest.routingPreference = "TRAFFIC_AWARE";
+    }
+
     const data = await googleFetch(
       ROUTES_URL,
       {
         method: "POST",
-        body: JSON.stringify({
-          origin: { location: { latLng: request.origin } },
-          destination: { location: { latLng: request.destination } },
-          travelMode: request.mode,
-          routingPreference:
-            request.mode === "DRIVE" ? "TRAFFIC_AWARE" : "TRAFFIC_AWARE_OPTIMAL",
-          computeAlternativeRoutes: false,
-          units: "METRIC",
-        }),
+        body: JSON.stringify(routeRequest),
       },
       "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
     );
