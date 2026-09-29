@@ -59,7 +59,7 @@ function BudgetContent() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
-        if (!cancelled && data.budget?.items) {
+        if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
           setItems(next);
