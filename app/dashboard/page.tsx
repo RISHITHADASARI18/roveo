@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const [localTravel, setLocalTravel] = useState("");
   const [error, setError] = useState("");
 
-  function buildTrip() {
+  async function buildTrip() {
     if (!source.trim() || !destination.trim() || !days || !people || !budget || !travel || !localTravel) {
       setError("Please fill in your route, trip details and both travel preferences first.");
       return;
