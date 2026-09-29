@@ -28,6 +28,7 @@ export async function POST(request: Request) {
   const days = positiveInteger(body.days);
   const people = positiveInteger(body.people);
   const budget = nonNegativeNumber(body.budget);
+  const destination = typeof body.destination === "string" ? body.destination.trim() : "";
   const travelMethod = typeof body.travelMethod === "string" ? body.travelMethod.trim() : "";
   const localTravelMethod =
     typeof body.localTravelMethod === "string" ? body.localTravelMethod.trim() : "";
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     days,
     people,
     budget,
+    destination,
     travelMethod,
     localTravelMethod,
     stayPreference,
