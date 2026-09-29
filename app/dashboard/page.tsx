@@ -21,8 +21,44 @@ export default function DashboardPage() {
       return;
     }
     setError("");
-    const params = new URLSearchParams({ source: source.trim(), destination: destination.trim(), days, people, budget, travel, localTravel, stay });
-    router.push("/trip?" + params.toString());
+
+    try {
+      const response = await fetch("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: source.trim(),
+          destination: destination.trim(),
+          days: Number(days),
+          people: Number(people),
+          budget: Number(budget),
+          travel,
+          localTravel,
+          stay,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to save your trip.");
+      }
+
+      const params = new URLSearchParams({
+        tripId: String(data.trip.id),
+        source: source.trim(),
+        destination: destination.trim(),
+        days,
+        people,
+        budget,
+        travel,
+        localTravel,
+        stay,
+      });
+      router.push("/trip?" + params.toString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save your trip.");
+    }
   }
 
   return (
