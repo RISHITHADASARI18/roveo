@@ -41,6 +41,8 @@ function BudgetContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [estimateSource, setEstimateSource] = useState("");
+  const [estimating, setEstimating] = useState(false);
 
   useEffect(() => {
     if (!tripId) {
@@ -59,10 +61,10 @@ function BudgetContent() {
 
         if (!cancelled && data.budget?.items) {
           const next = { ...items };
-          for (const item of data.budget.items) {
-            next[item.category] = Number(item.amount) || 0;
-          }
+          for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
           setItems(next);
+        } else if (!cancelled) {
+          await generateEstimate();
         }
       } catch (error) {
         if (!cancelled) {
@@ -90,6 +92,27 @@ function BudgetContent() {
     const amount = Math.max(0, Number(value) || 0);
     setItems((current) => ({ ...current, [key]: amount }));
     setMessage("");
+  }
+
+  async function generateEstimate() {
+    if (!tripId) return;
+    setEstimating(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget/estimate", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
+      if (data.calculation?.items) setItems(data.calculation.items);
+      const source = data.pricing?.accommodationSource === "stayingapi"
+        ? "Live accommodation price + Roveo planning estimates"
+        : "Roveo planning estimates";
+      setEstimateSource(source);
+      setMessage("Estimate refreshed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not generate the estimate.");
+    } finally {
+      setEstimating(false);
+    }
   }
 
   async function saveBudget() {
@@ -200,6 +223,8 @@ function BudgetContent() {
                 </label>
               ))}
             </div>
+
+            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
 
             <div className="budget-editor-footer">
               <div>
