@@ -33,6 +33,8 @@ function ItineraryContent(){
   const [message,setMessage]=useState("Building your itinerary…");
   const [saving,setSaving]=useState(false);
   const [saveMessage,setSaveMessage]=useState("");
+  const [routes,setRoutes]=useState<any[]>([]);
+  const [routeMessage,setRouteMessage]=useState("");
 
   useEffect(()=>{
     let stopped=false;
@@ -73,6 +75,7 @@ function ItineraryContent(){
         found.slice(0,days*per).forEach((place:any,index:number)=>next[index%days].push(place));
         setPlans(next);
         await loadSavedItinerary();
+        await loadRoutes();
         setMessage(found.length?"Nearby places have been grouped across your days.":"No mapped places were found nearby.");
       }catch(error){
         if(!stopped)setMessage(error instanceof Error?error.message:"Something went wrong.");
@@ -85,6 +88,39 @@ function ItineraryContent(){
   },[destination,days]);
 
   const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(places.length,days*4)/days)));
+
+  async function loadRoutes(){
+    if(!tripId)return;
+    try{
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes");
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
+      setRoutes(Array.isArray(data.routes)?data.routes:[]);
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Saved route details loaded.":"");
+    }catch(error){
+      setRoutes([]);
+      setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
+    }
+  }
+
+  async function calculateRoutes(){
+    if(!tripId)return;
+    try{
+      setRouteMessage("Calculating routes between stops…");
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({}),
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
+      setRoutes(Array.isArray(data.routes)?data.routes:[]);
+      setRouteMessage(data.routeCount?"Real routes calculated and saved.":"No same-day route legs are needed yet.");
+    }catch(error){
+      setRoutes([]);
+      setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
+    }
+  }
 
   async function saveItinerary(){
     if(!tripId){
@@ -122,6 +158,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not save the itinerary.");
       setSaveMessage("Itinerary saved to your trip.");
+      await calculateRoutes();
     }catch(error){
       setSaveMessage(error instanceof Error?error.message:"Could not save the itinerary.");
     }finally{
@@ -206,7 +243,7 @@ function ItineraryContent(){
         {loading&&<div className="itinerary-loading">{message}</div>}
         {!loading&&!plans.length&&<div className="itinerary-loading">{message}</div>}
 
-        <div className="itinerary-save-row"><button type="button" className="primary-button" onClick={saveItinerary} disabled={saving}>{saving?"Saving…":"Save itinerary"}</button>{saveMessage&&<span>{saveMessage}</span>}</div>
+        <div className="itinerary-save-row"><button type="button" className="primary-button" onClick={saveItinerary} disabled={saving}>{saving?"Saving…":"Save itinerary"}</button>{saveMessage&&<span>{saveMessage}</span>}{routeMessage&&<span>{routeMessage}</span>}</div>
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
@@ -243,7 +280,7 @@ function ItineraryContent(){
       <aside className="itinerary-side">
         <div className="itinerary-map-card">
           <span className="eyebrow">03 · MAP</span><h2>Your trip area</h2>
-          {center?<ItineraryMap center={center} places={mapPlaces}/>:<div className="map-loading">Locating destination…</div>}
+          {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
           {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
         </div>
 
