@@ -1,8 +1,8 @@
-import { googleTravelProvider } from "./google";
+import { openTravelProvider } from "./open";
 import type { TravelProvider } from "./types";
 
 export function getTravelProvider(): TravelProvider {
-  return googleTravelProvider;
+  return openTravelProvider;
 }
 
 export * from "./types";
