@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calculateBudget } from "@/lib/budget/calculate";
+import { searchStays } from "@/lib/accommodation/staying";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,50 @@ export async function POST(
       localTravelMethod: trip.localTravelMethod,
       stayPreference: trip.stayPreference,
     });
+
+    let accommodationSource = "roveo";
+    let accommodationConfidence = "fallback";
+    let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string } | null = null;
+
+    if (process.env.STAYINGAPI_KEY && trip.startDate) {
+      const checkIn = new Date(String(trip.startDate) + "T00:00:00Z");
+      const checkOut = new Date(checkIn);
+      checkOut.setUTCDate(checkOut.getUTCDate() + Number(trip.days));
+      const iso = (date: Date) => date.toISOString().slice(0, 10);
+      try {
+        const stays = await searchStays({
+          location: trip.destination,
+          checkIn: iso(checkIn),
+          checkOut: iso(checkOut),
+          adults: Number(trip.people),
+          stayPreference: trip.stayPreference,
+        });
+        if (stays.length) {
+          const sorted = [...stays].sort((a,b)=>a.totalPrice-b.totalPrice);
+          const chosen = sorted[Math.floor(sorted.length / 2)] ?? sorted[0];
+          liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url};
+          if (chosen.currency === "INR") {
+            calculation.items.accommodation = Number(chosen.totalPrice);
+            accommodationSource = "stayingapi";
+            accommodationConfidence = "live";
+          }
+        }
+      } catch (error) {
+        console.error("Live accommodation estimate failed:", error);
+      }
+    }
+
+    const subtotal =
+      calculation.items.destinationTravel +
+      calculation.items.accommodation +
+      calculation.items.localTransport +
+      calculation.items.food +
+      calculation.items.activities +
+      calculation.items.other;
+    calculation.items.contingency = Math.round(subtotal * 0.1 * 100) / 100;
+    calculation.subtotal = Math.round(subtotal * 100) / 100;
+    calculation.total = Math.round((subtotal + calculation.items.contingency) * 100) / 100;
+    calculation.remaining = Math.round((calculation.budget - calculation.total) * 100) / 100;
 
     const saved = await db.query(
       `INSERT INTO trip_cost_estimates (
