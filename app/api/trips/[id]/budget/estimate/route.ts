@@ -60,7 +60,7 @@ export async function POST(
 
   try {
     const tripResult = await db.query(
-      `SELECT days, people, budget,
+      `SELECT days, people, budget, destination, start_date AS "startDate",
         travel_method AS "travelMethod",
         local_travel_method AS "localTravelMethod",
         stay_preference AS "stayPreference"
@@ -193,7 +193,7 @@ export async function POST(
     );
 
     return NextResponse.json(
-      { estimate: saved.rows[0], calculation },
+      { estimate: saved.rows[0], calculation, liveStay, pricing: { accommodationSource, accommodationConfidence } },
       { status: 201 },
     );
   } catch (error) {
