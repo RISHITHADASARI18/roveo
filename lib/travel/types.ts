@@ -5,4 +5,30 @@ export type RouteRequest = { origin: Coordinates; destination: Coordinates; mode
 export type RouteResult = { provider: "open"; distanceMeters: number; durationSeconds: number; encodedPolyline?: string };
 export type PlaceSearchRequest = { textQuery: string; latitude?: number; longitude?: number; radiusMeters?: number; maxResults?: number };
 export type TravelPlace = { id: string; name: string; address?: string; latitude?: number; longitude?: number; types: string[]; rating?: number; priceLevel?: string; websiteUri?: string };
-export interface TravelProvider { computeRoute(request: RouteRequest): Promise<RouteResult>; searchPlaces(request: PlaceSearchRequest): Promise<TravelPlace[]>; }
+
+export type DiscoveredPlace = {
+  id: string;
+  name: string;
+  type: string;
+  group: "Attraction" | "History" | "Nature" | "Culture" | "Activity";
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  description?: string;
+  openingHours?: string;
+  website?: string;
+  wikipedia?: string;
+  address?: string;
+};
+
+export type PlaceDiscoveryResult = {
+  center: Coordinates;
+  places: DiscoveredPlace[];
+  source: "openstreetmap";
+  fetchedAt: string;
+};
+
+export interface TravelProvider {
+  computeRoute(request: RouteRequest): Promise<RouteResult>;
+  searchPlaces(request: PlaceSearchRequest): Promise<TravelPlace[]>;
+}
