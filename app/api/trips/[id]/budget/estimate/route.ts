@@ -80,6 +80,7 @@ export async function POST(
       budget: Number(trip.budget),
       travelMethod: trip.travelMethod,
       localTravelMethod: trip.localTravelMethod,
+      destination: trip.destination,
       stayPreference: trip.stayPreference,
     });
 
