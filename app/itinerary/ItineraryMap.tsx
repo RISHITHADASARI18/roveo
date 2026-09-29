@@ -14,7 +14,7 @@ type Point = {
   order?: number;
 };
 
-function FitMap({ points }: { points: Point[] }) {
+function FitMap({ points }: { points: Array<{ lat: number; lon: number }> }) {
   const map = useMap();
 
   useEffect(() => {
