@@ -11,9 +11,12 @@ CREATE TABLE IF NOT EXISTS trips (
   travel_method TEXT NOT NULL,
   local_travel_method TEXT NOT NULL,
   stay_preference TEXT NOT NULL,
+  start_date DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS start_date DATE;
 
 CREATE INDEX IF NOT EXISTS trips_created_at_idx ON trips (created_at DESC);
 
