@@ -1,4 +1,7 @@
 import type {
+  Coordinates,
+  DiscoveredPlace,
+  PlaceDiscoveryResult,
   PlaceSearchRequest,
   RouteRequest,
   RouteResult,
@@ -8,6 +11,7 @@ import type {
 
 const OSRM_URL = "https://router.project-osrm.org";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 function profileForMode(mode: RouteRequest["mode"]) {
   switch (mode) {
@@ -31,6 +35,155 @@ async function osrmFetch(url: string) {
   return response.json();
 }
 
+function haversineKm(a: Coordinates, b: Coordinates) {
+  const p = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * p;
+  const dLon = (b.longitude - a.longitude) * p;
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.latitude * p) *
+      Math.cos(b.latitude * p) *
+      Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(x));
+}
+
+function classify(tags: Record<string, string>): DiscoveredPlace["group"] {
+  const tourism = tags.tourism ?? "";
+  const historic = tags.historic ?? "";
+  const leisure = tags.leisure ?? "";
+  const natural = tags.natural ?? "";
+  const amenity = tags.amenity ?? "";
+
+  if (["attraction", "theme_park", "museum", "zoo", "aquarium", "gallery", "viewpoint"].includes(tourism)) return "Attraction";
+  if (["monument", "memorial", "castle", "ruins", "archaeological_site", "fort", "yes"].includes(historic)) return "History";
+  if (
+    ["park", "nature_reserve", "garden", "beach", "water_park"].includes(leisure) ||
+    ["waterfall", "peak", "cave", "beach"].includes(natural)
+  ) return "Nature";
+  if (
+    ["place_of_worship", "arts_centre", "theatre", "community_centre"].includes(amenity) ||
+    ["artwork", "information"].includes(tourism)
+  ) return "Culture";
+  return "Activity";
+}
+
+function buildAddress(tags: Record<string, string>) {
+  return [
+    tags["addr:housenumber"],
+    tags["addr:street"],
+    tags["addr:suburb"],
+    tags["addr:city"] ?? tags["addr:town"],
+    tags["addr:state"],
+  ].filter(Boolean).join(", ");
+}
+
+export async function discoverPlaces(
+  destination: string,
+  radiusMeters = 30000,
+  maxResults = 200,
+): Promise<PlaceDiscoveryResult> {
+  const geoParams = new URLSearchParams({
+    format: "jsonv2",
+    limit: "1",
+    q: destination,
+    addressdetails: "1",
+  });
+
+  const geoResponse = await fetch(NOMINATIM_URL + "?" + geoParams.toString(), {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Roveo/1.0 (travel planner; destination discovery)",
+    },
+    cache: "no-store",
+  });
+
+  if (!geoResponse.ok) {
+    throw new Error("Destination geocoding failed (" + geoResponse.status + ").");
+  }
+
+  const geoData = await geoResponse.json();
+  const first = Array.isArray(geoData) ? geoData[0] : null;
+  if (!first) throw new Error("Destination was not found. Try a city or landmark.");
+
+  const center: Coordinates = {
+    latitude: Number(first.lat),
+    longitude: Number(first.lon),
+  };
+
+  if (!Number.isFinite(center.latitude) || !Number.isFinite(center.longitude)) {
+    throw new Error("Destination returned invalid coordinates.");
+  }
+
+  const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
+  const query = `[out:json][timeout:35];
+(
+  nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork|information"](around:${radius},${center.latitude},${center.longitude});
+  nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:${radius},${center.latitude},${center.longitude});
+  nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:${radius},${center.latitude},${center.longitude});
+  nwr["natural"~"waterfall|peak|cave|beach"](around:${radius},${center.latitude},${center.longitude});
+  nwr["amenity"~"place_of_worship|arts_centre|theatre|community_centre"](around:${radius},${center.latitude},${center.longitude});
+);
+out center tags;`;
+
+  const response = await fetch(OVERPASS_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+    },
+    body: new URLSearchParams({ data: query }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error("Place discovery service failed (" + response.status + "): " + body.slice(0, 300));
+  }
+
+  const data = await response.json();
+  const seen = new Set<string>();
+  const places: DiscoveredPlace[] = [];
+
+  for (const item of Array.isArray(data.elements) ? data.elements : []) {
+    const tags = (item.tags ?? {}) as Record<string, string>;
+    const latitude = Number(item.lat ?? item.center?.lat);
+    const longitude = Number(item.lon ?? item.center?.lon);
+    const name = tags.name ?? tags["name:en"] ?? "";
+
+    if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+
+    const id = String(item.type ?? "place") + "-" + String(item.id);
+    const nameKey = name.trim().toLowerCase();
+    if (seen.has(nameKey)) continue;
+    seen.add(nameKey);
+
+    places.push({
+      id,
+      name: name.trim(),
+      type: tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.amenity ?? "place",
+      group: classify(tags),
+      latitude,
+      longitude,
+      distanceKm: haversineKm(center, { latitude, longitude }),
+      description: tags.description ?? tags["description:en"],
+      openingHours: tags.opening_hours,
+      website: tags.website ?? tags["contact:website"],
+      wikipedia: tags.wikipedia,
+      address: buildAddress(tags) || undefined,
+    });
+  }
+
+  places.sort((a, b) => a.distanceKm - b.distanceKm);
+
+  return {
+    center,
+    places: places.slice(0, Math.min(Math.max(maxResults, 1), 250)),
+    source: "openstreetmap",
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 export const openTravelProvider: TravelProvider = {
   async computeRoute(request: RouteRequest): Promise<RouteResult> {
     const profile = profileForMode(request.mode);
@@ -38,6 +191,7 @@ export const openTravelProvider: TravelProvider = {
       request.origin.longitude + "," + request.origin.latitude,
       request.destination.longitude + "," + request.destination.latitude,
     ].join(";");
+
     const url =
       OSRM_URL +
       "/route/v1/" +
@@ -67,18 +221,22 @@ export const openTravelProvider: TravelProvider = {
       limit: String(Math.min(Math.max(request.maxResults ?? 10, 1), 20)),
       addressdetails: "1",
     });
+
     if (typeof request.latitude === "number" && typeof request.longitude === "number") {
       params.set("lat", String(request.latitude));
       params.set("lon", String(request.longitude));
     }
+
     const response = await fetch(NOMINATIM_URL + "?" + params.toString(), {
       headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner)" },
       cache: "no-store",
     });
+
     if (!response.ok) {
       const body = await response.text();
       throw new Error("Open places service failed (" + response.status + "): " + body.slice(0, 300));
     }
+
     const data = await response.json();
     return (Array.isArray(data) ? data : []).map((place: any, index: number) => ({
       id: String(place.osm_type ?? "place") + "-" + String(place.osm_id ?? index),
