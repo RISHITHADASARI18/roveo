@@ -7,6 +7,15 @@ export type BudgetCalculationInput = {
   stayPreference: string;
 };
 
+export type BudgetComponent =
+  | "destinationTravel"
+  | "accommodation"
+  | "localTransport"
+  | "food"
+  | "activities"
+  | "other"
+  | "contingency";
+
 export type BudgetCalculation = {
   items: {
     destinationTravel: number;
@@ -26,11 +35,19 @@ export type BudgetCalculation = {
   source: "roveo";
 };
 
+export type BudgetComponentResult = {
+  component: BudgetComponent;
+  amount: number;
+  currency: "INR";
+  confidence: "fallback";
+  source: "roveo";
+};
+
 function round(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function estimateDestinationTravel(method: string, people: number) {
+export function calculateDestinationTravel(method: string, people: number) {
   const m = method.toLowerCase();
   const perPerson = m.includes("flight")
     ? 6500
@@ -39,10 +56,10 @@ function estimateDestinationTravel(method: string, people: number) {
       : m.includes("bus")
         ? 1200
         : 2200;
-  return perPerson * people;
+  return round(perPerson * people);
 }
 
-function estimateAccommodation(stay: string, days: number, people: number) {
+export function calculateAccommodation(stay: string, days: number, people: number) {
   const nights = Math.max(0, days - 1);
   const s = stay.toLowerCase();
   const roomPerNight = s.includes("hostel")
@@ -53,10 +70,10 @@ function estimateAccommodation(stay: string, days: number, people: number) {
         ? 1500
         : 2500;
 
-  return roomPerNight * Math.max(1, Math.ceil(people / 2)) * nights;
+  return round(roomPerNight * Math.max(1, Math.ceil(people / 2)) * nights);
 }
 
-function estimateLocalTransport(method: string, days: number) {
+export function calculateLocalTransport(method: string, days: number) {
   const m = method.toLowerCase();
   const daily = m.includes("walking")
     ? 100
@@ -68,24 +85,41 @@ function estimateLocalTransport(method: string, days: number) {
           ? 1200
           : 900;
 
-  return daily * days;
+  return round(daily * days);
 }
 
-export function calculateBudget(input: BudgetCalculationInput): BudgetCalculation {
-  const destinationTravel = estimateDestinationTravel(input.travelMethod, input.people);
-  const accommodation = estimateAccommodation(
+export function calculateFood(days: number, people: number) {
+  return round(900 * days * people);
+}
+
+export function calculateActivities(days: number, people: number) {
+  return round(500 * Math.max(1, Math.min(days, 5)) * people);
+}
+
+export function calculateOther() {
+  return 0;
+}
+
+export function calculateContingency(subtotal: number) {
+  return round(subtotal * 0.1);
+}
+
+export function calculateBudgetComponents(
+  input: BudgetCalculationInput,
+): BudgetComponentResult[] {
+  const destinationTravel = calculateDestinationTravel(input.travelMethod, input.people);
+  const accommodation = calculateAccommodation(
     input.stayPreference,
     input.days,
     input.people,
   );
-  const localTransport = estimateLocalTransport(
+  const localTransport = calculateLocalTransport(
     input.localTravelMethod,
     input.days,
   );
-  const food = 900 * input.days * input.people;
-  const activities = 500 * Math.max(1, Math.min(input.days, 5)) * input.people;
-  const other = 0;
-
+  const food = calculateFood(input.days, input.people);
+  const activities = calculateActivities(input.days, input.people);
+  const other = calculateOther();
   const subtotal = round(
     destinationTravel +
       accommodation +
@@ -94,19 +128,49 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
       activities +
       other,
   );
-  const contingency = round(subtotal * 0.1);
-  const total = round(subtotal + contingency);
+  const contingency = calculateContingency(subtotal);
+
+  return [
+    ["destinationTravel", destinationTravel],
+    ["accommodation", accommodation],
+    ["localTransport", localTransport],
+    ["food", food],
+    ["activities", activities],
+    ["other", other],
+    ["contingency", contingency],
+  ].map(([component, amount]) => ({
+    component: component as BudgetComponent,
+    amount: Number(amount),
+    currency: "INR",
+    confidence: "fallback",
+    source: "roveo",
+  }));
+}
+
+export function calculateBudget(input: BudgetCalculationInput): BudgetCalculation {
+  const components = calculateBudgetComponents(input);
+  const items = {
+    destinationTravel: components.find((x) => x.component === "destinationTravel")!.amount,
+    accommodation: components.find((x) => x.component === "accommodation")!.amount,
+    localTransport: components.find((x) => x.component === "localTransport")!.amount,
+    food: components.find((x) => x.component === "food")!.amount,
+    activities: components.find((x) => x.component === "activities")!.amount,
+    other: components.find((x) => x.component === "other")!.amount,
+    contingency: components.find((x) => x.component === "contingency")!.amount,
+  };
+
+  const subtotal = round(
+    items.destinationTravel +
+      items.accommodation +
+      items.localTransport +
+      items.food +
+      items.activities +
+      items.other,
+  );
+  const total = round(subtotal + items.contingency);
 
   return {
-    items: {
-      destinationTravel: round(destinationTravel),
-      accommodation: round(accommodation),
-      localTransport: round(localTransport),
-      food: round(food),
-      activities: round(activities),
-      other,
-      contingency,
-    },
+    items,
     subtotal,
     total,
     budget: round(input.budget),
