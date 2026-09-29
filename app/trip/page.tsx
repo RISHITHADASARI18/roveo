@@ -143,7 +143,7 @@ function TripContent(){
   }
 
   return <main className="trip-page">
-    <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href="/trip">My plan</a></div></nav>
+    <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href={"/trip?" + params.toString()}>Trip</a><a href={"/budget?" + params.toString()}>Budget</a><a href={"/places?" + params.toString()}>Places</a><a href={"/itinerary?" + params.toString()}>Itinerary</a></div></nav>
 
     <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
     <section className="trip-hero">
@@ -155,31 +155,13 @@ function TripContent(){
       <div className="trip-main">
         <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
 
-        <section className="budget-planner">
-          <div className="section-heading left">
-            <span className="eyebrow">04 · BUDGET BREAKDOWN</span>
-            <h2>Where should the money go?</h2>
-            <p>Enter your expected costs. Roveo calculates the planned total, per-person amount, daily amount and what remains from your trip budget.</p>
+        <section className="trip-budget-entry">
+          <div>
+            <span className="eyebrow">04 · BUDGET MANAGEMENT</span>
+            <h2>Manage the money for this trip.</h2>
+            <p>Break your total budget into travel, accommodation, local transport, food, activities and a contingency reserve. Your breakdown is saved with this trip.</p>
           </div>
-          <div className="budget-input-grid">
-            {[
-              ["destinationTravel","Travel to destination"],
-              ["accommodation","Accommodation"],
-              ["localTransport","Local transport"],
-              ["food","Food"],
-              ["activities","Activities & tickets"],
-              ["other","Other"],
-              ["contingency","Emergency / contingency"]
-            ].map(([key,label])=><label key={key}><span>{label}</span><div><b>₹</b><input type="number" min="0" value={budgetItems[key as keyof typeof budgetItems]} onChange={e=>updateBudgetItem(key,e.target.value)}/></div></label>)}
-          </div>
-          <div className="budget-live-summary">
-            <div><span>Trip budget</span><strong>₹{money(budget)}</strong></div>
-            <div><span>Planned</span><strong>₹{money(plannedBudget)}</strong></div>
-            <div><span>Per person</span><strong>₹{money(budgetPerPerson)}</strong></div>
-            <div><span>Per day</span><strong>₹{money(budgetPerDay)}</strong></div>
-            <div className={remainingBudget<0?"over-budget":""}><span>{remainingBudget>=0?"Remaining":"Over budget"}</span><strong>₹{money(Math.abs(remainingBudget))}</strong></div>
-          </div>
-          <div className="budget-save-row"><button type="button" className="plan-button" onClick={saveBudget} disabled={budgetSaving||budgetLoading}>{budgetSaving?"Saving…":"Save budget"}</button>{budgetMessage&&<span>{budgetMessage}</span>}</div>
+          <a className="plan-button" href={"/budget?" + params.toString()}>Open budget management →</a>
         </section>
 
         <section className="trip-hub">
