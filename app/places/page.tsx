@@ -105,41 +105,55 @@ function PlacesContent(){
     async function load(){
       if(!destination){setLoading(false);setMessage("No destination was provided.");return;}
       try{
-        setLoading(true);setMessage("Locating your destination…");
-        const geoRes=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
-        if(!geoRes.ok)throw new Error("Could not locate the destination.");
-        const geoResults=await geoRes.json();
-        if(!geoResults[0])throw new Error("Destination was not found. Try a city or landmark.");
-        const lat=Number(geoResults[0].lat),lon=Number(geoResults[0].lon);
-        if(cancelled)return;
-        setCenter({lat,lon});
-        setMessage("Finding major attractions and smaller local places nearby…");
+        setLoading(true);
+        setMessage("Finding live places around your destination…");
 
-        const query='[out:json][timeout:45];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork|information"](around:30000,'+lat+','+lon+');nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:30000,'+lat+','+lon+');nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:30000,'+lat+','+lon+');nwr["natural"~"waterfall|peak|cave|beach"](around:30000,'+lat+','+lon+');nwr["amenity"~"place_of_worship|arts_centre|theatre|community_centre"](around:30000,'+lat+','+lon+'););out center tags;';
-        const res=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(query));
-        if(!res.ok)throw new Error("Places service is temporarily unavailable. Please try again.");
-        const data=await res.json();
-        const mapped:Place[]=(data.elements||[])
-          .map((item:any)=>{
-            const pLat=Number(item.lat??item.center?.lat),pLon=Number(item.lon??item.center?.lon);
-            const tags=item.tags||{};
-            const type=tags.tourism||tags.historic||tags.leisure||tags.natural||tags.amenity||"place";
-            const address=[tags["addr:housenumber"],tags["addr:street"],tags["addr:city"]].filter(Boolean).join(", ");
-            return {id:String(item.type||"x")+"-"+String(item.id),name:tags.name||tags["name:en"]||"",type,group:classify(tags),lat:pLat,lon:pLon,distance:haversine({lat,lon},{lat:pLat,lon:pLon}),description:tags.description||tags["description:en"],openingHours:tags.opening_hours,website:tags.website||tags.contact?.website,wikipedia:tags.wikipedia,address};
-          })
-          .filter((p:Place)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.distance<=30)
-          .filter((p:Place,i:number,a:Place[])=>a.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase())===i)
-          .sort((a:Place,b:Place)=>a.distance-b.distance)
-          .slice(0,250);
+        const res=await fetch(
+          "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200",
+          {cache:"no-store"}
+        );
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok)throw new Error(data.error||"Could not discover places.");
+
         if(cancelled)return;
+
+        setCenter({
+          lat:Number(data.center?.latitude),
+          lon:Number(data.center?.longitude)
+        });
+
+        const mapped:Place[]=(data.places||[])
+          .map((place:any)=>({
+            id:String(place.id),
+            name:String(place.name||""),
+            type:String(place.type||"place"),
+            group:place.group as Place["group"],
+            lat:Number(place.latitude),
+            lon:Number(place.longitude),
+            distance:Number(place.distanceKm||0),
+            description:place.description,
+            openingHours:place.openingHours,
+            website:place.website,
+            wikipedia:place.wikipedia,
+            address:place.address
+          }))
+          .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
+
         setPlaces(mapped);
-        setMessage(mapped.length?mapped.length+" mapped places found — major attractions and smaller nearby spots are included.":"No mapped places were found nearby.");
-      }catch(e){if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");}
-      finally{if(!cancelled)setLoading(false);}
+        setMessage(
+          mapped.length
+            ? mapped.length+" live mapped places found. Data fetched from OpenStreetMap right now."
+            : "No mapped places were found nearby."
+        );
+      }catch(e){
+        if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");
+      }finally{
+        if(!cancelled)setLoading(false);
+      }
     }
     load();
     return()=>{cancelled=true};
-  },[destination]);
+  },[destination,tripId,radius]);
 
   const visible=useMemo(()=>places.filter(p=>
     (category==="all"||p.group===category)&&
