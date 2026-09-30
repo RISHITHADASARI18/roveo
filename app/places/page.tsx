@@ -65,6 +65,7 @@ function PlacesContent(){
   const [center,setCenter]=useState<GeoPoint|null>(null);
   const [category,setCategory]=useState("all");
   const [search,setSearch]=useState("");
+  const [liveQuery,setLiveQuery]=useState("");
   const [radius,setRadius]=useState("30");
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Finding places around your destination…");
@@ -109,7 +110,7 @@ function PlacesContent(){
         setMessage("Finding live places around your destination…");
 
         const res=await fetch(
-          "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200",
+          "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200"+(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
           {cache:"no-store"}
         );
         const data=await res.json().catch(()=>({}));
@@ -140,10 +141,11 @@ function PlacesContent(){
           .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
 
         setPlaces(mapped);
+        const providerLabel=data.source==="google"?"Google Places":"OpenStreetMap";
         setMessage(
           mapped.length
-            ? mapped.length+" live mapped places found. Data fetched from OpenStreetMap right now."
-            : "No mapped places were found nearby."
+            ? mapped.length+" live places found from "+providerLabel+(liveQuery?" for your search.":" — showing popular places to visit in this region.")
+            : "No places were found nearby."
         );
       }catch(e){
         if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");
@@ -153,7 +155,7 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destination,tripId,radius]);
+  },[destination,tripId,radius,liveQuery]);
 
   const visible=useMemo(()=>places.filter(p=>
     (category==="all"||p.group===category)&&
@@ -220,14 +222,14 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Explore the destination properly — from the main attractions everyone knows to smaller mapped places nearby.</p>
+        <p>Explore the destination properly — popular must-see places are loaded from live place data, and you can search for exactly what you want to visit.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
     </section>
 
     <section className="places-content">
       <div className="places-toolbar">
-        <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search places…" aria-label="Search places"/></div>
+        <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")setLiveQuery(search.trim())}} placeholder="Search what you want to visit…" aria-label="Search what you want to visit"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Search live</button></div>
         <div className="filter-row">
           {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
           <label className="radius-filter">Within<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option><option value="30">30 km</option></select></label>
@@ -236,7 +238,7 @@ function PlacesContent(){
 
       {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
-      <div className="places-result-head"><div><span className="eyebrow">DISCOVERY LIST</span><h2>{loading?"Searching…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
+      <div className="places-result-head"><div><span className="eyebrow">{liveQuery?"LIVE SEARCH":"MUST-SEE PLACES"}</span><h2>{loading?"Searching…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
       <p className="places-message">{message}</p>{saveMessage&&<p className="places-message">{saveMessage}</p>}<p className="places-detail-note">Each place card shows the available real-world details from the mapped place record, such as a description, address, opening hours and official or reference links. Details vary by place.</p>
 
       <div className="places-grid">
