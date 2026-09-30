@@ -17,8 +17,8 @@ const OVERPASS_URLS = [
   "https://overpass.private.coffee/api/interpreter",
 ];
 
-const FETCH_TIMEOUT_MS = 8000;
-const OVERPASS_TIMEOUT_MS = 4500;
+const FETCH_TIMEOUT_MS = 3500;
+const OVERPASS_TIMEOUT_MS = 2500;
 
 async function fetchWithTimeout(
   url: string,
@@ -235,7 +235,7 @@ out center tags;`;
             },
             cache: "no-store",
           },
-          4500,
+          2500,
         );
         if (!response.ok) continue;
         const results = await response.json();
