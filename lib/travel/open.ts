@@ -11,7 +11,31 @@ import type {
 
 const OSRM_URL = "https://router.project-osrm.org";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-const OVERPASS_URLS = [\n  "https://overpass.kumi.systems/api/interpreter",\n  "https://overpass-api.de/api/interpreter",\n  "https://overpass.private.coffee/api/interpreter",\n];\n\nconst FETCH_TIMEOUT_MS = 8000;
+const OVERPASS_URLS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+const FETCH_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = FETCH_TIMEOUT_MS,
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function profileForMode(mode: RouteRequest["mode"]) {
   switch (mode) {
@@ -24,14 +48,19 @@ function profileForMode(mode: RouteRequest["mode"]) {
 }
 
 async function osrmFetch(url: string) {
-  const response = await fetch(url, {
-    headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner)" },
+  const response = await fetchWithTimeout(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Roveo/1.0 (travel planner)",
+    },
     cache: "no-store",
   });
+
   if (!response.ok) {
     const body = await response.text();
     throw new Error("Open routing service failed (" + response.status + "): " + body.slice(0, 300));
   }
+
   return response.json();
 }
 
@@ -44,6 +73,7 @@ function haversineKm(a: Coordinates, b: Coordinates) {
     Math.cos(a.latitude * p) *
       Math.cos(b.latitude * p) *
       Math.sin(dLon / 2) ** 2;
+
   return 6371 * 2 * Math.asin(Math.sqrt(x));
 }
 
@@ -54,16 +84,24 @@ function classify(tags: Record<string, string>): DiscoveredPlace["group"] {
   const natural = tags.natural ?? "";
   const amenity = tags.amenity ?? "";
 
-  if (["attraction", "theme_park", "museum", "zoo", "aquarium", "gallery", "viewpoint"].includes(tourism)) return "Attraction";
-  if (["monument", "memorial", "castle", "ruins", "archaeological_site", "fort", "yes"].includes(historic)) return "History";
+  if (
+    ["attraction", "theme_park", "museum", "zoo", "aquarium", "gallery", "viewpoint"].includes(tourism)
+  ) return "Attraction";
+
+  if (
+    ["monument", "memorial", "castle", "ruins", "archaeological_site", "fort", "yes"].includes(historic)
+  ) return "History";
+
   if (
     ["park", "nature_reserve", "garden", "beach", "water_park"].includes(leisure) ||
     ["waterfall", "peak", "cave", "beach"].includes(natural)
   ) return "Nature";
+
   if (
     ["place_of_worship", "arts_centre", "theatre", "community_centre"].includes(amenity) ||
     ["artwork", "information"].includes(tourism)
   ) return "Culture";
+
   return "Activity";
 }
 
@@ -74,7 +112,9 @@ function buildAddress(tags: Record<string, string>) {
     tags["addr:suburb"],
     tags["addr:city"] ?? tags["addr:town"],
     tags["addr:state"],
-  ].filter(Boolean).join(", ");
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 export async function discoverPlaces(
@@ -89,13 +129,16 @@ export async function discoverPlaces(
     addressdetails: "1",
   });
 
-  const geoResponse = await fetchWithTimeout(NOMINATIM_URL + "?" + geoParams.toString(), {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Roveo/1.0 (travel planner; destination discovery)",
+  const geoResponse = await fetchWithTimeout(
+    NOMINATIM_URL + "?" + geoParams.toString(),
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Roveo/1.0 (travel planner; destination discovery)",
+      },
+      cache: "no-store",
     },
-    cache: "no-store",
-  });
+  );
 
   if (!geoResponse.ok) {
     throw new Error("Destination geocoding failed (" + geoResponse.status + ").");
@@ -103,7 +146,10 @@ export async function discoverPlaces(
 
   const geoData = await geoResponse.json();
   const first = Array.isArray(geoData) ? geoData[0] : null;
-  if (!first) throw new Error("Destination was not found. Try a city or landmark.");
+
+  if (!first) {
+    throw new Error("Destination was not found. Try a city or landmark.");
+  }
 
   const center: Coordinates = {
     latitude: Number(first.lat),
@@ -125,23 +171,47 @@ export async function discoverPlaces(
 );
 out center tags;`;
 
-  const response = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
-    },
-    body: new URLSearchParams({ data: query }),
-    cache: "no-store",
-  });
+  let data: any = null;
+  let lastError = "Unknown place discovery error.";
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error("Place discovery service failed (" + response.status + "): " + body.slice(0, 300));
+  for (const overpassUrl of OVERPASS_URLS) {
+    try {
+      const response = await fetchWithTimeout(
+        overpassUrl,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+          },
+          body: new URLSearchParams({ data: query }),
+          cache: "no-store",
+        },
+        12000,
+      );
+
+      if (!response.ok) {
+        const body = await response.text();
+        lastError =
+          "Place discovery service failed (" +
+          response.status +
+          "): " +
+          body.slice(0, 300);
+        continue;
+      }
+
+      data = await response.json();
+      break;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Unknown place discovery error.";
+    }
   }
 
-  const data = await response.json();
+  if (!data) {
+    throw new Error(lastError);
+  }
+
   const seen = new Set<string>();
   const places: DiscoveredPlace[] = [];
 
@@ -155,18 +225,25 @@ out center tags;`;
 
     const id = String(item.type ?? "place") + "-" + String(item.id);
     const nameKey = name.trim().toLowerCase();
+
     if (seen.has(nameKey)) continue;
     seen.add(nameKey);
 
     places.push({
       id,
       name: name.trim(),
-      type: tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.amenity ?? "place",
+      type:
+        tags.tourism ??
+        tags.historic ??
+        tags.leisure ??
+        tags.natural ??
+        tags.amenity ??
+        "place",
       group: classify(tags),
       latitude,
       longitude,
       distanceKm: haversineKm(center, { latitude, longitude }),
-      description: tags.description ?? tags["description:en"],
+      description: tags["description:en"] ?? tags.description,
       openingHours: tags.opening_hours,
       website: tags.website ?? tags["contact:website"],
       wikipedia: tags.wikipedia,
@@ -201,16 +278,19 @@ export const openTravelProvider: TravelProvider = {
       "?overview=full&geometries=polyline6&alternatives=false";
 
     const data = await osrmFetch(url);
+
     if (data.code !== "Ok" || !data.routes?.[0]) {
       throw new Error(data.message || "Open routing service returned no route.");
     }
 
     const route = data.routes[0];
+
     return {
       provider: "open",
       distanceMeters: Number(route.distance ?? 0),
       durationSeconds: Number(route.duration ?? 0),
-      encodedPolyline: typeof route.geometry === "string" ? route.geometry : undefined,
+      encodedPolyline:
+        typeof route.geometry === "string" ? route.geometry : undefined,
     };
   },
 
@@ -222,22 +302,37 @@ export const openTravelProvider: TravelProvider = {
       addressdetails: "1",
     });
 
-    if (typeof request.latitude === "number" && typeof request.longitude === "number") {
+    if (
+      typeof request.latitude === "number" &&
+      typeof request.longitude === "number"
+    ) {
       params.set("lat", String(request.latitude));
       params.set("lon", String(request.longitude));
     }
 
-    const response = await fetchWithTimeout(NOMINATIM_URL + "?" + params.toString(), {
-      headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner)" },
-      cache: "no-store",
-    });
+    const response = await fetchWithTimeout(
+      NOMINATIM_URL + "?" + params.toString(),
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Roveo/1.0 (travel planner)",
+        },
+        cache: "no-store",
+      },
+    );
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error("Open places service failed (" + response.status + "): " + body.slice(0, 300));
+      throw new Error(
+        "Open places service failed (" +
+          response.status +
+          "): " +
+          body.slice(0, 300),
+      );
     }
 
     const data = await response.json();
+
     return (Array.isArray(data) ? data : []).map((place: any, index: number) => ({
       id: String(place.osm_type ?? "place") + "-" + String(place.osm_id ?? index),
       name: place.display_name?.split(",")[0] ?? "Unnamed place",
