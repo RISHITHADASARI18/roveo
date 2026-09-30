@@ -53,8 +53,8 @@ export default function ExploreMap({
         className="leaflet-map"
       >
         <TileLayer
-          attribution="&copy; OpenStreetMap contributors &copy; Wikimedia"
-          url="https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png?lang=en"
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
         <FitMap
