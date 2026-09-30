@@ -24,7 +24,7 @@ export type DiscoveredPlace = {
 export type PlaceDiscoveryResult = {
   center: Coordinates;
   places: DiscoveredPlace[];
-  source: "openstreetmap";
+  source: "google" | "openstreetmap";
   fetchedAt: string;
 };
 
