@@ -20,6 +20,7 @@ export async function GET(
   const url = new URL(request.url);
   const radiusKm = Number(url.searchParams.get("radiusKm") ?? "30");
   const maxResults = Number(url.searchParams.get("maxResults") ?? "200");
+  const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
 
   if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 50) {
     return NextResponse.json({ error: "radiusKm must be between 1 and 50." }, { status: 400 });
@@ -38,7 +39,8 @@ export async function GET(
     const result = await discoverPlaces(
       String(trip.rows[0].destination),
       radiusKm * 1000,
-      Number.isFinite(maxResults) ? Math.min(Math.max(Math.round(maxResults), 1), 250) : 200
+      Number.isFinite(maxResults) ? Math.min(Math.max(Math.round(maxResults), 1), 250) : 200,
+      desiredQuery
     );
 
     return NextResponse.json({
