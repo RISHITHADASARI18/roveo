@@ -149,7 +149,7 @@ out center tags;`;
     const tags = (item.tags ?? {}) as Record<string, string>;
     const latitude = Number(item.lat ?? item.center?.lat);
     const longitude = Number(item.lon ?? item.center?.lon);
-    const name = tags.name ?? tags["name:en"] ?? "";
+    const name = tags["name:en"] ?? tags.name ?? "";
 
     if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
 
