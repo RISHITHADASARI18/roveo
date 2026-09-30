@@ -18,6 +18,7 @@ const OVERPASS_URLS = [
 ];
 
 const FETCH_TIMEOUT_MS = 8000;
+const OVERPASS_TIMEOUT_MS = 9000;
 
 async function fetchWithTimeout(
   url: string,
@@ -188,7 +189,7 @@ out center tags;`;
           body: new URLSearchParams({ data: query }),
           cache: "no-store",
         },
-        12000,
+        OVERPASS_TIMEOUT_MS,
       );
 
       if (!response.ok) {
@@ -209,7 +210,102 @@ out center tags;`;
   }
 
   if (!data) {
-    throw new Error(lastError);
+    // Large cities can make Overpass queries too expensive for a short-lived
+    // serverless request. Fall back to Nominatim's live search so the UI still
+    // gets real mapped places instead of remaining stuck on "Searching…".
+    const fallbackQueries = [
+      destination + " attractions",
+      destination + " museums landmarks",
+      destination + " parks temples viewpoints",
+    ];
+    const fallbackPlaces: DiscoveredPlace[] = [];
+
+    for (const fallbackQuery of fallbackQueries) {
+      try {
+        const params = new URLSearchParams({
+          q: fallbackQuery,
+          format: "jsonv2",
+          limit: "20",
+          addressdetails: "1",
+        });
+        const response = await fetchWithTimeout(
+          NOMINATIM_URL + "?" + params.toString(),
+          {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+            },
+            cache: "no-store",
+          },
+          5000,
+        );
+        if (!response.ok) continue;
+        const results = await response.json();
+
+        for (const item of Array.isArray(results) ? results : []) {
+          const latitude = Number(item.lat);
+          const longitude = Number(item.lon);
+          const name = String(
+            item.name || item.display_name?.split(",")[0] || ""
+          ).trim();
+
+          if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            continue;
+          }
+
+          const category = String(item.type || item.class || "place").toLowerCase();
+          const group: DiscoveredPlace["group"] =
+            /museum|gallery|theatre|arts|temple|church|shrine|mosque/.test(category)
+              ? "Culture"
+              : /park|garden|beach|nature|viewpoint|peak|waterfall/.test(category)
+                ? "Nature"
+                : /monument|memorial|castle|ruins|historic|fort|archaeological/.test(category)
+                  ? "History"
+                  : "Attraction";
+
+          fallbackPlaces.push({
+            id:
+              "nominatim-" +
+              String(item.osm_type ?? "place") +
+              "-" +
+              String(item.osm_id ?? name),
+            name,
+            type: category,
+            group,
+            latitude,
+            longitude,
+            distanceKm: haversineKm(center, { latitude, longitude }),
+            description: item.display_name,
+            address: item.display_name,
+          });
+        }
+      } catch {
+        // Try the next fallback query.
+      }
+    }
+
+    const uniqueFallback = new Map<string, DiscoveredPlace>();
+    for (const place of fallbackPlaces) {
+      const key = place.name.toLowerCase();
+      if (!uniqueFallback.has(key)) uniqueFallback.set(key, place);
+    }
+
+    const sortedFallback = [...uniqueFallback.values()]
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, Math.min(Math.max(maxResults, 1), 250));
+
+    if (!sortedFallback.length) {
+      throw new Error(
+        "Live place discovery is temporarily unavailable. Please try again in a moment."
+      );
+    }
+
+    return {
+      center,
+      places: sortedFallback,
+      source: "openstreetmap",
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
   const seen = new Set<string>();
