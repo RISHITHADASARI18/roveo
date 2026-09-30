@@ -18,7 +18,7 @@ const OVERPASS_URLS = [
 ];
 
 const FETCH_TIMEOUT_MS = 8000;
-const OVERPASS_TIMEOUT_MS = 9000;
+const OVERPASS_TIMEOUT_MS = 4500;
 
 async function fetchWithTimeout(
   url: string,
@@ -175,7 +175,7 @@ out center tags;`;
   let data: any = null;
   let lastError = "Unknown place discovery error.";
 
-  for (const overpassUrl of OVERPASS_URLS) {
+  for (const overpassUrl of OVERPASS_URLS.slice(0, 1)) {
     try {
       const response = await fetchWithTimeout(
         overpassUrl,
@@ -214,9 +214,7 @@ out center tags;`;
     // serverless request. Fall back to Nominatim's live search so the UI still
     // gets real mapped places instead of remaining stuck on "Searching…".
     const fallbackQueries = [
-      destination + " attractions",
-      destination + " museums landmarks",
-      destination + " parks temples viewpoints",
+      destination + " tourist attractions landmarks parks museums temples",
     ];
     const fallbackPlaces: DiscoveredPlace[] = [];
 
@@ -225,7 +223,7 @@ out center tags;`;
         const params = new URLSearchParams({
           q: fallbackQuery,
           format: "jsonv2",
-          limit: "20",
+          limit: "40",
           addressdetails: "1",
         });
         const response = await fetchWithTimeout(
@@ -237,7 +235,7 @@ out center tags;`;
             },
             cache: "no-store",
           },
-          5000,
+          4500,
         );
         if (!response.ok) continue;
         const results = await response.json();
