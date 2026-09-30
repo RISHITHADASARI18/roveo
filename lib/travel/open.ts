@@ -122,6 +122,7 @@ export async function discoverPlaces(
   destination: string,
   radiusMeters = 30000,
   maxResults = 200,
+  desiredQuery = "",
 ): Promise<PlaceDiscoveryResult> {
   const geoParams = new URLSearchParams({
     format: "jsonv2",
@@ -162,6 +163,143 @@ export async function discoverPlaces(
   }
 
   const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
+  const googleApiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
+
+  if (googleApiKey) {
+    try {
+      const fieldMask = [
+        "places.id",
+        "places.displayName",
+        "places.formattedAddress",
+        "places.location",
+        "places.primaryType",
+        "places.types",
+        "places.googleMapsUri",
+        "places.websiteUri",
+      ].join(",");
+
+      const body: Record<string, unknown> = desiredQuery.trim()
+        ? {
+            textQuery: desiredQuery.trim() + " in " + destination,
+            pageSize: Math.min(Math.max(maxResults, 1), 20),
+            languageCode: "en",
+            locationBias: {
+              circle: {
+                center: { latitude: center.latitude, longitude: center.longitude },
+                radius,
+              },
+            },
+            rankPreference: "RELEVANCE",
+          }
+        : {
+            includedTypes: [
+              "tourist_attraction",
+              "museum",
+              "art_gallery",
+              "park",
+              "historical_landmark",
+              "cultural_landmark",
+              "zoo",
+              "aquarium",
+              "amusement_park",
+              "place_of_worship",
+            ],
+            maxResultCount: Math.min(Math.max(maxResults, 1), 20),
+            rankPreference: "POPULARITY",
+            languageCode: "en",
+            locationRestriction: {
+              circle: {
+                center: { latitude: center.latitude, longitude: center.longitude },
+                radius,
+              },
+            },
+          };
+
+      const endpoint = desiredQuery.trim()
+        ? "https://places.googleapis.com/v1/places:searchText"
+        : "https://places.googleapis.com/v1/places:searchNearby";
+
+      const response = await fetchWithTimeout(
+        endpoint,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": googleApiKey,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify(body),
+          cache: "no-store",
+        },
+        4500,
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          "Google Places discovery failed (" +
+            response.status +
+            "): " +
+            errorBody.slice(0, 300),
+        );
+      }
+
+      const googleData = await response.json();
+      const googlePlaces = Array.isArray(googleData.places) ? googleData.places : [];
+      const places: DiscoveredPlace[] = googlePlaces
+        .map((place: any, index: number) => {
+          const latitude = Number(place.location?.latitude);
+          const longitude = Number(place.location?.longitude);
+          const name = String(place.displayName?.text ?? "").trim();
+          const primaryType = String(place.primaryType ?? place.types?.[0] ?? "place");
+
+          if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+          const typeText = primaryType.toLowerCase();
+          const group: DiscoveredPlace["group"] =
+            /museum|art_gallery|cultural_landmark|place_of_worship/.test(typeText)
+              ? "Culture"
+              : /historical_landmark/.test(typeText)
+                ? "History"
+                : /park|zoo|aquarium|natural/.test(typeText)
+                  ? "Nature"
+                  : /tourist_attraction|amusement_park|landmark/.test(typeText)
+                    ? "Attraction"
+                    : "Activity";
+
+          return {
+            id: "google-" + String(place.id ?? index),
+            name,
+            type: primaryType,
+            group,
+            latitude,
+            longitude,
+            distanceKm: haversineKm(center, { latitude, longitude }),
+            description: desiredQuery.trim()
+              ? "Matched your search for " + desiredQuery.trim() + " in " + destination + "."
+              : "Popular place to visit in " + destination + ".",
+            website: place.websiteUri,
+            address: place.formattedAddress,
+          } as DiscoveredPlace;
+        })
+        .filter(Boolean) as DiscoveredPlace[];
+
+      if (places.length) {
+        return {
+          center,
+          places: places
+            .sort((a, b) => a.distanceKm - b.distanceKm)
+            .slice(0, Math.min(Math.max(maxResults, 1), 250)),
+          source: "google",
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    } catch (error) {
+      console.warn("Google Places discovery unavailable; using OpenStreetMap fallback.", error);
+    }
+  }
+
   const query = `[out:json][timeout:35];
 (
   nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork|information"](around:${radius},${center.latitude},${center.longitude});
