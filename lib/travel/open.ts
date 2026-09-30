@@ -11,7 +11,7 @@ import type {
 
 const OSRM_URL = "https://router.project-osrm.org";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const OVERPASS_URLS = [\n  "https://overpass.kumi.systems/api/interpreter",\n  "https://overpass-api.de/api/interpreter",\n  "https://overpass.private.coffee/api/interpreter",\n];\n\nconst FETCH_TIMEOUT_MS = 8000;
 
 function profileForMode(mode: RouteRequest["mode"]) {
   switch (mode) {
@@ -89,7 +89,7 @@ export async function discoverPlaces(
     addressdetails: "1",
   });
 
-  const geoResponse = await fetch(NOMINATIM_URL + "?" + geoParams.toString(), {
+  const geoResponse = await fetchWithTimeout(NOMINATIM_URL + "?" + geoParams.toString(), {
     headers: {
       Accept: "application/json",
       "User-Agent": "Roveo/1.0 (travel planner; destination discovery)",
@@ -227,7 +227,7 @@ export const openTravelProvider: TravelProvider = {
       params.set("lon", String(request.longitude));
     }
 
-    const response = await fetch(NOMINATIM_URL + "?" + params.toString(), {
+    const response = await fetchWithTimeout(NOMINATIM_URL + "?" + params.toString(), {
       headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner)" },
       cache: "no-store",
     });
