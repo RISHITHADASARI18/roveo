@@ -184,7 +184,7 @@ function PlacesContent(){
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
-            provider:"openstreetmap",
+            provider:place.id.startsWith("google-")?"google":"openstreetmap",
             providerPlaceId:id,
             name:place.name,
             latitude:place.lat,
