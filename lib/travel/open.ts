@@ -236,48 +236,25 @@ export async function discoverPlaces(
       "places.websiteUri",
     ].join(",");
 
-    const body: Record<string, unknown> = searchText
-      ? {
-          textQuery: searchText + " in " + destination,
-          pageSize: Math.min(limit, 20),
-          languageCode: "en",
-          locationBias: {
-            circle: {
-              center: { latitude: center!.latitude, longitude: center!.longitude },
-              radius,
-            },
-          },
-          rankPreference: "RELEVANCE",
-        }
-      : {
-          includedTypes: [
-            "tourist_attraction",
-            "museum",
-            "art_gallery",
-            "park",
-            "historical_landmark",
-            "cultural_landmark",
-            "zoo",
-            "aquarium",
-            "amusement_park",
-            "hindu_temple",
-            "church",
-            "mosque",
-          ],
-          maxResultCount: Math.min(limit, 20),
-          rankPreference: "POPULARITY",
-          languageCode: "en",
-          locationRestriction: {
-            circle: {
-              center: { latitude: center!.latitude, longitude: center!.longitude },
-              radius,
-            },
-          },
-        };
+    // Automatic discovery is the default: ask Places for things worth visiting
+    // in the selected destination. Nearby Search is too narrow for a whole
+    // city/state/region because it only searches one circle around the center.
+    const body: Record<string, unknown> = {
+      textQuery: searchText
+        ? searchText + " in " + destination
+        : "top tourist attractions and places to visit in " + destination,
+      pageSize: Math.min(limit, 20),
+      languageCode: "en",
+      locationBias: {
+        circle: {
+          center: { latitude: center!.latitude, longitude: center!.longitude },
+          radius,
+        },
+      },
+      rankPreference: searchText ? "RELEVANCE" : "RELEVANCE",
+    };
 
-    const endpoint = searchText
-      ? "https://places.googleapis.com/v1/places:searchText"
-      : "https://places.googleapis.com/v1/places:searchNearby";
+    const endpoint = "https://places.googleapis.com/v1/places:searchText";
 
     const response = await fetchWithTimeout(
       endpoint,
