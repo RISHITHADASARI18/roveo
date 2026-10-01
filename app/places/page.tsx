@@ -110,7 +110,10 @@ function PlacesContent(){
         setMessage("Finding live places around your destination…");
 
         const res=await fetch(
-          "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200"+(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
+          (tripId
+            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200"
+            : "/api/places/discover?destination="+encodeURIComponent(destination)+"&radiusKm="+encodeURIComponent(radius)+"&maxResults=200")
+            +(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
           {cache:"no-store"}
         );
         const data=await res.json().catch(()=>({}));
