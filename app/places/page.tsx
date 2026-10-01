@@ -225,14 +225,14 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Explore the destination properly — popular must-see places are loaded from live place data, and you can search for exactly what you want to visit.</p>
+        <p>Roveo automatically finds popular places worth visiting in your destination. Pick the ones you want and we’ll use them for your trip plan.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
     </section>
 
     <section className="places-content">
       <div className="places-toolbar">
-        <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")setLiveQuery(search.trim())}} placeholder="Search what you want to visit…" aria-label="Search what you want to visit"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Search live</button></div>
+        <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter the places Roveo found…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
         <div className="filter-row">
           {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
           <label className="radius-filter">Within<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option><option value="30">30 km</option></select></label>
@@ -241,7 +241,7 @@ function PlacesContent(){
 
       {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
-      <div className="places-result-head"><div><span className="eyebrow">{liveQuery?"LIVE SEARCH":"MUST-SEE PLACES"}</span><h2>{loading?"Searching…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
+      <div className="places-result-head"><div><span className="eyebrow">{liveQuery?"LIVE SEARCH":"PLACES TO VISIT"}</span><h2>{loading?"Finding places…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
       <p className="places-message">{message}</p>{saveMessage&&<p className="places-message">{saveMessage}</p>}<p className="places-detail-note">Each place card shows the available real-world details from the mapped place record, such as a description, address, opening hours and official or reference links. Details vary by place.</p>
 
       <div className="places-grid">
