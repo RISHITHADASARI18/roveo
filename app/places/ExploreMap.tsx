@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 type Place = {
@@ -94,6 +94,15 @@ export default function ExploreMap({
                 fillOpacity: 0.9,
               }}
             >
+              <Tooltip
+                direction="top"
+                offset={[0, -8]}
+                opacity={0.96}
+                permanent
+                sticky
+              >
+                <strong>{place.name}</strong>
+              </Tooltip>
               <Popup>
                 <strong>{place.name}</strong>
                 <br />
