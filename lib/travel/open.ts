@@ -366,23 +366,28 @@ export async function discoverPlaces(
     }
   }
 
-  // Fast live OSM fallback. Keep the query deliberately small so a Vercel
-  // serverless request does not spend its whole lifetime waiting on Overpass.
-  const fallbackQuery = searchText
-    ? searchText + " " + destination
-    : destination + " tourist attractions landmarks parks museums temples";
-
+  // Free live fallback: Wikimedia geosearch is much more reliable for named
+  // tourist/landmark places than sending a long natural-language query to Nominatim.
   try {
     const params = new URLSearchParams({
-      q: fallbackQuery,
-      format: "jsonv2",
-      limit: "40",
-      addressdetails: "1",
-      "accept-language": "en",
+      action: "query",
+      generator: "geosearch",
+      ggsprimary: "all",
+      ggsnamespace: "0",
+      ggscoord: center.latitude + "|" + center.longitude,
+      ggsradius: String(radius),
+      ggslimit: String(Math.min(limit, 50)),
+      prop: "extracts|info|coordinates",
+      exintro: "1",
+      explaintext: "1",
+      exchars: "500",
+      inprop: "url",
+      format: "json",
+      origin: "*",
     });
 
     const response = await fetchWithTimeout(
-      NOMINATIM_URL + "?" + params.toString(),
+      "https://en.wikipedia.org/w/api.php?" + params.toString(),
       {
         headers: {
           Accept: "application/json",
@@ -394,69 +399,125 @@ export async function discoverPlaces(
     );
 
     if (response.ok) {
-      const results = await response.json();
-      const unique = new Map<string, DiscoveredPlace>();
+      const data = await response.json();
+      const pages = Object.values(data.query?.pages ?? {}) as any[];
+      const places = pages
+        .map((page: any) => {
+          const coordinate = page.coordinates?.[0];
+          const latitude = Number(coordinate?.lat);
+          const longitude = Number(coordinate?.lon);
+          const name = String(page.title ?? "").trim();
+          if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
+          const text = String(page.extract ?? "").trim();
+          const lower = (name + " " + text).toLowerCase();
+          const group: DiscoveredPlace["group"] =
+            /museum|temple|church|mosque|palace|fort|monument|heritage|historical|cathedral|shrine|memorial/.test(lower)
+              ? "Culture"
+              : /beach|waterfall|hill|mountain|park|forest|lake|backwater|wildlife|sanctuary|viewpoint|garden|peak/.test(lower)
+                ? "Nature"
+                : /tourist|attraction|palace|fort|landmark|museum/.test(lower)
+                  ? "Attraction"
+                  : "Activity";
+
+          return {
+            id: "wikipedia-" + String(page.pageid ?? name),
+            name,
+            type: "landmark",
+            group,
+            latitude,
+            longitude,
+            distanceKm: haversineKm(center, { latitude, longitude }),
+            description: text || "Live place record from Wikipedia geosearch.",
+            website: page.fullurl,
+          } as DiscoveredPlace;
+        })
+        .filter(Boolean) as DiscoveredPlace[];
+
+      if (places.length) {
+        return {
+          center,
+          places: places
+            .sort((a, b) => a.distanceKm - b.distanceKm)
+            .slice(0, limit),
+          source: "openstreetmap",
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    }
+  } catch (error) {
+    console.warn("Wikimedia place discovery failed.", error);
+  }
+
+  // Final free fallback through Nominatim. Keep the query short because
+  // Nominatim is designed for geocoding/search, not broad POI discovery.
+  try {
+    const queries = searchText
+      ? [searchText + " " + destination, searchText]
+      : ["tourist attraction " + destination, "landmark " + destination, "museum " + destination];
+    const unique = new Map<string, DiscoveredPlace>();
+
+    for (const query of queries) {
+      const params = new URLSearchParams({
+        q: query,
+        format: "jsonv2",
+        limit: "20",
+        addressdetails: "1",
+        "accept-language": "en",
+      });
+      const response = await fetchWithTimeout(
+        NOMINATIM_URL + "?" + params.toString(),
+        {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+          },
+          cache: "no-store",
+        },
+        2500,
+      );
+      if (!response.ok) continue;
+      const results = await response.json();
       for (const item of Array.isArray(results) ? results : []) {
         const latitude = Number(item.lat);
         const longitude = Number(item.lon);
-        const name = String(
-          item.name || item.display_name?.split(",")[0] || "",
-        ).trim();
-
-        if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-          continue;
-        }
-
-        const category = String(
-          item.type || item.class || "place",
-        ).toLowerCase();
-
+        const name = String(item.name || item.display_name?.split(",")[0] || "").trim();
+        if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+        const distanceKm = haversineKm(center, { latitude, longitude });
+        if (distanceKm > radius / 1000) continue;
+        const category = String(item.type || item.class || "place").toLowerCase();
         const group: DiscoveredPlace["group"] =
-          /museum|gallery|theatre|theater|arts|temple|church|shrine|mosque|worship/.test(
-            category,
-          )
+          /museum|gallery|theatre|theater|arts|temple|church|shrine|mosque|worship/.test(category)
             ? "Culture"
             : /park|garden|beach|nature|viewpoint|peak|waterfall/.test(category)
               ? "Nature"
-              : /monument|memorial|castle|ruins|historic|fort|archaeological/.test(
-                    category,
-                  )
+              : /monument|memorial|castle|ruins|historic|fort|archaeological/.test(category)
                 ? "History"
                 : "Attraction";
-
         const place: DiscoveredPlace = {
-          id:
-            "nominatim-" +
-            String(item.osm_type ?? "place") +
-            "-" +
-            String(item.osm_id ?? name),
+          id: "nominatim-" + String(item.osm_type ?? "place") + "-" + String(item.osm_id ?? name),
           name,
           type: category,
           group,
           latitude,
           longitude,
-          distanceKm: haversineKm(center, { latitude, longitude }),
+          distanceKm,
           description: item.display_name,
           address: item.display_name,
         };
-
         const key = name.toLowerCase();
         if (!unique.has(key)) unique.set(key, place);
       }
+      if (unique.size >= limit) break;
+    }
 
-      const places = [...unique.values()]
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-        .slice(0, limit);
-
-      if (places.length) {
-        return {
-          center,
-          places,
-          source: "openstreetmap",
-          fetchedAt: new Date().toISOString(),
-        };
-      }
+    if (unique.size) {
+      return {
+        center,
+        places: [...unique.values()].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, limit),
+        source: "openstreetmap",
+        fetchedAt: new Date().toISOString(),
+      };
     }
   } catch (error) {
     console.warn("Nominatim place discovery failed.", error);
