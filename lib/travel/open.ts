@@ -21,6 +21,8 @@ const FETCH_TIMEOUT_MS = 3500;
 const OVERPASS_TIMEOUT_MS = 2500;
 
 type GoogleSearchPlace = {
+  id?: string;
+  primaryType?: string;
   location?: { latitude?: number; longitude?: number };
   displayName?: { text?: string };
   formattedAddress?: string;
@@ -324,7 +326,7 @@ export async function discoverPlaces(
           };
         } catch (error) {
           console.warn("Google Places query failed:", textQuery, error);
-          return { queryIndex, places: [] as any[] };
+          return { queryIndex, places: [] as GoogleSearchPlace[] };
         }
       }),
     );
