@@ -20,6 +20,16 @@ const OVERPASS_URLS = [
 const FETCH_TIMEOUT_MS = 3500;
 const OVERPASS_TIMEOUT_MS = 2500;
 
+type GoogleSearchPlace = {
+  location?: { latitude?: number; longitude?: number };
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  types?: string[];
+  rating?: number;
+  userRatingCount?: number;
+  websiteUri?: string;
+};
+
 async function fetchWithTimeout(
   url: string,
   init: RequestInit = {},
@@ -304,13 +314,13 @@ export async function discoverPlaces(
 
           if (!response.ok) {
             console.warn("Google Places query failed:", textQuery, response.status);
-            return { queryIndex, places: [] as any[] };
+            return { queryIndex, places: [] as GoogleSearchPlace[] };
           }
 
           const data = await response.json();
           return {
             queryIndex,
-            places: Array.isArray(data.places) ? data.places : [],
+            places: (Array.isArray(data.places) ? data.places : []) as GoogleSearchPlace[],
           };
         } catch (error) {
           console.warn("Google Places query failed:", textQuery, error);
@@ -320,7 +330,7 @@ export async function discoverPlaces(
     );
 
     const results = responses.flatMap((result) =>
-      result.places.map((place) => ({ place, queryIndex: result.queryIndex })),
+      result.places.map((place: GoogleSearchPlace) => ({ place, queryIndex: result.queryIndex })),
     );
 
     return results
