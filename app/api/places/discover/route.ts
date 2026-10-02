@@ -8,19 +8,14 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const destination = (url.searchParams.get("destination") ?? "").trim().slice(0, 160);
-  const radiusKm = Number(url.searchParams.get("radiusKm") ?? "50");
   const maxResults = Number(url.searchParams.get("maxResults") ?? "200");
   const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
 
   if (!destination) return NextResponse.json({ error: "A destination is required." }, { status: 400 });
-  if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 50) {
-    return NextResponse.json({ error: "radiusKm must be between 1 and 50." }, { status: 400 });
-  }
-
   try {
     const result = desiredQuery
-      ? await discoverPlaces(destination, radiusKm * 1000, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery)
-      : await discoverBroadPlaces(destination, radiusKm * 1000, Math.min(Math.max(Math.round(maxResults), 1), 250));
+      ? await discoverPlaces(destination, 50000, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery)
+      : await discoverBroadPlaces(destination, 50000, Math.min(Math.max(Math.round(maxResults), 1), 250));
 
     return NextResponse.json({ tripId: null, destination, ...result });
   } catch (error) {
