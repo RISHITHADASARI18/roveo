@@ -300,22 +300,54 @@ export async function discoverBroadPlaces(
       )
     : destinationRadius;
 
-  // For a state/region, search the whole real destination boundary once.
-  // The Google request is category-driven inside discoverPlaces, so one
-  // destination-wide call already searches attractions, history, nature,
-  // culture, activities, beaches, markets and other place types. The regional
-  // anchors below are reserved for free supplemental sources and diversity.
-  // This avoids multiplying every Google category query by every grid anchor.
-  const anchorPrimary = coverage.regional
-    ? [
-        await discoverPlaces(
-          destination,
-          anchorRadiusForCoverage(coverage),
-          limit,
-          desiredQuery,
-          coverage.bounds,
+  // Regional destinations need geographically distributed Google searches.
+  // A single boundary-wide query is dominated by the places Google ranks most
+  // highly in one area. Search a small, evenly sampled set of coverage anchors
+  // with location bias, then merge all results before the diversity pass.
+  const googleAnchors = coverage.regional
+    ? coverage.anchors.filter((_, index, anchors) => {
+        const targetCount = Math.min(8, anchors.length);
+        if (anchors.length <= targetCount) return true;
+        const selected = new Set(
+          Array.from({ length: targetCount }, (_, slot) =>
+            Math.round((slot * (anchors.length - 1)) / Math.max(targetCount - 1, 1)),
+          ),
+        );
+        return selected.has(index);
+      })
+    : coverage.anchors;
+
+  const regionalGoogleRadius = coverage.regional
+    ? Math.min(
+        50000,
+        Math.max(
+          20000,
+          Math.ceil(
+            (Math.sqrt(coverage.heightDegrees ** 2 + coverage.widthDegrees ** 2) * 111000) /
+              Math.max(googleAnchors.length / 1.5, 1),
+          ),
         ),
-      ]
+      )
+    : destinationRadius;
+
+  const perAnchorGoogleLimit = coverage.regional
+    ? Math.min(60, Math.max(20, Math.ceil(limit / googleAnchors.length)))
+    : limit;
+
+  const anchorPrimary = coverage.regional
+    ? await Promise.all(
+        googleAnchors.map((anchor) =>
+          discoverPlaces(
+            destination,
+            regionalGoogleRadius,
+            perAnchorGoogleLimit,
+            desiredQuery,
+            undefined,
+            anchor,
+            regionalGoogleRadius,
+          ),
+        ),
+      )
     : [
         await discoverPlaces(
           destination,
