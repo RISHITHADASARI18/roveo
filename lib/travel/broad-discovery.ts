@@ -73,9 +73,13 @@ function buildCells(bounds: Bounds) {
   const height = Math.max(0, bounds.north - bounds.south);
   const width = Math.max(0, bounds.east - bounds.west);
   if (!height || !width) return [bounds];
+  // Large regions such as Kerala must be split into a real 2x2 grid.
+  // Using only two long strips makes each Overpass query too expensive and
+  // commonly causes the public endpoint to time out with an empty response.
+  const largeRegion = Math.max(height, width) > 1.5;
   const aspect = width / Math.max(height, 0.1);
-  const columns = aspect >= 1.5 ? 2 : 1;
-  const rows = aspect <= 0.67 ? 2 : 1;
+  const columns = largeRegion ? 2 : (aspect >= 1.5 ? 2 : 1);
+  const rows = largeRegion ? 2 : (aspect <= 0.67 ? 2 : 1);
   const cells: Bounds[] = [];
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
@@ -93,12 +97,11 @@ function buildCells(bounds: Bounds) {
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const bbox = [cell.south, cell.west, cell.north, cell.east].join(",");
   const query = [
-    "[out:json][timeout:8];", "(",
+    "[out:json][timeout:10];", "(",
     'nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](' + bbox + ");",
-    'nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](' + bbox + ");",
+    'nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](' + bbox + ");',
     'nwr["leisure"~"park|garden|nature_reserve|water_park"](' + bbox + ");",
     'nwr["natural"~"waterfall|peak|cave|beach"](' + bbox + ");",
-    'nwr["amenity"~"place_of_worship|arts_centre|theatre"](' + bbox + ");",
     ");", "out center tags;",
   ].join("\n");
 
@@ -113,7 +116,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         },
         body: "data=" + encodeURIComponent(query),
         cache: "no-store",
-      }, 9000);
+      }, 11000);
       if (!response.ok) continue;
       const data = await response.json();
       return (Array.isArray(data.elements) ? data.elements : []).map((element: any) => {
@@ -148,31 +151,31 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
 
 async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
   try {
+    // Use the documented geosearch list API directly. It already returns
+    // title + coordinates, so there is no fragile second-stage page lookup.
     const params = new URLSearchParams({
-      action: "query", generator: "geosearch", ggsprimary: "all", ggsnamespace: "0",
-      ggscoord: center.latitude + "|" + center.longitude,
-      ggsradius: String(Math.min(radiusMeters, 50000)), ggslimit: "50",
-      prop: "extracts|info|coordinates", exintro: "1", explaintext: "1",
-      exchars: "600", inprop: "url", format: "json", origin: "*",
+      action: "query", list: "geosearch", gsprimary: "all", gsnamespace: "0",
+      gscoord: center.latitude + "|" + center.longitude,
+      gsradius: String(Math.min(radiusMeters, 50000)), gslimit: "50",
+      format: "json", origin: "*",
     });
     const response = await fetchWithTimeout("https://en.wikipedia.org/w/api.php?" + params, {
       headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; place discovery)" },
       cache: "no-store",
-    }, 4000);
+    }, 5000);
     if (!response.ok) return [] as DiscoveredPlace[];
     const data = await response.json();
-    const pages = Object.values(data.query?.pages ?? {}) as any[];
-    return pages.map((page: any) => {
-      const coordinate = page.coordinates?.[0];
-      const latitude = Number(coordinate?.lat), longitude = Number(coordinate?.lon);
-      const name = String(page.title ?? "").trim();
+    const places = Array.isArray(data.query?.geosearch) ? data.query.geosearch : [];
+    return places.map((place: any) => {
+      const latitude = Number(place.lat), longitude = Number(place.lon);
+      const name = String(place.title ?? "").trim();
       if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-      const description = String(page.extract ?? "").trim();
       return {
-        id: "wikipedia-" + String(page.pageid ?? normalizeName(name)),
-        name, type: "landmark", group: groupFor(name + " " + description),
+        id: "wikipedia-" + String(place.pageid ?? normalizeName(name)),
+        name, type: "landmark", group: groupFor(name),
         latitude, longitude, distanceKm: haversineKm(center, { latitude, longitude }),
-        description: description || "Named destination place.", website: page.fullurl,
+        description: "Named destination place from Wikipedia.",
+        website: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
       } as DiscoveredPlace;
     }).filter(Boolean) as DiscoveredPlace[];
   } catch {
@@ -263,6 +266,11 @@ export async function discoverBroadPlaces(
   }];
   const cellResults = await Promise.all(cells.map(overpassCell));
   const unique = new Map<string, DiscoveredPlace>();
+  console.info("Roveo places discovery:", {
+    destination,
+    cellCount: cells.length,
+    overpassCounts: cellResults.map((items) => items.length),
+  });
 
   for (const place of cellResults.flat()) {
     if (!insideBounds(place, coverage.bounds)) continue;
