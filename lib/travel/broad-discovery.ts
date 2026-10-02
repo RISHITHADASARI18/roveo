@@ -285,18 +285,51 @@ export async function discoverBroadPlaces(
       )
     : 15000;
 
-  const primary = await discoverPlaces(
-    destination,
-    destinationRadius,
-    limit,
-    desiredQuery,
-    initialCoverage.bounds,
-  );
+  const coverage = initialCoverage;
 
-  const coverage =
-    initialCoverage.bounds
-      ? initialCoverage
-      : await destinationCoverage(destination, primary.center);
+  // For a state/region, do not let one destination-wide Google ranking decide
+  // everything. Query Google around each coverage anchor so Kerala can return
+  // Kochi, Munnar, Alappuzha, Thekkady, Wayanad, Kozhikode, Thrissur,
+  // Thiruvananthapuram, Varkala, Kannur, etc. instead of repeating one area.
+  const anchorPrimary = coverage.regional
+    ? await Promise.all(
+        coverage.anchors.map((anchor) =>
+          discoverPlaces(
+            destination,
+            anchorRadiusForCoverage(coverage),
+            Math.min(30, Math.max(12, Math.ceil(limit / coverage.anchors.length))),
+            desiredQuery,
+            undefined,
+            anchor,
+            anchorRadiusForCoverage(coverage),
+          ),
+        ),
+      )
+    : [await discoverPlaces(
+        destination,
+        destinationRadius,
+        limit,
+        desiredQuery,
+        coverage.bounds,
+      )];
+
+  const primary = {
+    center: anchorPrimary[0]?.center ?? { latitude: 0, longitude: 0 },
+    places: anchorPrimary.flatMap((result) => result.places),
+  };
+
+  const anchorRadiusForCoverage = (value: Coverage) => value.regional
+    ? Math.min(
+        50000,
+        Math.max(
+          15000,
+          Math.ceil(
+            (Math.sqrt(value.heightDegrees ** 2 + value.widthDegrees ** 2) * 111000) /
+              Math.max(value.anchors.length / 2, 1),
+          ),
+        ),
+      )
+    : destinationRadius;
 
   const anchorRadius = coverage.regional
     ? Math.min(
