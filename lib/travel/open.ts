@@ -236,54 +236,77 @@ export async function discoverPlaces(
       "places.websiteUri",
     ].join(",");
 
-    // Automatic discovery is the default: ask Places for things worth visiting
-    // in the selected destination. Nearby Search is too narrow for a whole
-    // city/state/region because it only searches one circle around the center.
-    const body: Record<string, unknown> = {
-      textQuery: searchText
-        ? searchText + " in " + destination
-        : "top tourist attractions and places to visit in " + destination,
-      pageSize: Math.min(limit, 20),
-      languageCode: "en",
-      locationBias: {
-        circle: {
-          center: { latitude: center!.latitude, longitude: center!.longitude },
-          radius,
-        },
-      },
-      rankPreference: searchText ? "RELEVANCE" : "RELEVANCE",
-    };
+    // Automatic discovery must work for cities as well as broad regions/states.
+    // A single 30 km circle around the geocoded center misses places such as
+    // Munnar or beaches when the destination is an entire state like Kerala.
+    // For automatic discovery, query several travel categories and merge them.
+    const queries = searchText
+      ? [searchText + " in " + destination]
+      : [
+          "top tourist attractions in " + destination,
+          "best places to visit in " + destination,
+          "nature attractions and viewpoints in " + destination,
+          "best beaches and coastal places in " + destination,
+          "hill stations and mountain places in " + destination,
+          "historical landmarks and cultural places in " + destination,
+          "wildlife sanctuaries and parks in " + destination,
+          "waterfalls lakes backwaters and scenic places in " + destination,
+        ];
 
     const endpoint = "https://places.googleapis.com/v1/places:searchText";
 
-    const response = await fetchWithTimeout(
-      endpoint,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": googleApiKey,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify(body),
-        cache: "no-store",
-      },
-      5000,
+    const responses = await Promise.all(
+      queries.map(async (textQuery) => {
+        const body: Record<string, unknown> = {
+          textQuery,
+          pageSize: 20,
+          languageCode: "en",
+          rankPreference: "RELEVANCE",
+        };
+
+        // Only bias specific searches. Broad regional discovery should not
+        // be constrained to one arbitrary center point.
+        if (searchText) {
+          body.locationBias = {
+            circle: {
+              center: { latitude: center!.latitude, longitude: center!.longitude },
+              radius,
+            },
+          };
+        }
+
+        try {
+          const response = await fetchWithTimeout(
+            endpoint,
+            {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": googleApiKey,
+                "X-Goog-FieldMask": fieldMask,
+              },
+              body: JSON.stringify(body),
+              cache: "no-store",
+            },
+            5000,
+          );
+
+          if (!response.ok) {
+            console.warn("Google Places query failed:", textQuery, response.status);
+            return [];
+          }
+
+          const data = await response.json();
+          return Array.isArray(data.places) ? data.places : [];
+        } catch (error) {
+          console.warn("Google Places query failed:", textQuery, error);
+          return [];
+        }
+      }),
     );
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        "Google Places returned " +
-          response.status +
-          ": " +
-          errorBody.slice(0, 220),
-      );
-    }
-
-    const data = await response.json();
-    const results = Array.isArray(data.places) ? data.places : [];
+    const results = responses.flat();
 
     return results
       .map((place: any, index: number) => {
