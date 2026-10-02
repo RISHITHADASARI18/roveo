@@ -265,30 +265,42 @@ export async function discoverBroadPlaces(
   const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
 
-  const primary = await discoverPlaces(destination, radius, limit, "");
-  const coverage = await destinationCoverage(destination, primary.center);
+  // Resolve the actual destination boundary first. This is deliberately
+  // independent of the requested radius: a state/country is not represented
+  // by a 30 km circle around one point.
+  const initialCoverage = await destinationCoverage(destination, {
+    latitude: 0,
+    longitude: 0,
+  });
 
-  // Small destinations use the requested local radius. Large destinations
-  // use destination-scale coverage: each adaptive anchor gets its own local
-  // discovery window, so the whole region is covered without pretending a
-  // single 30/50 km circle represents the destination.
-  const anchorRadius = resolvedCoverage.regional
-    ? 50000
+  const primary = await discoverPlaces(
+    destination,
+    radius,
+    limit,
+    "",
+    initialCoverage.bounds,
+  );
+
+  const coverage =
+    initialCoverage.bounds
+      ? initialCoverage
+      : await destinationCoverage(destination, primary.center);
+
+  const anchorRadius = coverage.regional
+    ? 10000
     : radius;
+
   const perAnchorLimit = Math.min(
     60,
-    Math.max(20, Math.ceil(limit / resolvedCoverage.anchors.length)),
+    Math.max(20, Math.ceil(limit / coverage.anchors.length)),
   );
 
   const wikiByAnchor = await Promise.all(
-    resolvedCoverage.anchors.map((anchor) =>
+    coverage.anchors.map((anchor) =>
       wikipediaSupplement(anchor, anchorRadius, perAnchorLimit),
     ),
   );
 
-  // Keep OSM as a lighter fallback around the destination center. Google and
-  // the regional Wikipedia grid provide the main broad coverage without
-  // flooding the geocoder with requests for every anchor.
   const osm = await osmSupplement(
     destination,
     primary.center,
@@ -310,9 +322,9 @@ export async function discoverBroadPlaces(
 
     if (!key) return;
 
-    const coverageDistanceKm = resolvedCoverage.regional
+    const coverageDistanceKm = coverage.regional
       ? Math.min(
-          ...resolvedCoverage.anchors.map((anchor) =>
+          ...coverage.anchors.map((anchor) =>
             haversineKm(anchor, {
               latitude: place.latitude,
               longitude: place.longitude,
@@ -353,12 +365,7 @@ export async function discoverBroadPlaces(
 
   const scored = [...unique.values()].map((place) => {
     const sourceScore = Number(place._broadScore ?? 0);
-
-    // For a whole state/region, distance from the geocoded center must not
-    // decide which places survive. Use distance to the nearest coverage
-    // anchor instead. Small destinations retain the useful local-distance
-    // preference.
-    const distanceScore = resolvedCoverage.regional
+    const distanceScore = coverage.regional
       ? Math.max(0, 24 - place._coverageDistanceKm / 4)
       : Math.max(0, 30 - place._coverageDistanceKm / 2);
 
