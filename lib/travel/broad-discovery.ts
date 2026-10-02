@@ -203,117 +203,182 @@ async function wikipediaSupplement(
 
 async function overpassSupplement(
   bounds: { south: number; north: number; west: number; east: number },
+  anchors: Coordinates[],
   limit: number,
 ) {
-  const bbox =
-    bounds.south + "," + bounds.west + "," + bounds.north + "," + bounds.east;
-
-  const query = [
-    "[out:json][timeout:25];",
-    "(",
-    'nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](' + bbox + ");",
-    'nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](' + bbox + ");",
-    'nwr["leisure"~"park|garden|nature_reserve|water_park"](' + bbox + ");",
-    'nwr["natural"~"waterfall|peak|cave|beach"](' + bbox + ");",
-    'nwr["amenity"~"place_of_worship|arts_centre|theatre"](' + bbox + ");",
-    ");",
-    "out center tags;",
-  ].join("\n");
-
-  const endpoints = [
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetchWithTimeout(
-        endpoint,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
-          },
-          body: "data=" + encodeURIComponent(query),
-          cache: "no-store",
-        },
-        20000,
-      );
-
-      if (!response.ok) continue;
-
-      const data = await response.json();
-      const unique = new Map<string, DiscoveredPlace>();
-
-      for (const element of Array.isArray(data.elements) ? data.elements : []) {
-        const tags = element?.tags ?? {};
-        const name = String(tags["name:en"] ?? tags.name ?? "").trim();
-        if (!name) continue;
-
-        const latitude = Number(element.lat ?? element.center?.lat);
-        const longitude = Number(element.lon ?? element.center?.lon);
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-
-        const type = String(
-          tags.tourism ??
-            tags.historic ??
-            tags.leisure ??
-            tags.natural ??
-            tags.amenity ??
-            "place",
-        ).toLowerCase();
-
-        const searchable = (name + " " + Object.values(tags).join(" ")).toLowerCase();
-        const travelRelevant =
-          /attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork|monument|memorial|castle|ruins|archaeological|fort|heritage|park|garden|nature_reserve|water_park|waterfall|peak|cave|beach|place_of_worship|arts_centre|theatre/.test(
-            searchable,
-          );
-        if (!travelRelevant) continue;
-
-        const address = [
-          tags["addr:housenumber"],
-          tags["addr:street"],
-          tags["addr:suburb"],
-          tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
-          tags["addr:state"],
-          tags["addr:country"],
-        ]
-          .filter(Boolean)
-          .join(", ");
-
-        const place: DiscoveredPlace = {
-          id: "overpass-" + String(element.type) + "-" + String(element.id),
-          name,
-          type,
-          group: groupFor(searchable),
-          latitude,
-          longitude,
-          distanceKm: 0,
-          description:
-            String(tags["description:en"] ?? tags.description ?? "").trim() ||
-            "Live place record from OpenStreetMap.",
-          website:
-            String(tags.website ?? tags["contact:website"] ?? "").trim() ||
-            undefined,
-          wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
-          address: address || undefined,
+  const cells = anchors.length
+    ? anchors.map((anchor) => {
+        const latDelta = Math.max(
+          0.12,
+          (bounds.north - bounds.south) / Math.max(anchors.length > 6 ? 4 : 3, 1),
+        );
+        const lonScale = Math.max(
+          Math.cos((anchor.latitude * Math.PI) / 180),
+          0.25,
+        );
+        const lonDelta = Math.max(
+          0.12,
+          latDelta / lonScale,
+        );
+        return {
+          south: Math.max(bounds.south, anchor.latitude - latDelta / 2),
+          north: Math.min(bounds.north, anchor.latitude + latDelta / 2),
+          west: Math.max(bounds.west, anchor.longitude - lonDelta / 2),
+          east: Math.min(bounds.east, anchor.longitude + lonDelta / 2),
         };
+      })
+    : [bounds];
 
-        const key = name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-        if (!unique.has(key)) unique.set(key, place);
-      }
-
-      return [...unique.values()]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, limit);
-    } catch {
-      // Try the second public Overpass instance.
-    }
+  const uniqueCells = new Map<string, typeof cells[number]>();
+  for (const cell of cells) {
+    const key = [
+      cell.south.toFixed(3),
+      cell.north.toFixed(3),
+      cell.west.toFixed(3),
+      cell.east.toFixed(3),
+    ].join(":");
+    uniqueCells.set(key, cell);
   }
 
-  return [] as DiscoveredPlace[];
+  const queryCell = async (
+    cell: typeof cells[number],
+  ): Promise<DiscoveredPlace[]> => {
+    const bbox =
+      cell.south + "," + cell.west + "," + cell.north + "," + cell.east;
+
+    const query = [
+      "[out:json][timeout:20];",
+      "(",
+      'nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](' + bbox + ");",
+      'nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](' + bbox + ");",
+      'nwr["leisure"~"park|garden|nature_reserve|water_park"](' + bbox + ");",
+      'nwr["natural"~"waterfall|peak|cave|beach"](' + bbox + ");",
+      'nwr["amenity"~"place_of_worship|arts_centre|theatre"](' + bbox + ");",
+      ");",
+      "out center tags;",
+    ].join("\n");
+
+    const endpoints = [
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass-api.de/api/interpreter",
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetchWithTimeout(
+          endpoint,
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+            },
+            body: "data=" + encodeURIComponent(query),
+            cache: "no-store",
+          },
+          20000,
+        );
+
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const places: DiscoveredPlace[] = [];
+
+        for (const element of Array.isArray(data.elements) ? data.elements : []) {
+          const tags = element?.tags ?? {};
+          const name = String(tags["name:en"] ?? tags.name ?? "").trim();
+          if (!name) continue;
+
+          const latitude = Number(element.lat ?? element.center?.lat);
+          const longitude = Number(element.lon ?? element.center?.lon);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+
+          const type = String(
+            tags.tourism ??
+              tags.historic ??
+              tags.leisure ??
+              tags.natural ??
+              tags.amenity ??
+              "place",
+          ).toLowerCase();
+
+          const searchable = (
+            name + " " +
+            Object.entries(tags)
+              .filter(([key]) => !/^addr:/.test(key))
+              .map(([, value]) => String(value))
+              .join(" ")
+          ).toLowerCase();
+
+          const address = [
+            tags["addr:housenumber"],
+            tags["addr:street"],
+            tags["addr:suburb"],
+            tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
+            tags["addr:state"],
+            tags["addr:country"],
+          ]
+            .filter(Boolean)
+            .join(", ");
+
+          places.push({
+            id: "overpass-" + String(element.type) + "-" + String(element.id),
+            name,
+            type,
+            group: groupFor(searchable),
+            latitude,
+            longitude,
+            distanceKm: 0,
+            description:
+              String(tags["description:en"] ?? tags.description ?? "").trim() ||
+              "Real place record from OpenStreetMap.",
+            website:
+              String(tags.website ?? tags["contact:website"] ?? "").trim() ||
+              undefined,
+            wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
+            address: address || undefined,
+            openingHours: String(tags.opening_hours ?? "").trim() || undefined,
+          } as DiscoveredPlace & { openingHours?: string });
+        }
+
+        return places;
+      } catch {
+        // Try the next public Overpass instance.
+      }
+    }
+
+    return [];
+  };
+
+  const batches = [...uniqueCells.values()];
+  const results: DiscoveredPlace[] = [];
+  for (const cell of batches) {
+    const cellPlaces = await queryCell(cell);
+    results.push(...cellPlaces);
+    if (results.length >= Math.max(limit * 2, 100)) break;
+  }
+
+  const unique = new Map<string, DiscoveredPlace>();
+  for (const place of results) {
+    const key = place.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key) continue;
+
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, place);
+      continue;
+    }
+
+    // Keep the richer real-world record when two OSM objects share a name.
+    const currentRichness = JSON.stringify(existing).length;
+    const candidateRichness = JSON.stringify(place).length;
+    if (candidateRichness > currentRichness) unique.set(key, place);
+  }
+
+  return [...unique.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, limit);
 }
 
 export async function discoverBroadPlaces(
@@ -450,7 +515,11 @@ export async function discoverBroadPlaces(
   // destinations are queried geographically instead of firing many text
   // searches that get throttled or return one arbitrary record.
   const overpass = coverage.bounds
-    ? await overpassSupplement(coverage.bounds, Math.min(limit, 150))
+    ? await overpassSupplement(
+        coverage.bounds,
+        coverage.anchors,
+        Math.min(limit, 150),
+      )
     : [];
   const wiki = wikiByAnchor.flat();
 
