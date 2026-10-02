@@ -300,31 +300,31 @@ export async function discoverBroadPlaces(
       )
     : destinationRadius;
 
-  // For a state/region, do not let one destination-wide Google ranking decide
-  // everything. Query Google around each coverage anchor so Kerala can return
-  // Kochi, Munnar, Alappuzha, Thekkady, Wayanad, Kozhikode, Thrissur,
-  // Thiruvananthapuram, Varkala, Kannur, etc. instead of repeating one area.
+  // For a state/region, search the whole real destination boundary once.
+  // The Google request is category-driven inside discoverPlaces, so one
+  // destination-wide call already searches attractions, history, nature,
+  // culture, activities, beaches, markets and other place types. The regional
+  // anchors below are reserved for free supplemental sources and diversity.
+  // This avoids multiplying every Google category query by every grid anchor.
   const anchorPrimary = coverage.regional
-    ? await Promise.all(
-        coverage.anchors.map((anchor) =>
-          discoverPlaces(
-            destination,
-            anchorRadiusForCoverage(coverage),
-            Math.min(30, Math.max(12, Math.ceil(limit / coverage.anchors.length))),
-            desiredQuery,
-            undefined,
-            anchor,
-            anchorRadiusForCoverage(coverage),
-          ),
+    ? [
+        await discoverPlaces(
+          destination,
+          anchorRadiusForCoverage(coverage),
+          limit,
+          desiredQuery,
+          coverage.bounds,
         ),
-      )
-    : [await discoverPlaces(
-        destination,
-        destinationRadius,
-        limit,
-        desiredQuery,
-        coverage.bounds,
-      )];
+      ]
+    : [
+        await discoverPlaces(
+          destination,
+          destinationRadius,
+          limit,
+          desiredQuery,
+          coverage.bounds,
+        ),
+      ];
 
   const primary = {
     center: anchorPrimary[0]?.center ?? { latitude: 0, longitude: 0 },
