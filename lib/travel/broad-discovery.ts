@@ -22,7 +22,14 @@ function groupFor(text: string): DiscoveredPlace["group"] {
   return "Activity";
 }
 
-async function destinationAnchors(destination: string, fallback: Coordinates) {
+type Coverage = {
+  anchors: Coordinates[];
+  regional: boolean;
+  heightDegrees: number;
+  widthDegrees: number;
+};
+
+async function destinationCoverage(destination: string, fallback: Coordinates): Promise<Coverage> {
   try {
     const params = new URLSearchParams({
       format: "jsonv2",
@@ -35,50 +42,84 @@ async function destinationAnchors(destination: string, fallback: Coordinates) {
       {
         headers: {
           Accept: "application/json",
-          "User-Agent": "Roveo/1.0 (travel planner; regional discovery)",
+          "User-Agent": "Roveo/1.0 (travel planner; destination coverage)",
         },
         cache: "no-store",
       },
     );
-    if (!response.ok) return [fallback];
+    if (!response.ok) {
+      return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
+    }
+
     const data = await response.json();
     const first = Array.isArray(data) ? data[0] : null;
     const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
     if (box.length !== 4 || box.some((value: number) => !Number.isFinite(value))) {
-      return [fallback];
+      return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
     }
 
     const south = box[0];
     const north = box[1];
     const west = box[2];
     const east = box[3];
-    const height = Math.abs(north - south);
-    const width = Math.abs(east - west);
+    const heightDegrees = Math.abs(north - south);
+    const widthDegrees = Math.abs(east - west);
+    const maxDimension = Math.max(heightDegrees, widthDegrees);
 
-    // Cities usually fit well around one center. Large regions/states need
-    // multiple discovery anchors so one local cluster cannot dominate.
-    if (Math.max(height, width) < 1.2) return [fallback];
+    const addressType = String(first?.addresstype ?? first?.type ?? "").toLowerCase();
+    const regionalType = /state|country|region|county|province|territory|district/.test(addressType);
+    const regional = regionalType || maxDimension >= 1.2;
 
-    const points = [
-      fallback,
-      { latitude: south + height * 0.25, longitude: west + width * 0.25 },
-      { latitude: south + height * 0.25, longitude: west + width * 0.75 },
-      { latitude: south + height * 0.75, longitude: west + width * 0.25 },
-      { latitude: south + height * 0.75, longitude: west + width * 0.75 },
-    ];
+    if (!regional) {
+      return { anchors: [fallback], regional: false, heightDegrees, widthDegrees };
+    }
+
+    // Destination size, not an arbitrary search radius, determines coverage.
+    // Generate a small adaptive grid so a whole state/region is explored
+    // across multiple areas instead of around one geocoded center.
+    const aspect = widthDegrees / Math.max(heightDegrees, 0.25);
+    let columns = Math.max(2, Math.ceil(Math.sqrt(10 * aspect)));
+    let rows = Math.max(2, Math.ceil(10 / columns));
+
+    while (columns * rows > 12) {
+      if (columns > rows) columns -= 1;
+      else rows -= 1;
+    }
+
+    const points: Coordinates[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        points.push({
+          latitude: south + heightDegrees * ((row + 0.5) / rows),
+          longitude: west + widthDegrees * ((column + 0.5) / columns),
+        });
+      }
+    }
+
+    // Keep the destination's geocoded center in the coverage set when it is
+    // not already represented by a grid cell.
+    points.push(fallback);
 
     const unique = new Map<string, Coordinates>();
     for (const point of points) {
-      unique.set(point.latitude.toFixed(3) + ":" + point.longitude.toFixed(3), point);
+      unique.set(
+        point.latitude.toFixed(3) + ":" + point.longitude.toFixed(3),
+        point,
+      );
     }
-    return [...unique.values()];
+
+    return {
+      anchors: [...unique.values()],
+      regional: true,
+      heightDegrees,
+      widthDegrees,
+    };
   } catch {
-    return [fallback];
+    return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
   }
 }
 
 async function wikipediaSupplement(
-  destination: string,
   center: Coordinates,
   radiusMeters: number,
   limit: number,
@@ -154,8 +195,6 @@ async function osmSupplement(
   const queries = [
     "tourist attraction " + destination,
     "theme park " + destination,
-    "water park " + destination,
-    "amusement park " + destination,
     "museum " + destination,
     "fort " + destination,
     "palace " + destination,
@@ -187,10 +226,8 @@ async function osmSupplement(
     const latitude = place.latitude;
     const longitude = place.longitude;
     if (typeof latitude !== "number" || typeof longitude !== "number") continue;
-    const distanceKm = haversineKm(center, {
-      latitude,
-      longitude,
-    });
+
+    const distanceKm = haversineKm(center, { latitude, longitude });
     if (distanceKm > radiusMeters / 1000) continue;
 
     const key = place.name.trim().toLowerCase();
@@ -221,24 +258,42 @@ export async function discoverBroadPlaces(
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
 
   const primary = await discoverPlaces(destination, radius, limit, "");
+  const coverage = await destinationCoverage(destination, primary.center);
 
-  const anchors = await destinationAnchors(destination, primary.center);
+  // Small destinations use the requested local radius. Large destinations
+  // use destination-scale coverage: each adaptive anchor gets its own local
+  // discovery window, so the whole region is covered without pretending a
+  // single 30/50 km circle represents the destination.
+  const anchorRadius = coverage.regional
+    ? 50000
+    : radius;
+  const perAnchorLimit = Math.min(
+    60,
+    Math.max(20, Math.ceil(limit / coverage.anchors.length)),
+  );
 
-  // Wikipedia geosearch is used at several anchors for large destinations.
-  // This prevents a single central city/area from dominating the discovery list.
   const wikiByAnchor = await Promise.all(
-    anchors.map((anchor) =>
-      wikipediaSupplement(destination, anchor, radius, Math.min(60, Math.max(20, Math.ceil(limit / anchors.length)))),
+    coverage.anchors.map((anchor) =>
+      wikipediaSupplement(anchor, anchorRadius, perAnchorLimit),
     ),
   );
 
-  // Keep OSM as a lighter supplementary source at the primary center. Its
-  // geocoder is rate-limited, so we deliberately do not fan it out across
-  // every regional anchor.
-  const osm = await osmSupplement(destination, primary.center, radius, Math.min(limit, 100));
+  // Keep OSM as a lighter fallback around the destination center. Google and
+  // the regional Wikipedia grid provide the main broad coverage without
+  // flooding the geocoder with requests for every anchor.
+  const osm = await osmSupplement(
+    destination,
+    primary.center,
+    anchorRadius,
+    Math.min(limit, 100),
+  );
   const wiki = wikiByAnchor.flat();
 
-  const unique = new Map<string, DiscoveredPlace>();
+  const unique = new Map<string, DiscoveredPlace & {
+    _broadScore: number;
+    _coverageDistanceKm: number;
+  }>();
+
   const add = (place: DiscoveredPlace, sourceWeight: number) => {
     const key = place.name
       .toLowerCase()
@@ -247,25 +302,41 @@ export async function discoverBroadPlaces(
 
     if (!key) return;
 
+    const coverageDistanceKm = coverage.regional
+      ? Math.min(
+          ...coverage.anchors.map((anchor) =>
+            haversineKm(anchor, {
+              latitude: place.latitude,
+              longitude: place.longitude,
+            }),
+          ),
+        )
+      : place.distanceKm;
+
     const existing = unique.get(key);
     if (!existing) {
-      unique.set(key, { ...place, _broadScore: sourceWeight } as DiscoveredPlace & { _broadScore: number });
+      unique.set(key, {
+        ...place,
+        _broadScore: sourceWeight,
+        _coverageDistanceKm: coverageDistanceKm,
+      });
       return;
     }
 
-    const currentScore = Number((existing as any)._broadScore ?? 0);
+    const currentScore = Number(existing._broadScore ?? 0);
     if (sourceWeight > currentScore) {
       unique.set(key, {
         ...existing,
         ...place,
         _broadScore: sourceWeight,
-      } as DiscoveredPlace & { _broadScore: number });
+        _coverageDistanceKm: Math.min(
+          existing._coverageDistanceKm,
+          coverageDistanceKm,
+        ),
+      });
     }
   };
 
-  // Google gives strong place relevance, while Wikipedia's regional anchors
-  // are important for large destinations because they surface named landmarks
-  // that may be far from the destination's geocoded center.
   primary.places.forEach((place) => add(place, 100));
   wiki.forEach((place) =>
     add(place, 112 + Math.min(18, place.distanceKm / 20)),
@@ -273,8 +344,16 @@ export async function discoverBroadPlaces(
   osm.forEach((place) => add(place, 55));
 
   const scored = [...unique.values()].map((place) => {
-    const sourceScore = Number((place as any)._broadScore ?? 0);
-    const distanceScore = Math.max(0, 30 - place.distanceKm / 2);
+    const sourceScore = Number(place._broadScore ?? 0);
+
+    // For a whole state/region, distance from the geocoded center must not
+    // decide which places survive. Use distance to the nearest coverage
+    // anchor instead. Small destinations retain the useful local-distance
+    // preference.
+    const distanceScore = coverage.regional
+      ? Math.max(0, 24 - place._coverageDistanceKm / 4)
+      : Math.max(0, 30 - place._coverageDistanceKm / 2);
+
     const typeScore =
       place.group === "Attraction" ? 18 :
       place.group === "History" ? 16 :
@@ -292,8 +371,12 @@ export async function discoverBroadPlaces(
   return {
     center: primary.center,
     places: scored.slice(0, limit).map(({ place }) => {
-      const clean = { ...place } as DiscoveredPlace & { _broadScore?: number };
+      const clean = { ...place } as DiscoveredPlace & {
+        _broadScore?: number;
+        _coverageDistanceKm?: number;
+      };
       delete clean._broadScore;
+      delete clean._coverageDistanceKm;
       return clean;
     }),
     source: "google" as const,
