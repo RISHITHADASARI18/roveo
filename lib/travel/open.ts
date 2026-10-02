@@ -312,16 +312,31 @@ export async function discoverPlaces(
           // in the region, which defeats the geographic coverage algorithm.
           // Use a circle restriction so this request is actually local to the
           // current anchor.
+          // Text Search (New) accepts locationRestriction as a
+          // rectangle. Do not use a circle here: that shape is supported by
+          // Nearby Search, but not by Text Search. Build a bounding box around
+          // this anchor so the regional Google request is valid and local.
+          const anchorRadius = Math.min(
+            Math.max(discoveryRadiusMeters ?? 30000, 5000),
+            50000,
+          );
+          const latDelta = anchorRadius / 111000;
+          const lonScale = Math.max(
+            Math.cos((discoveryCenter.latitude * Math.PI) / 180),
+            0.2,
+          );
+          const lonDelta = anchorRadius / (111000 * lonScale);
+
           body.locationRestriction = {
-            circle: {
-              center: {
-                latitude: discoveryCenter.latitude,
-                longitude: discoveryCenter.longitude,
+            rectangle: {
+              low: {
+                latitude: Math.max(-90, discoveryCenter.latitude - latDelta),
+                longitude: Math.max(-180, discoveryCenter.longitude - lonDelta),
               },
-              radius: Math.min(
-                Math.max(discoveryRadiusMeters ?? 30000, 5000),
-                50000,
-              ),
+              high: {
+                latitude: Math.min(90, discoveryCenter.latitude + latDelta),
+                longitude: Math.min(180, discoveryCenter.longitude + lonDelta),
+              },
             },
           };
         }
