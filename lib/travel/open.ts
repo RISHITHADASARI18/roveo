@@ -386,7 +386,9 @@ export async function discoverPlaces(
           distanceKm: haversineKm(center!, { latitude, longitude }),
           description: searchText
             ? "Matched your search for " + searchText + " in " + destination + "."
-            : "Popular place to visit in " + destination + ".",
+            : place.formattedAddress
+              ? place.formattedAddress
+              : undefined,
           website: place.websiteUri,
           address: place.formattedAddress,
           _discoveryScore: categoryBoost + typeBoost + ratingBoost + popularityBoost,
