@@ -182,7 +182,7 @@ function PlacesContent(){
   const visible=useMemo(()=>places.filter(p=>
     (category==="all"||p.group===category)&&
     p.name.toLowerCase().includes(search.toLowerCase())
-  ),[places,category,radius,search]);
+  ),[places,category,search]);
 
   async function toggleAdd(id:string){
     if(!tripId){
