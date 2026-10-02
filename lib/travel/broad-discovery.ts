@@ -22,6 +22,61 @@ function groupFor(text: string): DiscoveredPlace["group"] {
   return "Activity";
 }
 
+async function destinationAnchors(destination: string, fallback: Coordinates) {
+  try {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      limit: "1",
+      q: destination,
+      addressdetails: "1",
+    });
+    const response = await fetch(
+      "https://nominatim.openstreetmap.org/search?" + params.toString(),
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Roveo/1.0 (travel planner; regional discovery)",
+        },
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return [fallback];
+    const data = await response.json();
+    const first = Array.isArray(data) ? data[0] : null;
+    const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
+    if (box.length !== 4 || box.some((value: number) => !Number.isFinite(value))) {
+      return [fallback];
+    }
+
+    const south = box[0];
+    const north = box[1];
+    const west = box[2];
+    const east = box[3];
+    const height = Math.abs(north - south);
+    const width = Math.abs(east - west);
+
+    // Cities usually fit well around one center. Large regions/states need
+    // multiple discovery anchors so one local cluster cannot dominate.
+    if (Math.max(height, width) < 1.2) return [fallback];
+
+    const points = [
+      fallback,
+      { latitude: south + height * 0.25, longitude: west + width * 0.25 },
+      { latitude: south + height * 0.25, longitude: west + width * 0.75 },
+      { latitude: south + height * 0.75, longitude: west + width * 0.25 },
+      { latitude: south + height * 0.75, longitude: west + width * 0.75 },
+    ];
+
+    const unique = new Map<string, Coordinates>();
+    for (const point of points) {
+      unique.set(point.latitude.toFixed(3) + ":" + point.longitude.toFixed(3), point);
+    }
+    return [...unique.values()];
+  } catch {
+    return [fallback];
+  }
+}
+
 async function wikipediaSupplement(
   destination: string,
   center: Coordinates,
@@ -164,10 +219,21 @@ export async function discoverBroadPlaces(
 
   const primary = await discoverPlaces(destination, radius, limit, "");
 
-  const [wiki, osm] = await Promise.all([
-    wikipediaSupplement(destination, primary.center, radius, Math.min(limit, 100)),
-    osmSupplement(destination, primary.center, radius, Math.min(limit, 100)),
-  ]);
+  const anchors = await destinationAnchors(destination, primary.center);
+
+  // Wikipedia geosearch is used at several anchors for large destinations.
+  // This prevents a single central city/area from dominating the discovery list.
+  const wikiByAnchor = await Promise.all(
+    anchors.map((anchor) =>
+      wikipediaSupplement(destination, anchor, radius, Math.min(60, Math.max(20, Math.ceil(limit / anchors.length)))),
+    ),
+  );
+
+  // Keep OSM as a lighter supplementary source at the primary center. Its
+  // geocoder is rate-limited, so we deliberately do not fan it out across
+  // every regional anchor.
+  const osm = await osmSupplement(destination, primary.center, radius, Math.min(limit, 100));
+  const wiki = wikiByAnchor.flat();
 
   const unique = new Map<string, DiscoveredPlace>();
   const add = (place: DiscoveredPlace, sourceWeight: number) => {
