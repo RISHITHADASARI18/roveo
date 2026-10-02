@@ -394,11 +394,20 @@ export async function discoverBroadPlaces(
     }
   };
 
-  primary.places.forEach((place) => add(place, 100));
-  wiki.forEach((place) =>
-    add(place, 112 + Math.min(18, place.distanceKm / 20)),
+  // discoverPlaces already ranks Google results by query relevance, place type,
+  // rating, and popularity. Preserve that ordering here instead of giving
+  // every Google result the exact same score.
+  primary.places.forEach((place, index) =>
+    add(place, 140 - Math.min(35, index * 0.45)),
   );
-  osm.forEach((place) => add(place, 55));
+
+  // Wikipedia is useful for named landmarks, but it must supplement Google
+  // rather than outrank Google's destination/category discovery wholesale.
+  wiki.forEach((place) =>
+    add(place, 92 + Math.min(12, place.distanceKm / 30)),
+  );
+
+  osm.forEach((place) => add(place, 65));
 
   const scored = [...unique.values()].map((place) => {
     const sourceScore = Number(place._broadScore ?? 0);
@@ -420,9 +429,58 @@ export async function discoverBroadPlaces(
 
   scored.sort((a, b) => b.score - a.score);
 
+  // Keep the result set useful for a real trip: do not let one category
+  // (for example waterfalls) consume the whole first page. Select a
+  // geographically and categorically diverse set first, then fill the
+  // remaining slots by score.
+  const selected: typeof scored = [];
+  const selectedIds = new Set<string>();
+  const groupCounts = new Map<DiscoveredPlace["group"], number>();
+  const groupCap = Math.max(4, Math.ceil(limit / 5));
+
+  const addDiverse = (entry: typeof scored[number]) => {
+    if (selectedIds.has(entry.place.id)) return false;
+    const group = entry.place.group;
+    const count = groupCounts.get(group) ?? 0;
+    if (count >= groupCap) return false;
+
+    // Prefer geographic spread for regional destinations so Kerala does not
+    // become a list of places from only one city/area.
+    if (coverage.regional && selected.length >= 5) {
+      const tooClose = selected.some(
+        (picked) =>
+          haversineKm(
+            { latitude: picked.place.latitude, longitude: picked.place.longitude },
+            { latitude: entry.place.latitude, longitude: entry.place.longitude },
+          ) < 12,
+      );
+      if (tooClose) return false;
+    }
+
+    selected.push(entry);
+    selectedIds.add(entry.place.id);
+    groupCounts.set(group, count + 1);
+    return true;
+  };
+
+  for (const entry of scored) {
+    if (selected.length >= limit) break;
+    addDiverse(entry);
+  }
+
+  // If strict diversity/spread left slots unused, fill them by the original
+  // score order. This keeps discovery broad without hiding good nearby options.
+  for (const entry of scored) {
+    if (selected.length >= limit) break;
+    if (!selectedIds.has(entry.place.id)) {
+      selected.push(entry);
+      selectedIds.add(entry.place.id);
+    }
+  }
+
   return {
     center: primary.center,
-    places: scored.slice(0, limit).map(({ place }) => {
+    places: selected.slice(0, limit).map(({ place }) => {
       const clean = { ...place } as DiscoveredPlace & {
         _broadScore?: number;
         _coverageDistanceKm?: number;
