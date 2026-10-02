@@ -57,15 +57,13 @@ function classify(tags:any):Place["group"]{
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
   const generic=place.description?.startsWith("Popular place to visit in ");
-  const description=generic
-    ? "A "+place.group.toLowerCase()+" worth considering in "+destination+"."
-    : place.description||("A "+place.group.toLowerCase()+" worth considering in "+destination+".");
+  const description=generic ? "" : place.description||"";
   return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
     <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
     <div className="explore-body">
       <div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div>
       <h3>{place.name}</h3>
-      <p className="explore-description">{description}</p>
+      {description&&<p className="explore-description">{description}</p>}
       <div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div>
       <div className="explore-actions">
         <button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button>
