@@ -263,8 +263,13 @@ export async function discoverBroadPlaces(
     }
   };
 
+  // Google gives strong place relevance, while Wikipedia's regional anchors
+  // are important for large destinations because they surface named landmarks
+  // that may be far from the destination's geocoded center.
   primary.places.forEach((place) => add(place, 100));
-  wiki.forEach((place) => add(place, 70));
+  wiki.forEach((place) =>
+    add(place, 112 + Math.min(18, place.distanceKm / 20)),
+  );
   osm.forEach((place) => add(place, 55));
 
   const scored = [...unique.values()].map((place) => {
