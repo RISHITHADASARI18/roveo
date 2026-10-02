@@ -311,7 +311,7 @@ function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;des
       <div className="explore-actions">
         <button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button>
         <a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>
-        {place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\\/\\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
+        {place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
       </div>
     </div>
   </article>;
