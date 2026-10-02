@@ -288,9 +288,9 @@ export async function discoverPlaces(
         };
 
         // Automatic discovery is bounded by the actual destination geometry,
-        // never by an arbitrary 30/50 km circle. Explicit searches keep the
-        // legacy local bias only when no destination boundary is supplied.
-        if (destinationBounds && !searchText) {
+        // never by an arbitrary 30/50 km circle. Explicit searches already
+        // contain the destination in text, so they are not radius-biased.
+        if (destinationBounds) {
           body.locationRestriction = {
             rectangle: {
               low: {
@@ -301,13 +301,6 @@ export async function discoverPlaces(
                 latitude: destinationBounds.north,
                 longitude: destinationBounds.east,
               },
-            },
-          };
-        } else if (searchText) {
-          body.locationBias = {
-            circle: {
-              center: { latitude: center!.latitude, longitude: center!.longitude },
-              radius,
             },
           };
         }
