@@ -27,6 +27,7 @@ type Coverage = {
   regional: boolean;
   heightDegrees: number;
   widthDegrees: number;
+  bounds?: { south: number; north: number; west: number; east: number };
 };
 
 async function destinationCoverage(destination: string, fallback: Coordinates): Promise<Coverage> {
@@ -71,10 +72,16 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     const regional = regionalType || maxDimension >= 1.2;
 
     if (!regional) {
-      return { anchors: [fallback], regional: false, heightDegrees, widthDegrees };
+      return {
+        anchors: [fallback],
+        regional: false,
+        heightDegrees,
+        widthDegrees,
+        bounds: { south, north, west, east },
+      };
     }
 
-    // Destination size, not an arbitrary search radius, determines coverage.
+    // Destination size, not an arbitrary search radius, determines resolvedCoverage.
     // Generate a small adaptive grid so a whole state/region is explored
     // across multiple areas instead of around one geocoded center.
     const aspect = widthDegrees / Math.max(heightDegrees, 0.25);
@@ -113,6 +120,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       regional: true,
       heightDegrees,
       widthDegrees,
+      bounds: { south, north, west, east },
     };
   } catch {
     return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
@@ -264,16 +272,16 @@ export async function discoverBroadPlaces(
   // use destination-scale coverage: each adaptive anchor gets its own local
   // discovery window, so the whole region is covered without pretending a
   // single 30/50 km circle represents the destination.
-  const anchorRadius = coverage.regional
+  const anchorRadius = resolvedCoverage.regional
     ? 50000
     : radius;
   const perAnchorLimit = Math.min(
     60,
-    Math.max(20, Math.ceil(limit / coverage.anchors.length)),
+    Math.max(20, Math.ceil(limit / resolvedCoverage.anchors.length)),
   );
 
   const wikiByAnchor = await Promise.all(
-    coverage.anchors.map((anchor) =>
+    resolvedCoverage.anchors.map((anchor) =>
       wikipediaSupplement(anchor, anchorRadius, perAnchorLimit),
     ),
   );
@@ -302,9 +310,9 @@ export async function discoverBroadPlaces(
 
     if (!key) return;
 
-    const coverageDistanceKm = coverage.regional
+    const coverageDistanceKm = resolvedCoverage.regional
       ? Math.min(
-          ...coverage.anchors.map((anchor) =>
+          ...resolvedCoverage.anchors.map((anchor) =>
             haversineKm(anchor, {
               latitude: place.latitude,
               longitude: place.longitude,
@@ -350,7 +358,7 @@ export async function discoverBroadPlaces(
     // decide which places survive. Use distance to the nearest coverage
     // anchor instead. Small destinations retain the useful local-distance
     // preference.
-    const distanceScore = coverage.regional
+    const distanceScore = resolvedCoverage.regional
       ? Math.max(0, 24 - place._coverageDistanceKm / 4)
       : Math.max(0, 30 - place._coverageDistanceKm / 2);
 
