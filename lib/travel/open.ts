@@ -135,6 +135,7 @@ export async function discoverPlaces(
   radiusMeters = 30000,
   maxResults = 200,
   desiredQuery = "",
+  destinationBounds?: { south: number; north: number; west: number; east: number },
 ): Promise<PlaceDiscoveryResult> {
   const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
@@ -286,9 +287,23 @@ export async function discoverPlaces(
           rankPreference: "RELEVANCE",
         };
 
-        // Automatic destination discovery is intentionally not restricted to
-        // one arbitrary center point. Explicit searches can use the radius.
-        if (searchText) {
+        // Automatic discovery is bounded by the actual destination geometry,
+        // never by an arbitrary 30/50 km circle. Explicit searches keep the
+        // legacy local bias only when no destination boundary is supplied.
+        if (destinationBounds && !searchText) {
+          body.locationRestriction = {
+            rectangle: {
+              low: {
+                latitude: destinationBounds.south,
+                longitude: destinationBounds.west,
+              },
+              high: {
+                latitude: destinationBounds.north,
+                longitude: destinationBounds.east,
+              },
+            },
+          };
+        } else if (searchText) {
           body.locationBias = {
             circle: {
               center: { latitude: center!.latitude, longitude: center!.longitude },
