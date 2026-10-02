@@ -234,29 +234,39 @@ export async function discoverPlaces(
       "places.types",
       "places.googleMapsUri",
       "places.websiteUri",
+      "places.rating",
+      "places.userRatingCount",
     ].join(",");
 
     // Automatic discovery must work for cities as well as broad regions/states.
     // A single 30 km circle around the geocoded center misses places such as
     // Munnar or beaches when the destination is an entire state like Kerala.
     // For automatic discovery, query several travel categories and merge them.
+    // Destination discovery is category-driven. Important places can belong
+    // to entertainment, family attractions, shopping, religion, beaches,
+    // gardens, museums and many other categories, so one generic query is
+    // not enough. We merge several focused searches and rank the result set.
     const queries = searchText
       ? [searchText + " in " + destination]
       : [
-          "top tourist attractions in " + destination,
-          "best places to visit in " + destination,
-          "nature attractions and viewpoints in " + destination,
-          "best beaches and coastal places in " + destination,
-          "hill stations and mountain places in " + destination,
-          "historical landmarks and cultural places in " + destination,
-          "wildlife sanctuaries and parks in " + destination,
-          "waterfalls lakes backwaters and scenic places in " + destination,
+          "most famous must visit places in " + destination,
+          "top tourist attractions and landmarks in " + destination,
+          "amusement parks theme parks and water parks in " + destination,
+          "family attractions entertainment and activities in " + destination,
+          "historic monuments forts palaces and heritage sites in " + destination,
+          "museums galleries cultural and art places in " + destination,
+          "famous temples churches mosques and religious places in " + destination,
+          "parks gardens lakes viewpoints and scenic places in " + destination,
+          "nature attractions waterfalls hills mountains and wildlife in " + destination,
+          "beaches coastal places and waterfront attractions in " + destination,
+          "famous markets shopping streets and local attractions in " + destination,
+          "popular food streets restaurants and culinary attractions in " + destination,
         ];
 
     const endpoint = "https://places.googleapis.com/v1/places:searchText";
 
     const responses = await Promise.all(
-      queries.map(async (textQuery) => {
+      queries.map(async (textQuery, queryIndex) => {
         const body: Record<string, unknown> = {
           textQuery,
           pageSize: 20,
@@ -264,8 +274,8 @@ export async function discoverPlaces(
           rankPreference: "RELEVANCE",
         };
 
-        // Only bias specific searches. Broad regional discovery should not
-        // be constrained to one arbitrary center point.
+        // Automatic destination discovery is intentionally not restricted to
+        // one arbitrary center point. Explicit searches can use the radius.
         if (searchText) {
           body.locationBias = {
             circle: {
@@ -294,32 +304,65 @@ export async function discoverPlaces(
 
           if (!response.ok) {
             console.warn("Google Places query failed:", textQuery, response.status);
-            return [];
+            return { queryIndex, places: [] as any[] };
           }
 
           const data = await response.json();
-          return Array.isArray(data.places) ? data.places : [];
+          return {
+            queryIndex,
+            places: Array.isArray(data.places) ? data.places : [],
+          };
         } catch (error) {
           console.warn("Google Places query failed:", textQuery, error);
-          return [];
+          return { queryIndex, places: [] as any[] };
         }
       }),
     );
 
-    const results = responses.flat();
+    const results = responses.flatMap((result) =>
+      result.places.map((place) => ({ place, queryIndex: result.queryIndex })),
+    );
 
     return results
-      .map((place: any, index: number) => {
+      .map(({ place, queryIndex }, index) => {
         const latitude = Number(place.location?.latitude);
         const longitude = Number(place.location?.longitude);
         const name = String(place.displayName?.text ?? "").trim();
         const primaryType = String(
           place.primaryType ?? place.types?.[0] ?? "place",
         ).trim();
+        const types = Array.isArray(place.types)
+          ? place.types.map((type: unknown) => String(type).toLowerCase())
+          : [];
 
         if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
           return null;
         }
+
+        const categoryBoost =
+          queryIndex === 0 ? 40 :
+          queryIndex === 1 ? 32 :
+          queryIndex === 2 ? 30 :
+          queryIndex === 3 ? 28 :
+          20;
+
+        const typeBoost =
+          /amusement_park|theme_park|water_park|tourist_attraction|landmark/.test(types.join(" "))
+            ? 18
+            : /museum|historical_landmark|monument|castle|palace|fort|zoo|aquarium/.test(types.join(" "))
+              ? 15
+              : /park|garden|beach|natural_feature|place_of_worship|shopping_mall/.test(types.join(" "))
+                ? 10
+                : 5;
+
+        const rating = Number(place.rating ?? 0);
+        const reviewCount = Number(place.userRatingCount ?? 0);
+        const ratingBoost = Number.isFinite(rating) ? rating * 2 : 0;
+        const popularityBoost =
+          reviewCount > 10000 ? 15 :
+          reviewCount > 3000 ? 10 :
+          reviewCount > 500 ? 6 :
+          reviewCount > 100 ? 3 : 0;
 
         return {
           id: "google-" + String(place.id ?? index),
@@ -334,9 +377,11 @@ export async function discoverPlaces(
             : "Popular place to visit in " + destination + ".",
           website: place.websiteUri,
           address: place.formattedAddress,
-        } as DiscoveredPlace;
+          _discoveryScore: categoryBoost + typeBoost + ratingBoost + popularityBoost,
+        } as DiscoveredPlace & { _discoveryScore: number };
       })
-      .filter(Boolean) as DiscoveredPlace[];
+      .filter(Boolean) as Array<DiscoveredPlace & { _discoveryScore: number }>;
+
   }
 
   if (googleApiKey) {
@@ -352,8 +397,19 @@ export async function discoverPlaces(
         return {
           center,
           places: [...unique.values()]
-            .sort((a, b) => a.distanceKm - b.distanceKm)
-            .slice(0, limit),
+            .sort((a, b) => {
+              const scoreDiff =
+                ((b as DiscoveredPlace & { _discoveryScore?: number })._discoveryScore ?? 0) -
+                ((a as DiscoveredPlace & { _discoveryScore?: number })._discoveryScore ?? 0);
+              if (scoreDiff !== 0) return scoreDiff;
+              return a.distanceKm - b.distanceKm;
+            })
+            .slice(0, limit)
+            .map((place) => {
+              const clean = { ...place } as DiscoveredPlace & { _discoveryScore?: number };
+              delete clean._discoveryScore;
+              return clean;
+            }),
           source: "google",
           fetchedAt: new Date().toISOString(),
         };
