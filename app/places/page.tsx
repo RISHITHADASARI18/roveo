@@ -241,16 +241,81 @@ function PlacesContent(){
 
       {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
-      <div className="places-result-head"><div><span className="eyebrow">{liveQuery?"LIVE SEARCH":"PLACES TO VISIT"}</span><h2>{loading?"Finding places…":visible.length+" places to explore"}</h2></div><span className="live-badge">{added.length} selected</span></div>
-      <p className="places-message">{message}</p>{saveMessage&&<p className="places-message">{saveMessage}</p>}<p className="places-detail-note">Each place card shows the available real-world details from the mapped place record, such as a description, address, opening hours and official or reference links. Details vary by place.</p>
-
-      <div className="places-grid">
-        {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Choose “Entire destination” or try a different category/search.</span></div>}
-        {visible.map(place=><article className={"explore-card"+(added.includes(place.id)?" selected":"")} key={place.id}>
-          <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
-          <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p className="explore-description">{place.description||("A "+place.group.toLowerCase()+" location mapped near "+destination+".")}</p><div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button><a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>{place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}</div></div>
-        </article>)}
+      <div className="places-result-head">
+        <div>
+          <span className="eyebrow">{liveQuery?"LIVE SEARCH":"PLACES TO VISIT"}</span>
+          <h2>{loading?"Finding places…":visible.length+" places to explore"}</h2>
+        </div>
+        <span className="live-badge">{added.length} selected</span>
       </div>
+      <p className="places-message">{message}</p>
+      {saveMessage&&<p className="places-message">{saveMessage}</p>}
+
+      {!loading&&visible.length>0&&(()=>{
+        const recommended:Place[]=[];
+        const used=new Set<string>();
+        for(const group of ["Attraction","History","Nature","Culture","Activity"] as Place["group"][]){
+          const match=visible.find(place=>place.group===group&&!used.has(place.id));
+          if(match){recommended.push(match);used.add(match.id);}
+        }
+        for(const place of visible){
+          if(recommended.length>=12)break;
+          if(!used.has(place.id)){recommended.push(place);used.add(place.id);}
+        }
+        const more=visible.filter(place=>!used.has(place.id));
+        return <>
+          <section className="places-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">START HERE</span>
+                <h2>Places you should consider visiting.</h2>
+                <p>These are the strongest options from Roveo’s live destination discovery. Pick the places that actually interest you — Roveo will use your picks to build each day.</p>
+              </div>
+              <span className="live-badge">{recommended.length} highlights</span>
+            </div>
+            <div className="places-grid">
+              {recommended.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}
+            </div>
+          </section>
+
+          {more.length>0&&<section className="places-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">MORE OPTIONS</span>
+                <h2>More places to go.</h2>
+                <p>Additional attractions, nature spots, landmarks, cultural places and activities found across the destination.</p>
+              </div>
+              <span className="live-badge">{more.length} more</span>
+            </div>
+            <div className="places-grid">
+              {more.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}
+            </div>
+          </section>}
+        </>;
+      })()}
+
+      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Choose “Entire destination” or try a different category/search.</span></div>}
+
+function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
+  const generic=place.description?.startsWith("Popular place to visit in ");
+  const description=generic
+    ? "A "+place.group.toLowerCase()+" worth considering in "+destination+"."
+    : place.description||("A "+place.group.toLowerCase()+" worth considering in "+destination+".");
+  return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
+    <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
+    <div className="explore-body">
+      <div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div>
+      <h3>{place.name}</h3>
+      <p className="explore-description">{description}</p>
+      <div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div>
+      <div className="explore-actions">
+        <button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button>
+        <a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>
+        {place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:///,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
+      </div>
+    </div>
+  </article>;
+}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>
