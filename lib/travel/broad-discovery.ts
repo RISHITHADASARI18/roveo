@@ -259,10 +259,9 @@ async function osmSupplement(
 
 export async function discoverBroadPlaces(
   destination: string,
-  radiusMeters = 50000,
+  _legacyRadiusMeters = 0,
   maxResults = 200,
 ) {
-  const radius = Math.max(Math.round(radiusMeters), 1000);
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
 
   // Resolve the actual destination boundary first. This is deliberately
@@ -273,9 +272,21 @@ export async function discoverBroadPlaces(
     longitude: 0,
   });
 
+  const destinationRadius = initialCoverage.bounds
+    ? Math.min(
+        50000,
+        Math.max(
+          5000,
+          Math.ceil(
+            (Math.max(initialCoverage.heightDegrees, initialCoverage.widthDegrees) * 111000) / 2,
+          ),
+        ),
+      )
+    : 15000;
+
   const primary = await discoverPlaces(
     destination,
-    radius,
+    destinationRadius,
     limit,
     "",
     initialCoverage.bounds,
@@ -299,7 +310,7 @@ export async function discoverBroadPlaces(
           ),
         ),
       )
-    : radius;
+    : destinationRadius;
 
   const perAnchorLimit = Math.min(
     60,
