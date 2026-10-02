@@ -245,14 +245,23 @@ async function osmSupplement(
     const distanceKm = haversineKm(center, { latitude, longitude });
     if (distanceKm > radiusMeters / 1000) continue;
 
+    const rawTypes = place.types.map((type) => String(type).toLowerCase());
+    const searchable = (place.name + " " + rawTypes.join(" ")).toLowerCase();
+
+    // Nominatim is a geocoder, so broad text searches can return ordinary
+    // addresses, roads, shops, businesses, and other records that are not
+    // useful "Places to Explore". Keep only travel-relevant POI categories.
+    const travelType = /tourism|attraction|museum|gallery|viewpoint|theme_park|zoo|aquarium|park|garden|beach|waterfall|monument|memorial|castle|fort|ruins|archaeological|historic|place_of_worship|theatre|arts|nature|peak|cave|water_park/.test(searchable);
+    if (!travelType) continue;
+
     const key = place.name.trim().toLowerCase();
     if (unique.has(key)) continue;
 
     unique.set(key, {
       id: "osm-" + place.id,
       name: place.name,
-      type: place.types[0] || "place",
-      group: groupFor(place.name + " " + place.types.join(" ")),
+      type: rawTypes[0] || "place",
+      group: groupFor(place.name + " " + rawTypes.join(" ")),
       latitude,
       longitude,
       distanceKm,
