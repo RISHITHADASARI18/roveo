@@ -306,13 +306,22 @@ export async function discoverPlaces(
             },
           };
         } else if (discoveryCenter) {
-          body.locationBias = {
+          // Regional discovery passes an anchor deliberately so each Google
+          // request represents a different part of the destination. A bias
+          // still allows Google to return highly ranked places from elsewhere
+          // in the region, which defeats the geographic coverage algorithm.
+          // Use a circle restriction so this request is actually local to the
+          // current anchor.
+          body.locationRestriction = {
             circle: {
               center: {
                 latitude: discoveryCenter.latitude,
                 longitude: discoveryCenter.longitude,
               },
-              radius: Math.min(Math.max(discoveryRadiusMeters ?? 30000, 5000), 50000),
+              radius: Math.min(
+                Math.max(discoveryRadiusMeters ?? 30000, 5000),
+                50000,
+              ),
             },
           };
         }
