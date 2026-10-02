@@ -262,7 +262,7 @@ export async function discoverBroadPlaces(
   radiusMeters = 50000,
   maxResults = 200,
 ) {
-  const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
+  const radius = Math.max(Math.round(radiusMeters), 1000);
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
 
   // Resolve the actual destination boundary first. This is deliberately
@@ -287,7 +287,18 @@ export async function discoverBroadPlaces(
       : await destinationCoverage(destination, primary.center);
 
   const anchorRadius = coverage.regional
-    ? 10000
+    ? Math.min(
+        50000,
+        Math.max(
+          15000,
+          Math.ceil(
+            (Math.sqrt(
+              coverage.heightDegrees ** 2 + coverage.widthDegrees ** 2,
+            ) * 111000) /
+              Math.max(coverage.anchors.length / 2, 1),
+          ),
+        ),
+      )
     : radius;
 
   const perAnchorLimit = Math.min(
@@ -301,12 +312,26 @@ export async function discoverBroadPlaces(
     ),
   );
 
-  const osm = await osmSupplement(
-    destination,
-    primary.center,
-    anchorRadius,
-    Math.min(limit, 100),
-  );
+  const osmResults = coverage.regional
+    ? await Promise.all(
+        coverage.anchors.map((anchor) =>
+          osmSupplement(
+            destination,
+            anchor,
+            anchorRadius,
+            Math.min(20, Math.ceil(limit / coverage.anchors.length)),
+          ),
+        ),
+      )
+    : [
+        await osmSupplement(
+          destination,
+          primary.center,
+          anchorRadius,
+          Math.min(limit, 100),
+        ),
+      ];
+  const osm = osmResults.flat();
   const wiki = wikiByAnchor.flat();
 
   const unique = new Map<string, DiscoveredPlace & {
