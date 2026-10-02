@@ -12,7 +12,19 @@ function km(a:any,b:any){
   return 6371*2*Math.asin(Math.sqrt(x));
 }
 
-const ItineraryMap = dynamic(() => import("./ItineraryMap"), { ssr: false });
+const ItineraryMap = dynamic(() => import("./ItineraryMap"), { ssr:false });
+
+type PlannedPlace = {
+  id:string;
+  name:string;
+  type?:string;
+  category?:string;
+  lat:number;
+  lon:number;
+  startTime?:string;
+  durationMinutes?:number;
+  travelTimeMinutes?:number;
+};
 
 function ItineraryContent(){
   const params=useSearchParams();
@@ -24,132 +36,179 @@ function ItineraryContent(){
   const travel=params.get("travel")||"Car";
   const localTravel=params.get("localTravel")||"Taxi";
   const stay=params.get("stay")||"Hotel";
+  const tripId=params.get("tripId")||"";
 
   const [center,setCenter]=useState<any>(null);
-  const [places,setPlaces]=useState<any[]>([]);
-  const [plans,setPlans]=useState<any[][]>([]);
+  const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
+  const [plans,setPlans]=useState<PlannedPlace[][]>([]);
   const [loading,setLoading]=useState(true);
-  const tripId=params.get("tripId")||"";
-  const [message,setMessage]=useState("Building your itinerary…");
+  const [planning,setPlanning]=useState(false);
+  const [message,setMessage]=useState("Loading your selected places…");
   const [saving,setSaving]=useState(false);
   const [saveMessage,setSaveMessage]=useState("");
   const [routes,setRoutes]=useState<any[]>([]);
   const [routeMessage,setRouteMessage]=useState("");
-
-  useEffect(()=>{
-    let stopped=false;
-    async function load(){
-      if(!destination){setLoading(false);setMessage("No destination was provided.");return;}
-      try{
-        setLoading(true);
-        const geo=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
-        if(!geo.ok)throw new Error("Could not locate the destination.");
-        const results=await geo.json();
-        if(!results[0])throw new Error("Destination was not found.");
-        const point={lat:Number(results[0].lat),lon:Number(results[0].lon)};
-        if(stopped)return;
-        setCenter(point);
-        setMessage("Finding nearby places…");
-
-        const q='[out:json][timeout:45];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park|aquarium|artwork"](around:30000,'+point.lat+','+point.lon+');nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|yes"](around:30000,'+point.lat+','+point.lon+');nwr["leisure"~"park|nature_reserve|garden|beach|water_park"](around:30000,'+point.lat+','+point.lon+');nwr["natural"~"waterfall|peak|cave|beach"](around:30000,'+point.lat+','+point.lon+');nwr["amenity"~"place_of_worship|arts_centre|theatre"](around:30000,'+point.lat+','+point.lon+'););out center tags;';
-        const res=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q));
-        if(!res.ok)throw new Error("Places service is temporarily unavailable.");
-        const data=await res.json();
-
-        const found=(data.elements||[])
-          .map((item:any)=>({
-            id:String(item.type||"x")+"-"+String(item.id),
-            name:item.tags?.name||item.tags?.["name:en"]||"",
-            type:item.tags?.tourism||item.tags?.historic||item.tags?.leisure||item.tags?.natural||item.tags?.amenity||"place",
-            lat:Number(item.lat??item.center?.lat),
-            lon:Number(item.lon??item.center?.lon)
-          }))
-          .filter((p:any)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon))
-          .filter((p:any,i:number,a:any[])=>a.findIndex((x:any)=>x.name.toLowerCase()===p.name.toLowerCase())===i)
-          .sort((a:any,b:any)=>km(point,a)-km(point,b));
-
-        if(stopped)return;
-        setPlaces(found);
-        const per=Math.max(2,Math.min(5,Math.ceil(Math.min(found.length,days*4)/days)));
-        const next=Array.from({length:days},()=>[] as any[]);
-        found.slice(0,days*per).forEach((place:any,index:number)=>next[index%days].push(place));
-        setPlans(next);
-        await loadSavedItinerary();
-        await loadRoutes();
-        setMessage(found.length?"Nearby places have been grouped across your days.":"No mapped places were found nearby.");
-      }catch(error){
-        if(!stopped)setMessage(error instanceof Error?error.message:"Something went wrong.");
-      }finally{
-        if(!stopped)setLoading(false);
-      }
-    }
-    load();
-    return()=>{stopped=true};
-  },[destination,days]);
-
-  const maxPerDay=Math.max(2,Math.min(5,Math.ceil(Math.min(places.length,days*4)/days)));
+  const [plannerReason,setPlannerReason]=useState("");
+  const [selectedCount,setSelectedCount]=useState(0);
 
   async function loadRoutes(){
     if(!tripId)return;
     try{
-      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes");
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{cache:"no-store"});
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Saved route details loaded.":"");
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Real road routes loaded.":"");
     }catch(error){
       setRoutes([]);
       setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
     }
   }
 
-  async function calculateRoutes(){
-    if(!tripId)return;
+  async function loadSavedItinerary(){
+    if(!tripId)return false;
     try{
-      setRouteMessage("Calculating routes between stops…");
-      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({}),
-      });
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
-      setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(data.routeCount?"Real routes calculated and saved.":"No same-day route legs are needed yet.");
-    }catch(error){
-      setRoutes([]);
-      setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{cache:"no-store"});
+      if(!res.ok)return false;
+      const data=await res.json();
+      if(!Array.isArray(data.days)||!data.days.length)return false;
+      const restored=data.days.map((day:any)=>
+        (day.items||[]).map((item:any)=>item.place?{
+          id:String(item.tripPlaceId),
+          name:item.place.name,
+          type:item.place.category||"place",
+          category:item.place.category||"",
+          lat:Number(item.place.latitude),
+          lon:Number(item.place.longitude),
+          startTime:item.startTime||"",
+          durationMinutes:Number(item.durationMinutes)||0,
+          travelTimeMinutes:Number(item.travelTimeMinutes)||0
+        }:null).filter(Boolean)
+      );
+      setPlans(restored);
+      setMessage("Loaded your saved itinerary. Your manual changes are preserved.");
+      return true;
+    }catch{
+      return false;
     }
   }
 
-  async function saveItinerary(){
+  async function buildPlan(){
     if(!tripId){
-      setSaveMessage("This trip has no saved trip ID yet. Please start from the dashboard.");
+      setPlans([]);
+      setLoading(false);
+      setMessage("Open this page from a saved trip so Roveo can use the places you selected.");
       return;
     }
+
+    setPlanning(true);
+    setMessage("Grouping your selected places by area and building each day…");
+    try{
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary/plan",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({days})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not build the smart itinerary.");
+
+      setSelectedCount(Number(data.selectedPlaceCount)||0);
+      setPlannerReason(String(data.planner?.message||""));
+      const next=(data.days||[]).map((day:any)=>
+        (day.items||[]).map((place:any)=>({
+          id:String(place.id),
+          name:String(place.name),
+          type:place.category||"place",
+          category:place.category||"",
+          lat:Number(place.latitude),
+          lon:Number(place.longitude),
+          startTime:place.startTime,
+          durationMinutes:Number(place.durationMinutes)||0,
+          travelTimeMinutes:Number(place.travelTimeMinutes)||0
+        }))
+      );
+      setPlans(next);
+      if(!data.selectedPlaceCount){
+        setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
+      }else{
+        setMessage("Smart plan ready — nearby places are grouped together and each day is ordered to reduce backtracking.");
+      }
+    }catch(error){
+      setMessage(error instanceof Error?error.message:"Could not build the smart itinerary.");
+      setPlans([]);
+    }finally{
+      setPlanning(false);
+      setLoading(false);
+    }
+  }
+
+  useEffect(()=>{
+    let cancelled=false;
+    async function load(){
+      if(!destination){setLoading(false);setMessage("No destination was provided.");return;}
+      try{
+        const geo=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
+        if(!geo.ok)throw new Error("Could not locate the destination.");
+        const results=await geo.json();
+        if(!results[0])throw new Error("Destination was not found.");
+        if(cancelled)return;
+        setCenter({lat:Number(results[0].lat),lon:Number(results[0].lon)});
+
+        if(!tripId){
+          setLoading(false);
+          setMessage("Open this page from a saved trip so Roveo can use your selected places.");
+          return;
+        }
+
+        const saved=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/places",{cache:"no-store"});
+        const savedData=await saved.json().catch(()=>({}));
+        if(!saved.ok)throw new Error(savedData.error||"Could not load your selected places.");
+
+        const mapped=(savedData.places||[]).map((place:any)=>({
+          id:String(place.id),
+          name:String(place.name),
+          type:place.category||"place",
+          category:place.category||"",
+          lat:Number(place.latitude),
+          lon:Number(place.longitude)
+        })).filter((place:any)=>Number.isFinite(place.lat)&&Number.isFinite(place.lon));
+
+        if(cancelled)return;
+        setSelectedPlaces(mapped);
+        setSelectedCount(mapped.length);
+
+        const savedItinerary=await loadSavedItinerary();
+        if(cancelled)return;
+
+        if(!savedItinerary)await buildPlan();
+        await loadRoutes();
+      }catch(error){
+        if(!cancelled){
+          setLoading(false);
+          setMessage(error instanceof Error?error.message:"Something went wrong.");
+        }
+      }
+    }
+    load();
+    return()=>{cancelled=true};
+  },[destination,tripId,days]);
+
+  async function saveItinerary(){
+    if(!tripId)return;
     setSaving(true);
     setSaveMessage("");
     try{
-      const savedPlaces=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/places");
-      if(!savedPlaces.ok)throw new Error("Could not load saved places for this trip.");
-      const placeData=await savedPlaces.json();
-      const byProviderId=new Map<string,any>();
-      const byName=new Map<string,any>();
-      for(const place of placeData.places||[]){
-        if(place.providerPlaceId)byProviderId.set(String(place.providerPlaceId),place);
-        byName.set(String(place.name).toLowerCase(),place);
-      }
       const payloadDays=plans.map((items,dayIndex)=>({
         dayNumber:dayIndex+1,
-        items:items.map((place:any,index:number)=>{
-          const saved=byProviderId.get(String(place.id))||byName.get(String(place.name).toLowerCase());
-          if(!saved)throw new Error("Save the places from the Explore page before saving this itinerary.");
-          return {
-            tripPlaceId:Number(saved.id),
-            position:index+1
-          };
-        })
+        items:items.map((place,index)=>({
+          tripPlaceId:Number(place.id),
+          position:index+1,
+          startTime:place.startTime||null,
+          durationMinutes:place.durationMinutes||null,
+          travelTimeMinutes:place.travelTimeMinutes||0
+        }))
       }));
+
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{
         method:"PUT",
         headers:{"Content-Type":"application/json"},
@@ -157,8 +216,10 @@ function ItineraryContent(){
       });
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not save the itinerary.");
+
       setSaveMessage("Itinerary saved to your trip.");
-      await calculateRoutes();
+      await loadRoutes();
+      if(!routes.length)await calculateRoutes();
     }catch(error){
       setSaveMessage(error instanceof Error?error.message:"Could not save the itinerary.");
     }finally{
@@ -166,54 +227,49 @@ function ItineraryContent(){
     }
   }
 
-  async function loadSavedItinerary(){
+  async function calculateRoutes(){
     if(!tripId)return;
     try{
-      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary");
-      if(!res.ok)return;
-      const data=await res.json();
-      if(!Array.isArray(data.days)||!data.days.length)return;
-      const restored=data.days.map((day:any)=>({
-        ...day,
-        items:(day.items||[]).map((item:any)=>item.place?{
-          id:String(item.tripPlaceId),
-          name:item.place.name,
-          type:item.place.category||"place",
-          lat:Number(item.place.latitude),
-          lon:Number(item.place.longitude)
-        }:null).filter(Boolean)
-      }));
-      setPlans(restored.map((day:any)=>day.items));
-      setMessage("Loaded your saved itinerary.");
-    }catch{
-      // Keep the generated itinerary if the saved version cannot be loaded.
+      setRouteMessage("Calculating real road routes between same-day stops…");
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
+      setRoutes(Array.isArray(data.routes)?data.routes:[]);
+      setRouteMessage(data.routeCount?"Real road routes calculated and saved.":"No same-day route legs are needed yet.");
+    }catch(error){
+      setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
     }
   }
-  const planned=plans.flat();
 
   function remove(day:number,id:string){
-    setPlans(current=>current.map((items,index)=>index===day?items.filter((p:any)=>p.id!==id):items));
+    setPlans(current=>current.map((items,index)=>index===day?items.filter(place=>place.id!==id):items));
   }
 
   function move(from:number,id:string,to:number){
-    const place=plans[from]?.find((p:any)=>p.id===id);
-    if(!place||plans[to]?.length>=maxPerDay)return;
-    setPlans(current=>current.map((items,index)=>index===from?items.filter((p:any)=>p.id!==id):index===to?[...items,place]:items));
+    if(to<0||to>=plans.length)return;
+    const place=plans[from]?.find(item=>item.id===id);
+    if(!place)return;
+    setPlans(current=>current.map((items,index)=>{
+      if(index===from)return items.filter(item=>item.id!==id);
+      if(index===to)return [...items,place];
+      return items;
+    }));
   }
 
-  function regenerate(day:number){
-    const replacement=places.filter((p:any)=>!plans.flatMap((items,index)=>index===day?[]:items).some((x:any)=>x.id===p.id)).slice(0,maxPerDay);
-    setPlans(current=>current.map((items,index)=>index===day?replacement:items));
-  }
-
-  const mapPlaces=plans.flatMap((items,dayIndex)=>items.map((place:any,index:number)=>({
+  const planned=plans.flat();
+  const unplanned=selectedPlaces.filter(place=>!planned.some(item=>item.id===place.id));
+  const mapPlaces=plans.flatMap((items,dayIndex)=>items.map((place,index)=>({
     id:String(place.id),
     name:place.name,
     type:place.type,
-    lat:Number(place.lat),
-    lon:Number(place.lon),
+    lat:place.lat,
+    lon:place.lon,
     day:dayIndex+1,
-    order:index+1,
+    order:index+1
   })));
   const formattedBudget=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget);
 
@@ -236,28 +292,46 @@ function ItineraryContent(){
     <section className="itinerary-layout">
       <div className="itinerary-main">
         <div className="itinerary-intro">
-          <div><span className="eyebrow">YOUR RECOMMENDED ITINERARY</span><h2>We planned the places for you.</h2><p>{loading?message:"Roveo automatically selects nearby places and groups them into each day to reduce unnecessary travel."}</p></div>
-          <div className="itinerary-count"><strong>{planned.length}</strong><span>places planned</span></div>
+          <div>
+            <span className="eyebrow">YOUR RECOMMENDED ITINERARY</span>
+            <h2>Roveo plans the day, not just the list.</h2>
+            <p>{loading||planning?message:plannerReason||message}</p>
+          </div>
+          <div className="itinerary-count"><strong>{planned.length}</strong><span>of {selectedCount} selected places planned</span></div>
         </div>
 
-        {loading&&<div className="itinerary-loading">{message}</div>}
-        {!loading&&!plans.length&&<div className="itinerary-loading">{message}</div>}
+        {!loading&&!planning&&!tripId&&<div className="itinerary-loading">{message}</div>}
+        {!loading&&!planning&&tripId&&!selectedCount&&<div className="itinerary-loading"><strong>No places selected yet.</strong><br/>Go to Places to Explore, add the places you actually want, then return here.</div>}
 
-        <div className="itinerary-save-row"><button type="button" className="primary-button" onClick={saveItinerary} disabled={saving}>{saving?"Saving…":"Save itinerary"}</button>{saveMessage&&<span>{saveMessage}</span>}{routeMessage&&<span>{routeMessage}</span>}</div>
+        <div className="itinerary-save-row">
+          <button type="button" className="primary-button" onClick={buildPlan} disabled={planning||loading||!tripId||!selectedCount}>{planning?"Planning…":"↻ Rebuild smart plan"}</button>
+          <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length}>{saving?"Saving…":"Save itinerary"}</button>
+          {saveMessage&&<span>{saveMessage}</span>}
+          {routeMessage&&<span>{routeMessage}</span>}
+        </div>
+
+        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
-            const total=items.length>1?items.slice(1).reduce((sum:number,p:any,index:number)=>sum+km(items[index],p),0):0;
+            const total=items.length>1?items.slice(1).reduce((sum,place,index)=>sum+km(items[index],place),0):0;
+            const dayTitle=day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time";
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
-                <div><span className="day-number">DAY {day+1}</span><h3>{day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time"}</h3></div>
+                <div><span className="day-number">DAY {day+1}</span><h3>{dayTitle}</h3></div>
                 <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km between stops</span></div>
               </div>
 
+              <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
+
               <div className="planned-place-list">
-                {items.map((place:any,index:number)=><div className="planned-place" key={place.id}>
+                {items.map((place,index)=><div className="planned-place" key={place.id}>
                   <div className="place-order">{index+1}</div>
-                  <div><strong>{place.name}</strong><small>{String(place.type).replaceAll("_"," ")}</small></div>
+                  <div>
+                    <strong>{place.name}</strong>
+                    <small>{place.startTime||"Flexible time"} · {place.durationMinutes||90} min · {place.type||"place"}</small>
+                    {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
+                  </div>
                   <div className="place-actions">
                     <button type="button" onClick={()=>remove(day,place.id)}>Remove</button>
                     {day>0&&<button type="button" onClick={()=>move(day,place.id,day-1)}>← Day {day}</button>}
@@ -266,11 +340,10 @@ function ItineraryContent(){
                 </div>)}
               </div>
 
-              {!items.length&&<p className="empty-day">No places planned for this day yet.</p>}
+              {!items.length&&<p className="empty-day">No selected places are assigned to this day.</p>}
 
               <div className="day-footer">
-                <span className="auto-plan-note">✓ Roveo selected these places automatically</span>
-                <button type="button" onClick={()=>regenerate(day)}>↻ Regenerate day</button>
+                <span className="auto-plan-note">✓ Places are grouped by proximity to reduce wasted local travel</span>
               </div>
             </article>;
           })}
@@ -279,7 +352,7 @@ function ItineraryContent(){
 
       <aside className="itinerary-side">
         <div className="itinerary-map-card">
-          <span className="eyebrow">03 · MAP</span><h2>Your trip area</h2>
+          <span className="eyebrow">03 · ROUTE MAP</span><h2>See the plan spatially.</h2>
           {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
           {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
         </div>
@@ -292,6 +365,13 @@ function ItineraryContent(){
           <div><span>Getting around</span><strong>{localTravel}</strong></div>
           <div><span>Travellers</span><strong>{people}</strong></div>
           <div><span>Budget</span><strong>₹{formattedBudget}</strong></div>
+        </div>
+
+        <div className="budget-breakdown">
+          <span className="eyebrow">05 · ROVEO LOGIC</span>
+          <h2>Less travel. More exploring.</h2>
+          <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
+          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
         </div>
       </aside>
     </section>
