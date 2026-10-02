@@ -66,7 +66,7 @@ function PlacesContent(){
   const [category,setCategory]=useState("all");
   const [search,setSearch]=useState("");
   const [liveQuery,setLiveQuery]=useState("");
-  const [radius,setRadius]=useState("30");
+  const [radius,setRadius]=useState("destination");
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Finding places around your destination…");
   const tripId=params.get("tripId")||"";
@@ -162,7 +162,7 @@ function PlacesContent(){
 
   const visible=useMemo(()=>places.filter(p=>
     (category==="all"||p.group===category)&&
-    p.distance<=Number(radius)&&
+    (radius==="destination"||p.distance<=Number(radius))&&
     p.name.toLowerCase().includes(search.toLowerCase())
   ),[places,category,radius,search]);
 
@@ -235,7 +235,7 @@ function PlacesContent(){
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter the places Roveo found…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
         <div className="filter-row">
           {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
-          <label className="radius-filter">Within<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option><option value="30">30 km</option></select></label>
+          <label className="radius-filter">Show<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="destination">Entire destination</option><option value="5">Within 5 km</option><option value="10">Within 10 km</option><option value="20">Within 20 km</option><option value="30">Within 30 km</option></select></label>
         </div>
       </div>
 
@@ -245,7 +245,7 @@ function PlacesContent(){
       <p className="places-message">{message}</p>{saveMessage&&<p className="places-message">{saveMessage}</p>}<p className="places-detail-note">Each place card shows the available real-world details from the mapped place record, such as a description, address, opening hours and official or reference links. Details vary by place.</p>
 
       <div className="places-grid">
-        {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a wider radius or a different category/search.</span></div>}
+        {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Choose “Entire destination” or try a different category/search.</span></div>}
         {visible.map(place=><article className={"explore-card"+(added.includes(place.id)?" selected":"")} key={place.id}>
           <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
           <div className="explore-body"><div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div><h3>{place.name}</h3><p className="explore-description">{place.description||("A "+place.group.toLowerCase()+" location mapped near "+destination+".")}</p><div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div><div className="explore-actions"><button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button><a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>{place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}</div></div>
