@@ -73,7 +73,6 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       limit: "1",
       q: destination,
       addressdetails: "1",
-      polygon_geojson: "1",
     });
     const response = await fetch(
       "https://nominatim.openstreetmap.org/search?" + params.toString(),
@@ -103,18 +102,52 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     const heightDegrees = Math.abs(north - south);
     const widthDegrees = Math.abs(east - west);
     const maxDimension = Math.max(heightDegrees, widthDegrees);
-
-    const geometry = first?.geojson?.type === "Polygon" || first?.geojson?.type === "MultiPolygon"
-      ? first.geojson as GeoJsonGeometry
-      : undefined;
+    const geocodedCenter = {
+      latitude: Number(first?.lat),
+      longitude: Number(first?.lon),
+    };
+    if (!Number.isFinite(geocodedCenter.latitude) || !Number.isFinite(geocodedCenter.longitude)) {
+      return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
+    }
 
     const addressType = String(first?.addresstype ?? first?.type ?? "").toLowerCase();
     const regionalType = /state|country|region|county|province|territory|district/.test(addressType);
     const regional = regionalType || maxDimension >= 1.2;
 
+    let geometry: GeoJsonGeometry | undefined;
+    if (regional) {
+      try {
+        const geometryParams = new URLSearchParams({
+          format: "jsonv2",
+          limit: "1",
+          q: destination,
+          polygon_geojson: "1",
+        });
+        const geometryResponse = await fetch(
+          "https://nominatim.openstreetmap.org/search?" + geometryParams.toString(),
+          {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Roveo/1.0 (travel planner; destination boundary)",
+            },
+            cache: "no-store",
+          },
+        );
+        if (geometryResponse.ok) {
+          const geometryData = await geometryResponse.json();
+          const geometryFirst = Array.isArray(geometryData) ? geometryData[0] : null;
+          if (geometryFirst?.geojson?.type === "Polygon" || geometryFirst?.geojson?.type === "MultiPolygon") {
+            geometry = geometryFirst.geojson as GeoJsonGeometry;
+          }
+        }
+      } catch {
+        // Bounding-box filtering remains available when boundary geometry is unavailable.
+      }
+    }
+
     if (!regional) {
       return {
-        anchors: [fallback],
+        anchors: [geocodedCenter],
         regional: false,
         heightDegrees,
         widthDegrees,
@@ -147,7 +180,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
 
     // Keep the destination's geocoded center in the coverage set when it is
     // not already represented by a grid cell.
-    points.push(fallback);
+    points.push(geocodedCenter);
 
     const unique = new Map<string, Coordinates>();
     for (const point of points) {
@@ -343,19 +376,6 @@ export async function discoverBroadPlaces(
     }
     return true;
   };
-
-  const anchorRadiusForCoverage = (value: Coverage) => value.regional
-    ? Math.min(
-        50000,
-        Math.max(
-          15000,
-          Math.ceil(
-            (Math.sqrt(value.heightDegrees ** 2 + value.widthDegrees ** 2) * 111000) /
-              Math.max(value.anchors.length / 2, 1),
-          ),
-        ),
-      )
-    : destinationRadius;
 
   // Regional destinations need geographically distributed Google searches.
   // A single boundary-wide query is dominated by the places Google ranks most
