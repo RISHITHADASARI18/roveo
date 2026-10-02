@@ -22,12 +22,48 @@ function groupFor(text: string): DiscoveredPlace["group"] {
   return "Activity";
 }
 
+type GeoJsonGeometry =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] };
+
+function pointInRing(point: Coordinates, ring: number[][]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i += 1) {
+    const xi = Number(ring[i]?.[0]);
+    const yi = Number(ring[i]?.[1]);
+    const xj = Number(ring[j]?.[0]);
+    const yj = Number(ring[j]?.[1]);
+    if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
+
+    const intersects =
+      (yi > point.latitude) !== (yj > point.latitude) &&
+      point.longitude < ((xj - xi) * (point.latitude - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInPolygon(point: Coordinates, rings: number[][][]) {
+  if (!rings.length || !pointInRing(point, rings[0])) return false;
+  for (let i = 1; i < rings.length; i += 1) {
+    if (pointInRing(point, rings[i])) return false;
+  }
+  return true;
+}
+
+function pointInGeometry(point: Coordinates, geometry?: GeoJsonGeometry) {
+  if (!geometry) return false;
+  if (geometry.type === "Polygon") return pointInPolygon(point, geometry.coordinates);
+  return geometry.coordinates.some((polygon) => pointInPolygon(point, polygon));
+}
+
 type Coverage = {
   anchors: Coordinates[];
   regional: boolean;
   heightDegrees: number;
   widthDegrees: number;
   bounds?: { south: number; north: number; west: number; east: number };
+  geometry?: GeoJsonGeometry;
 };
 
 async function destinationCoverage(destination: string, fallback: Coordinates): Promise<Coverage> {
@@ -37,6 +73,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       limit: "1",
       q: destination,
       addressdetails: "1",
+      polygon_geojson: "1",
     });
     const response = await fetch(
       "https://nominatim.openstreetmap.org/search?" + params.toString(),
@@ -67,6 +104,10 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     const widthDegrees = Math.abs(east - west);
     const maxDimension = Math.max(heightDegrees, widthDegrees);
 
+    const geometry = first?.geojson?.type === "Polygon" || first?.geojson?.type === "MultiPolygon"
+      ? first.geojson as GeoJsonGeometry
+      : undefined;
+
     const addressType = String(first?.addresstype ?? first?.type ?? "").toLowerCase();
     const regionalType = /state|country|region|county|province|territory|district/.test(addressType);
     const regional = regionalType || maxDimension >= 1.2;
@@ -78,6 +119,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
         heightDegrees,
         widthDegrees,
         bounds: { south, north, west, east },
+        geometry,
       };
     }
 
@@ -121,6 +163,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       heightDegrees,
       widthDegrees,
       bounds: { south, north, west, east },
+      geometry,
     };
   } catch {
     return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
@@ -287,6 +330,20 @@ export async function discoverBroadPlaces(
 
   const coverage = initialCoverage;
 
+  // Search providers use rectangular restrictions/radius around anchors, so
+  // their results can cross the destination boundary. Enforce the actual
+  // Nominatim boundary again after merging every provider's results.
+  const isInsideDestination = (place: DiscoveredPlace) => {
+    const point = { latitude: place.latitude, longitude: place.longitude };
+    if (coverage.geometry) return pointInGeometry(point, coverage.geometry);
+    if (coverage.bounds) {
+      const { south, north, west, east } = coverage.bounds;
+      return point.latitude >= south && point.latitude <= north &&
+        point.longitude >= west && point.longitude <= east;
+    }
+    return true;
+  };
+
   const anchorRadiusForCoverage = (value: Coverage) => value.regional
     ? Math.min(
         50000,
@@ -423,6 +480,11 @@ export async function discoverBroadPlaces(
       .trim();
 
     if (!key) return;
+
+    // This is the final geographic gate. It applies equally to Google,
+    // Wikipedia, and OpenStreetMap results, so no provider can leak a nearby
+    // place from another state/country into the destination list.
+    if (!isInsideDestination(place)) return;
 
     const coverageDistanceKm = coverage.regional
       ? Math.min(
