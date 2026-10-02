@@ -24,8 +24,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!trip.rows[0]) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
     const result = desiredQuery
-      ? await discoverPlaces(String(trip.rows[0].destination), 50000, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery)
-      : await discoverBroadPlaces(String(trip.rows[0].destination), 50000, Math.min(Math.max(Math.round(maxResults), 1), 250));
+      ? await discoverBroadPlaces(String(trip.rows[0].destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery)
+      : await discoverBroadPlaces(String(trip.rows[0].destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 250));
 
     return NextResponse.json({ tripId, destination: trip.rows[0].destination, ...result });
   } catch (error) {
