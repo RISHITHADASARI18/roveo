@@ -55,6 +55,28 @@ function classify(tags:any):Place["group"]{
 }
 
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
+function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
+  const generic=place.description?.startsWith("Popular place to visit in ");
+  const description=generic
+    ? "A "+place.group.toLowerCase()+" worth considering in "+destination+"."
+    : place.description||("A "+place.group.toLowerCase()+" worth considering in "+destination+".");
+  return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
+    <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
+    <div className="explore-body">
+      <div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div>
+      <h3>{place.name}</h3>
+      <p className="explore-description">{description}</p>
+      <div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div>
+      <div className="explore-actions">
+        <button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button>
+        <a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>
+        {place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
+      </div>
+    </div>
+  </article>;
+}
+
+
 function PlacesContent(){
   const params=useSearchParams();
   const destination=params.get("destination")||"";
@@ -295,27 +317,6 @@ function PlacesContent(){
       })()}
 
       {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Choose “Entire destination” or try a different category/search.</span></div>}
-
-function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
-  const generic=place.description?.startsWith("Popular place to visit in ");
-  const description=generic
-    ? "A "+place.group.toLowerCase()+" worth considering in "+destination+"."
-    : place.description||("A "+place.group.toLowerCase()+" worth considering in "+destination+".");
-  return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
-    <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
-    <div className="explore-body">
-      <div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div>
-      <h3>{place.name}</h3>
-      <p className="explore-description">{description}</p>
-      <div className="explore-facts">{place.address&&<span>📍 {place.address}</span>}{place.openingHours&&<span>🕒 {place.openingHours}</span>}</div>
-      <div className="explore-actions">
-        <button type="button" onClick={()=>toggleAdd(place.id)} disabled={savingId===place.id}>{savingId===place.id?"Saving…":added.includes(place.id)?"✓ Saved to trip":"+ Add to trip"}</button>
-        <a href={place.website||("https://www.openstreetmap.org/?mlat="+place.lat+"&mlon="+place.lon+"#map=17/"+place.lat+"/"+place.lon)} target="_blank" rel="noreferrer">{place.website?"Official site ↗":"View map ↗"}</a>
-        {place.wikipedia&&<a href={"https://"+place.wikipedia.replace(/^https?:\/\//,"")} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
-      </div>
-    </div>
-  </article>;
-}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>
