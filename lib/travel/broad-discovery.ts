@@ -28,7 +28,7 @@ type GeoJsonGeometry =
 
 function pointInRing(point: Coordinates, ring: number[][]) {
   let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i += 1) {
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const xi = Number(ring[i]?.[0]);
     const yi = Number(ring[i]?.[1]);
     const xj = Number(ring[j]?.[0]);
