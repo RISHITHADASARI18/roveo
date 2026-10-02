@@ -261,6 +261,7 @@ export async function discoverBroadPlaces(
   destination: string,
   _legacyRadiusMeters = 0,
   maxResults = 200,
+  desiredQuery = "",
 ) {
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
 
@@ -288,7 +289,7 @@ export async function discoverBroadPlaces(
     destination,
     destinationRadius,
     limit,
-    "",
+    desiredQuery,
     initialCoverage.bounds,
   );
 
