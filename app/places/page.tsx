@@ -86,7 +86,6 @@ function PlacesContent(){
   const [category,setCategory]=useState("all");
   const [search,setSearch]=useState("");
   const [liveQuery,setLiveQuery]=useState("");
-  const [radius,setRadius]=useState("destination");
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Finding places around your destination…");
   const tripId=params.get("tripId")||"";
@@ -131,8 +130,8 @@ function PlacesContent(){
 
         const res=await fetch(
           (tripId
-            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius==="destination"?"50":radius)+"&maxResults=200"
-            : "/api/places/discover?destination="+encodeURIComponent(destination)+"&radiusKm="+encodeURIComponent(radius)+"&maxResults=200")
+            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=200"
+            : "/api/places/discover?destination="+encodeURIComponent(destination)+"&maxResults=200")
             +(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
           {cache:"no-store"}
         );
@@ -178,11 +177,10 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destination,tripId,radius,liveQuery]);
+  },[destination,tripId,liveQuery]);
 
   const visible=useMemo(()=>places.filter(p=>
     (category==="all"||p.group===category)&&
-    (radius==="destination"||p.distance<=Number(radius))&&
     p.name.toLowerCase().includes(search.toLowerCase())
   ),[places,category,radius,search]);
 
@@ -255,7 +253,6 @@ function PlacesContent(){
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter the places Roveo found…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
         <div className="filter-row">
           {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
-          <label className="radius-filter">Show<select value={radius} onChange={e=>setRadius(e.target.value)}><option value="destination">Entire destination</option><option value="5">Within 5 km</option><option value="10">Within 10 km</option><option value="20">Within 20 km</option><option value="30">Within 30 km</option></select></label>
         </div>
       </div>
 
