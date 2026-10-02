@@ -184,9 +184,12 @@ async function osmSupplement(
   const unique = new Map<string, DiscoveredPlace>();
   for (const place of results.flat()) {
     if (!place.name || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) continue;
+    const latitude = place.latitude;
+    const longitude = place.longitude;
+    if (typeof latitude !== "number" || typeof longitude !== "number") continue;
     const distanceKm = haversineKm(center, {
-      latitude: place.latitude,
-      longitude: place.longitude,
+      latitude,
+      longitude,
     });
     if (distanceKm > radiusMeters / 1000) continue;
 
@@ -198,8 +201,8 @@ async function osmSupplement(
       name: place.name,
       type: place.types[0] || "place",
       group: groupFor(place.name + " " + place.types.join(" ")),
-      latitude: place.latitude,
-      longitude: place.longitude,
+      latitude,
+      longitude,
       distanceKm,
       description: place.address || "Place discovered from OpenStreetMap.",
       address: place.address,
