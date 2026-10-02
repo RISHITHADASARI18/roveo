@@ -111,7 +111,7 @@ function PlacesContent(){
 
         const res=await fetch(
           (tripId
-            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius)+"&maxResults=200"
+            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?radiusKm="+encodeURIComponent(radius==="destination"?"50":radius)+"&maxResults=200"
             : "/api/places/discover?destination="+encodeURIComponent(destination)+"&radiusKm="+encodeURIComponent(radius)+"&maxResults=200")
             +(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
           {cache:"no-store"}
