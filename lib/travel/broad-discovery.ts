@@ -22,48 +22,12 @@ function groupFor(text: string): DiscoveredPlace["group"] {
   return "Activity";
 }
 
-type GeoJsonGeometry =
-  | { type: "Polygon"; coordinates: number[][][] }
-  | { type: "MultiPolygon"; coordinates: number[][][][] };
-
-function pointInRing(point: Coordinates, ring: number[][]) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = Number(ring[i]?.[0]);
-    const yi = Number(ring[i]?.[1]);
-    const xj = Number(ring[j]?.[0]);
-    const yj = Number(ring[j]?.[1]);
-    if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
-
-    const intersects =
-      (yi > point.latitude) !== (yj > point.latitude) &&
-      point.longitude < ((xj - xi) * (point.latitude - yi)) / (yj - yi) + xi;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
-function pointInPolygon(point: Coordinates, rings: number[][][]) {
-  if (!rings.length || !pointInRing(point, rings[0])) return false;
-  for (let i = 1; i < rings.length; i += 1) {
-    if (pointInRing(point, rings[i])) return false;
-  }
-  return true;
-}
-
-function pointInGeometry(point: Coordinates, geometry?: GeoJsonGeometry) {
-  if (!geometry) return false;
-  if (geometry.type === "Polygon") return pointInPolygon(point, geometry.coordinates);
-  return geometry.coordinates.some((polygon) => pointInPolygon(point, polygon));
-}
-
 type Coverage = {
   anchors: Coordinates[];
   regional: boolean;
   heightDegrees: number;
   widthDegrees: number;
   bounds?: { south: number; north: number; west: number; east: number };
-  geometry?: GeoJsonGeometry;
 };
 
 async function destinationCoverage(destination: string, fallback: Coordinates): Promise<Coverage> {
@@ -114,37 +78,6 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     const regionalType = /state|country|region|county|province|territory|district/.test(addressType);
     const regional = regionalType || maxDimension >= 1.2;
 
-    let geometry: GeoJsonGeometry | undefined;
-    if (regional) {
-      try {
-        const geometryParams = new URLSearchParams({
-          format: "jsonv2",
-          limit: "1",
-          q: destination,
-          polygon_geojson: "1",
-        });
-        const geometryResponse = await fetch(
-          "https://nominatim.openstreetmap.org/search?" + geometryParams.toString(),
-          {
-            headers: {
-              Accept: "application/json",
-              "User-Agent": "Roveo/1.0 (travel planner; destination boundary)",
-            },
-            cache: "no-store",
-          },
-        );
-        if (geometryResponse.ok) {
-          const geometryData = await geometryResponse.json();
-          const geometryFirst = Array.isArray(geometryData) ? geometryData[0] : null;
-          if (geometryFirst?.geojson?.type === "Polygon" || geometryFirst?.geojson?.type === "MultiPolygon") {
-            geometry = geometryFirst.geojson as GeoJsonGeometry;
-          }
-        }
-      } catch {
-        // Bounding-box filtering remains available when boundary geometry is unavailable.
-      }
-    }
-
     if (!regional) {
       return {
         anchors: [geocodedCenter],
@@ -152,7 +85,6 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
         heightDegrees,
         widthDegrees,
         bounds: { south, north, west, east },
-        geometry,
       };
     }
 
@@ -196,7 +128,6 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       heightDegrees,
       widthDegrees,
       bounds: { south, north, west, east },
-      geometry,
     };
   } catch {
     return { anchors: [fallback], regional: false, heightDegrees: 0, widthDegrees: 0 };
@@ -363,20 +294,16 @@ export async function discoverBroadPlaces(
 
   const coverage = initialCoverage;
 
-  // Search providers use rectangular restrictions/radius around anchors, so
-  // their results can cross the destination boundary. Enforce the actual
-  // Nominatim boundary again after merging every provider's results.
+  // Search providers use rectangles/radii around anchors. Enforce the
+  // destination's geocoded bounding box again after merging every provider's
+  // result so a nearby place from another region cannot leak into the list.
   const isInsideDestination = (place: DiscoveredPlace) => {
     const point = { latitude: place.latitude, longitude: place.longitude };
-    if (coverage.geometry) return pointInGeometry(point, coverage.geometry);
-    if (coverage.bounds) {
-      const { south, north, west, east } = coverage.bounds;
-      return point.latitude >= south && point.latitude <= north &&
-        point.longitude >= west && point.longitude <= east;
-    }
-    return true;
+    if (!coverage.bounds) return true;
+    const { south, north, west, east } = coverage.bounds;
+    return point.latitude >= south && point.latitude <= north &&
+      point.longitude >= west && point.longitude <= east;
   };
-
   // Regional destinations need geographically distributed Google searches.
   // A single boundary-wide query is dominated by the places Google ranks most
   // highly in one area. Search a small, evenly sampled set of coverage anchors
