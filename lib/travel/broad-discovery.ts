@@ -81,7 +81,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       };
     }
 
-    // Destination size, not an arbitrary search radius, determines resolvedCoverage.
+    // Destination size, not an arbitrary search radius, determines coverage.
     // Generate a small adaptive grid so a whole state/region is explored
     // across multiple areas instead of around one geocoded center.
     const aspect = widthDegrees / Math.max(heightDegrees, 0.25);
