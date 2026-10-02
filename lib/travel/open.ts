@@ -136,6 +136,8 @@ export async function discoverPlaces(
   maxResults = 200,
   desiredQuery = "",
   destinationBounds?: { south: number; north: number; west: number; east: number },
+  discoveryCenter?: Coordinates,
+  discoveryRadiusMeters?: number,
 ): Promise<PlaceDiscoveryResult> {
   const radius = Math.min(Math.max(Math.round(radiusMeters), 1000), 50000);
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
@@ -301,6 +303,16 @@ export async function discoverPlaces(
                 latitude: destinationBounds.north,
                 longitude: destinationBounds.east,
               },
+            },
+          };
+        } else if (discoveryCenter) {
+          body.locationBias = {
+            circle: {
+              center: {
+                latitude: discoveryCenter.latitude,
+                longitude: discoveryCenter.longitude,
+              },
+              radius: Math.min(Math.max(discoveryRadiusMeters ?? 30000, 5000), 50000),
             },
           };
         }
