@@ -1,6 +1,22 @@
 import { discoverPlaces, openTravelProvider } from "./open";
 import type { Coordinates, DiscoveredPlace } from "./types";
 
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 3500,
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function haversineKm(a: Coordinates, b: Coordinates) {
   const p = Math.PI / 180;
   const dLat = (b.latitude - a.latitude) * p;
