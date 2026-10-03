@@ -6,7 +6,7 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
 ];
 
-type Bounds = { south: number; north: number; west: number; east: number };
+type Bounds = { south: number; north: number; west: number; east: number };\ntype DestinationCoverage = { center: Coordinates; bounds?: Bounds };
 
 function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController();
@@ -24,6 +24,7 @@ function haversineKm(a: Coordinates, b: Coordinates) {
 }
 
 function groupFor(text: string): DiscoveredPlace["group"] {
+
   const value = text.toLowerCase();
   if (/museum|gallery|temple|church|mosque|worship|theatre|cultural|art/.test(value)) return "Culture";
   if (/fort|palace|monument|historic|heritage|memorial|ruin|castle|archaeological/.test(value)) return "History";
@@ -42,7 +43,7 @@ function insideBounds(point: Coordinates, bounds?: Bounds) {
     point.longitude >= bounds.west && point.longitude <= bounds.east;
 }
 
-async function destinationCoverage(destination: string, fallback: Coordinates) {
+async function destinationCoverage(destination: string, fallback: Coordinates): Promise<DestinationCoverage> {
   try {
     const params = new URLSearchParams({
       q: destination, format: "jsonv2", limit: "1", addressdetails: "1", "accept-language": "en",
@@ -140,7 +141,13 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
           wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
           address: address || undefined,
           openingHours: String(tags.opening_hours ?? "").trim() || undefined,
-        } as DiscoveredPlace;
+          _importance: String(tags.wikidata ?? "").trim() ? 20 : 0,
+          _tourism: String(tags.tourism ?? "").trim(),
+          _historic: String(tags.historic ?? "").trim(),
+          _natural: String(tags.natural ?? "").trim(),
+          _leisure: String(tags.leisure ?? "").trim(),
+          _heritage: String(tags.heritage ?? tags["heritage:operator"] ?? "").trim(),
+        } as DiscoveredPlace & Record<string, unknown>;
       }).filter(Boolean) as DiscoveredPlace[];
     } catch {
       // Try the next public Overpass endpoint.
@@ -176,7 +183,10 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
         latitude, longitude, distanceKm: haversineKm(center, { latitude, longitude }),
         description: "Named destination place from Wikipedia.",
         website: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
-      } as DiscoveredPlace;
+        wikipedia: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
+        _importance: 35,
+        _wikipedia: true,
+      } as DiscoveredPlace & Record<string, unknown>;
     }).filter(Boolean) as DiscoveredPlace[];
   } catch {
     return [] as DiscoveredPlace[];
@@ -237,14 +247,51 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
   }
 }
 
+function importanceScore(place: DiscoveredPlace & Record<string, unknown>) {
+  const tourism = String(place._tourism ?? "").toLowerCase();
+  const historic = String(place._historic ?? "").toLowerCase();
+  const natural = String(place._natural ?? "").toLowerCase();
+  const leisure = String(place._leisure ?? "").toLowerCase();
+  const heritage = String(place._heritage ?? "").toLowerCase();
+  const text = (place.name + " " + (place.description ?? "")).toLowerCase();
+  let score = Number(place._importance ?? 0);
+
+  const tourismScores: Record<string, number> = {
+    attraction: 35, viewpoint: 30, museum: 28, theme_park: 28, zoo: 27,
+    aquarium: 27, gallery: 22, information: 6,
+  };
+  const historicScores: Record<string, number> = {
+    fort: 32, castle: 32, archaeological_site: 30, ruins: 27,
+    monument: 20, memorial: 18, heritage: 24,
+  };
+  const naturalScores: Record<string, number> = {
+    waterfall: 30, beach: 28, peak: 27, cave: 25,
+  };
+  const leisureScores: Record<string, number> = {
+    nature_reserve: 24, park: 14, garden: 12, water_park: 20,
+  };
+
+  score += tourismScores[tourism] ?? 0;
+  score += historicScores[historic] ?? 0;
+  score += naturalScores[natural] ?? 0;
+  score += leisureScores[leisure] ?? 0;
+  if (heritage) score += 18;
+  if (place.wikipedia) score += 22;
+  if (place.website) score += 7;
+  if (place.address) score += 3;
+  if (/national park|wildlife sanctuary|palace|temple|church|mosque|sanctuary|reserve|falls|fort|museum|beach|lake|backwater|heritage|monument|viewpoint/.test(text)) score += 5;
+  return score;
+}
+
 export async function discoverBroadPlaces(
   destination: string,
   _legacyRadiusMeters = 0,
   maxResults = 200,
   desiredQuery = "",
+  storedCoverage?: DestinationCoverage,
 ): Promise<PlaceDiscoveryResult> {
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
-  const coverage = await destinationCoverage(destination, { latitude: 0, longitude: 0 });
+  const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
     throw new Error("Could not locate destination: " + destination);
@@ -305,7 +352,10 @@ export async function discoverBroadPlaces(
     places = places.filter((place) => (place.name + " " + place.description + " " + place.type).toLowerCase().includes(query));
   }
 
-  places.sort((a, b) => a.distanceKm - b.distanceKm || a.name.localeCompare(b.name));
+  places.sort((a, b) => {
+    const scoreDiff = importanceScore(b as DiscoveredPlace & Record<string, unknown>) - importanceScore(a as DiscoveredPlace & Record<string, unknown>);
+    return scoreDiff || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name);
+  });
 
   if (!places.length) {
     throw new Error("No live places were returned for " + destination + ". The destination was located, but the place providers returned no usable records.");
@@ -313,7 +363,17 @@ export async function discoverBroadPlaces(
 
   return {
     center: coverage.center,
-    places: places.slice(0, limit),
+    places: places.slice(0, limit).map((place) => {
+      const clean = { ...place } as DiscoveredPlace & Record<string, unknown>;
+      delete clean._importance;
+      delete clean._tourism;
+      delete clean._historic;
+      delete clean._natural;
+      delete clean._leisure;
+      delete clean._heritage;
+      delete clean._wikipedia;
+      return clean as DiscoveredPlace;
+    }),
     source: "openstreetmap",
     fetchedAt: new Date().toISOString(),
   };
