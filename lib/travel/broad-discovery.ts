@@ -312,6 +312,8 @@ function importanceScore(place: DiscoveredPlace) {
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
   let score = 0;
   const typeScores: Record<string, number> = {
+    // Major geographic destinations must outrank ordinary local POIs.
+    city: 65, town: 62, municipality: 58, village: 24,
     attraction: 35, viewpoint: 30, museum: 28, theme_park: 28, zoo: 27,
     aquarium: 27, gallery: 22, fort: 32, castle: 32,
     archaeological_site: 30, ruins: 27, monument: 20, memorial: 18,
