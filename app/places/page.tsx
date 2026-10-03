@@ -23,13 +23,29 @@ type Place = {
 type GeoPoint={lat:number;lon:number};
 
 const categories=[
-  {key:"all",label:"All places"},
-  {key:"Attraction",label:"Main attractions"},
-  {key:"History",label:"History & landmarks"},
-  {key:"Nature",label:"Nature & viewpoints"},
-  {key:"Culture",label:"Culture & local spots"},
-  {key:"Activity",label:"Activities"},
+  {key:"Viewpoints",label:"Viewpoints",icon:"◉",terms:/viewpoint|scenic|lookout|panorama|observation/i},
+  {key:"Waterfalls",label:"Waterfalls",icon:"≋",terms:/waterfall|falls/i},
+  {key:"Nature & Wildlife",label:"Nature & Wildlife",icon:"✦",terms:/wildlife|wildlife sanctuary|nature reserve|forest|national park|sanctuary/i},
+  {key:"Beaches",label:"Beaches",icon:"⌁",terms:/beach|coast|shore/i},
+  {key:"History & Heritage",label:"History & Heritage",icon:"◈",terms:/fort|palace|museum|monument|historic|heritage|memorial|ruin|castle|archaeological/i},
+  {key:"Temples & Spiritual",label:"Temples & Spiritual",icon:"◇",terms:/temple|church|mosque|shrine|worship|cathedral|basilica/i},
+  {key:"Cities & Towns",label:"Cities & Towns",icon:"⌂",terms:/city|town|municipality/i},
+  {key:"Lakes & Backwaters",label:"Lakes & Backwaters",icon:"≈",terms:/lake|backwater|lagoon|kuttanad/i},
+  {key:"Parks & Gardens",label:"Parks & Gardens",icon:"❋",terms:/park|garden|botanical/i},
+  {key:"Hills & Mountains",label:"Hills & Mountains",icon:"△",terms:/hill|mountain|peak|mount/i},
+  {key:"Culture & Local",label:"Culture & Local",icon:"✧",terms:/culture|art|theatre|gallery|cultural|arts centre|information/i},
+  {key:"Activities & Adventure",label:"Activities & Adventure",icon:"↗",terms:/activity|adventure|amusement|theme park|zoo|aquarium|attraction/i},
 ];
+
+function placeCategories(place:Place){
+  const text=(place.name+" "+place.type+" "+(place.description||"")+" "+place.group).toLowerCase();
+  return categories.filter(category=>category.terms.test(text)).map(category=>category.key);
+}
+
+function isMainDestination(place:Place){
+  const text=place.name.toLowerCase();
+  return /munnar|alappuzha|alleppey|kochi|fort kochi|thiruvananthapuram|trivandrum|guruvayur|guruvayoor|thekkady|wayanad|kovalam|varkala|kozhikode|calicut|kumarakom|bekal|kollam|wagamon|vagamon|malampuzha|ponmudi|jatayu|jadayu|sree padmanabhaswamy|padmanabhaswamy|sabarimala|kuttanad|pookode/i.test(text);
+}
 
 function haversine(a:GeoPoint,b:GeoPoint){
   const r=6371,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
@@ -84,6 +100,7 @@ function PlacesContent(){
   const [places,setPlaces]=useState<Place[]>([]);
   const [center,setCenter]=useState<GeoPoint|null>(null);
   const [category,setCategory]=useState("all");
+  const [openCategory,setOpenCategory]=useState<string|null>(null);
   const [search,setSearch]=useState("");
   const [liveQuery,setLiveQuery]=useState("");
   const [loading,setLoading]=useState(true);
@@ -192,10 +209,23 @@ function PlacesContent(){
     return()=>{cancelled=true};
   },[destination,tripId,liveQuery]);
 
-  const visible=useMemo(()=>places.filter(p=>
-    (category==="all"||p.group===category)&&
-    p.name.toLowerCase().includes(search.toLowerCase())
-  ),[places,category,search]);
+  const visible=useMemo(()=>places.filter(p=>{
+    const categoryMatch=category==="all" || p.group===category || placeCategories(p).includes(category);
+    return categoryMatch && p.name.toLowerCase().includes(search.toLowerCase());
+  }),[places,category,search]);
+
+  const mainPlaces=useMemo(()=>{
+    const preferred=places.filter(isMainDestination);
+    const fallback=places.filter(p=>!placeCategories(p).some(Boolean));
+    return [...preferred,...fallback].filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,18);
+  },[places]);
+
+  const categoryPlaces=useMemo(()=>{
+    if(!openCategory)return [];
+    const selected=categories.find(item=>item.key===openCategory);
+    if(!selected)return [];
+    return places.filter(place=>selected.terms.test((place.name+" "+place.type+" "+(place.description||"")+" "+place.group))).filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index);
+  },[places,openCategory]);
 
   async function toggleAdd(id:string){
     if(!tripId){
@@ -264,10 +294,26 @@ function PlacesContent(){
     <section className="places-content">
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
-        <div className="filter-row">
-          {categories.map(item=><button key={item.key} className={category===item.key?"filter active":"filter"} onClick={()=>setCategory(item.key)}>{item.label}</button>)}
-        </div>
       </div>
+
+      {!loading&&places.length>0&&<section className="place-explorer">
+        <div className="section-heading">
+          <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>What kind of places do you want?</h2><p>Start with the important destinations, then open a category to browse all the matching places. A place can appear in more than one category when it genuinely fits.</p></div>
+          <span className="live-badge">{categories.length} categories</span>
+        </div>
+        <div className="category-card-grid">
+          {categories.map(item=>{
+            const count=places.filter(place=>item.terms.test((place.name+" "+place.type+" "+(place.description||"")+" "+place.group))).filter((place,index,array)=>array.findIndex(p=>p.id===place.id)===index).length;
+            return <button type="button" key={item.key} className={"category-card"+(openCategory===item.key?" active":"")} onClick={()=>{setOpenCategory(openCategory===item.key?null:item.key);setCategory("all");}}>
+              <span className="category-card-icon">{item.icon}</span><span><strong>{item.label}</strong><small>{count} places</small></span><b>→</b>
+            </button>;
+          })}
+        </div>
+        {openCategory&&<section className="category-results">
+          <div className="section-heading"><div><span className="eyebrow">CATEGORY</span><h2>{categories.find(item=>item.key===openCategory)?.label}</h2><p>Browse the complete list for this type. Repeated places across different categories are intentional when they are relevant to both.</p></div><button type="button" className="category-close" onClick={()=>setOpenCategory(null)}>Close</button></div>
+          <div className="places-grid">{categoryPlaces.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}</div>
+        </section>}
+      </section>}
 
       {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
@@ -282,33 +328,29 @@ function PlacesContent(){
       {saveMessage&&<p className="places-message">{saveMessage}</p>}
 
       {!loading&&visible.length>0&&(()=>{
-        const highlights=visible.slice(0,12);
+        const highlights=(category==="all"?mainPlaces:visible).slice(0,18);
         return <>
           <section className="places-section">
             <div className="section-heading">
               <div>
                 <span className="eyebrow">START HERE</span>
-                <h2>Most important places first.</h2>
-                <p>Roveo ranks the strongest destinations and attractions first, so you get useful recommendations immediately. Nothing outside these highlights is removed.</p>
+                <h2>{category==="all"?"Main places to visit.":"Places in this selection."}</h2>
+                <p>{category==="all"?"The main destinations and well-known places stay up front. The detailed types are organized into the category boxes above, so waterfalls and similar places do not overwhelm the main list.":"Browse the places matching your current selection."}</p>
               </div>
-              <span className="live-badge">{highlights.length} highlights</span>
+              <span className="live-badge">{highlights.length} places</span>
             </div>
             <div className="places-grid">
               {highlights.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}
             </div>
           </section>
 
-          {visible.length>highlights.length&&<section className="places-section">
+          {category==="all"&&visible.length>highlights.length&&<section className="places-section">
             <div className="section-heading">
-              <div>
-                <span className="eyebrow">COMPLETE COLLECTION</span>
-                <h2>Browse every place Roveo found.</h2>
-                <p>These are the remaining places in the current category or search. Use the filters and search box to find exactly what interests you — including every waterfall, beach, landmark, or other place discovered in the region.</p>
-              </div>
+              <div><span className="eyebrow">COMPLETE COLLECTION</span><h2>Everything else Roveo found.</h2><p>Use the category boxes above when you want the full waterfall, viewpoint, nature, beach, heritage, spiritual, or activity lists.</p></div>
               <span className="live-badge">{visible.length-highlights.length} more</span>
             </div>
             <div className="places-grid">
-              {visible.slice(highlights.length).map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}
+              {visible.filter(place=>!highlights.some(item=>item.id===place.id)).map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}
             </div>
           </section>}
         </>;
