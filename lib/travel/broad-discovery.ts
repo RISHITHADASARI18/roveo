@@ -46,32 +46,93 @@ function insideBounds(point: Coordinates, bounds?: Bounds) {
 }
 
 async function destinationCoverage(destination: string, fallback: Coordinates): Promise<DestinationCoverage> {
-  try {
-    const params = new URLSearchParams({
-      q: destination, format: "jsonv2", limit: "1", addressdetails: "1", "accept-language": "en",
-    });
-    const response = await fetchWithTimeout(NOMINATIM_URL + "?" + params, {
-      headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination geocoding)" },
-      cache: "no-store",
-    }, 4000);
-    if (!response.ok) return { center: fallback };
-    const data = await response.json();
-    const first = Array.isArray(data) ? data[0] : null;
-    const latitude = Number(first?.lat), longitude = Number(first?.lon);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return { center: fallback };
-    const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
-    if (box.length !== 4 || box.some((v: number) => !Number.isFinite(v))) {
-      return { center: { latitude, longitude } };
+  const providers = [
+    async (): Promise<DestinationCoverage | null> => {
+      const params = new URLSearchParams({
+        q: destination,
+        format: "jsonv2",
+        limit: "1",
+        addressdetails: "1",
+        namedetails: "1",
+        "accept-language": "en",
+      });
+      const response = await fetchWithTimeout(NOMINATIM_URL + "?" + params, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Roveo/1.0 (travel planner; destination geocoding)",
+        },
+        cache: "no-store",
+      }, 5000);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const first = Array.isArray(data) ? data[0] : null;
+      const latitude = Number(first?.lat);
+      const longitude = Number(first?.lon);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
+      return {
+        center: { latitude, longitude },
+        bounds:
+          box.length === 4 && box.every((value: number) => Number.isFinite(value))
+            ? { south: box[0], north: box[1], west: box[2], east: box[3] }
+            : undefined,
+      };
+    },
+    async (): Promise<DestinationCoverage | null> => {
+      // Free global fallback for older trips whose exact coordinates were
+      // created before Roveo started storing selected location geometry.
+      const params = new URLSearchParams({
+        q: destination,
+        limit: "1",
+        lang: "en",
+      });
+      const response = await fetchWithTimeout(
+        "https://photon.komoot.io/api/?" + params,
+        {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Roveo/1.0 (travel planner; destination geocoding)",
+          },
+          cache: "no-store",
+        },
+        5000,
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      const feature = Array.isArray(data?.features) ? data.features[0] : null;
+      const coordinates = feature?.geometry?.coordinates;
+      const longitude = Number(coordinates?.[0]);
+      const latitude = Number(coordinates?.[1]);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      const bbox = Array.isArray(feature?.bbox) ? feature.bbox.map(Number) : [];
+      return {
+        center: { latitude, longitude },
+        bounds:
+          bbox.length === 4 && bbox.every((value: number) => Number.isFinite(value))
+            ? { west: bbox[0], south: bbox[1], east: bbox[2], north: bbox[3] }
+            : undefined,
+      };
+    },
+  ];
+
+  for (const provider of providers) {
+    try {
+      const result = await provider();
+      if (result) return result;
+    } catch {
+      // Try the next free global geocoder.
     }
-    return {
-      center: { latitude, longitude },
-      bounds: { south: box[0], north: box[1], west: box[2], east: box[3] } as Bounds,
-    };
-  } catch {
+  }
+
+  // Only use a real fallback coordinate. Never silently treat (0,0) as a
+  // successfully geocoded destination.
+  if (Number.isFinite(fallback.latitude) && Number.isFinite(fallback.longitude) &&
+      (fallback.latitude !== 0 || fallback.longitude !== 0)) {
     return { center: fallback };
   }
-}
 
+  throw new Error("Could not locate destination: " + destination);
+}
 function buildCells(bounds: Bounds) {
   const height = Math.max(0, bounds.north - bounds.south);
   const width = Math.max(0, bounds.east - bounds.west);
