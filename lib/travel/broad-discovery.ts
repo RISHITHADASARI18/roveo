@@ -163,10 +163,12 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const query = [
     "[out:json][timeout:10];",
     "(",
-    `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](${bbox});`,
-    `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](${bbox});`,
-    `nwr["leisure"~"park|garden|nature_reserve|water_park"](${bbox});`,
-    `nwr["natural"~"waterfall|peak|cave|beach"](${bbox});`,
+    `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork|information|picnic_site"](${bbox});`,
+    `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage|manor|palace"](${bbox});`,
+    `nwr["leisure"~"park|garden|nature_reserve|water_park|marina"](${bbox});`,
+    `nwr["natural"~"waterfall|peak|cave|beach|lake|cliff|hot_spring|volcano|glacier"](${bbox});`,
+    `nwr["man_made"~"lighthouse|pier|tower"](${bbox});`,
+    `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,
     // Geographic destinations: cities/towns are first-class travel results,
     // so major places such as Munnar and Alappuzha are not lost among POIs.
     `nwr["place"~"city|town|municipality|village"](${bbox});`,
@@ -194,7 +196,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         const latitude = Number(element.lat ?? element.center?.lat);
         const longitude = Number(element.lon ?? element.center?.lon);
         if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-        const type = String(tags.place ?? tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.amenity ?? "place").toLowerCase();
+        const type = String(tags.place ?? tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? "place").toLowerCase();
         const address = [
           tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
           tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
@@ -363,7 +365,7 @@ export async function discoverBroadPlaces(
 
   for (const place of cellResults.flat()) {
     if (!insideBounds(place, coverage.bounds)) continue;
-    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 50) + ":" + Math.round(place.longitude * 50);
+    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
     if (!key) continue;
     const existing = unique.get(key);
     if (!existing || JSON.stringify(place).length > JSON.stringify(existing).length) unique.set(key, place);
@@ -373,19 +375,24 @@ export async function discoverBroadPlaces(
     ...place, distanceKm: haversineKm(coverage.center, place),
   }));
 
-  // Supplement OSM with a bounded set of named Wikipedia places every time.
-  // This prevents famous named destinations from disappearing just because
-  // OSM already returned many smaller/local POIs.
+  // Supplement OSM with bounded Wikipedia searches across the same cells.
+  // A single center search can miss named destinations on the edges of a
+  // large region, so search each cell once while keeping the request count
+  // bounded by the existing geographic grid.
   {
-    const radiusMeters = coverage.bounds
-      ? Math.min(50000, Math.max(5000, Math.ceil(Math.max(
-          coverage.bounds.north - coverage.bounds.south,
-          coverage.bounds.east - coverage.bounds.west,
-        ) * 111000 / 2)))
-      : 25000;
-    for (const place of await wikipediaFallback(coverage.center, radiusMeters)) {
+    const wikiResults = await Promise.all(cells.map(async (cell) => {
+      const cellCenter = {
+        latitude: (cell.south + cell.north) / 2,
+        longitude: (cell.west + cell.east) / 2,
+      };
+      const heightKm = (cell.north - cell.south) * 111;
+      const widthKm = (cell.east - cell.west) * 111 * Math.max(Math.cos(cellCenter.latitude * Math.PI / 180), 0.25);
+      const radiusMeters = Math.min(50000, Math.max(5000, Math.ceil(Math.max(heightKm, widthKm) * 500)));
+      return wikipediaFallback(cellCenter, radiusMeters);
+    }));
+    for (const place of wikiResults.flat()) {
       if (!insideBounds(place, coverage.bounds)) continue;
-      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 50) + ":" + Math.round(place.longitude * 50);
+      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
       if (key && !unique.has(key)) unique.set(key, place);
     }
     places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
