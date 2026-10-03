@@ -340,7 +340,8 @@ export async function discoverBroadPlaces(
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
 ): Promise<PlaceDiscoveryResult> {
-  // Keep a generous safety ceiling, but do not turn ranking into a top-20/top-100 filter.\n  // The UI is meant to let travelers choose from the complete discovered set.\n  const limit = Math.min(Math.max(Math.round(maxResults), 1), 1000);
+  // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
+  const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
   const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
