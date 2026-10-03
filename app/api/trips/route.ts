@@ -91,8 +91,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON request body." }, { status: 400 });
   }
 
-  const source = text(body.source);
-  const destination = text(body.destination);
+  const sourceLocation = location(body.source);
+  const destinationLocation = location(body.destination);
+  const source = sourceLocation?.name ?? "";
+  const destination = destinationLocation?.name ?? "";
   const days = positiveInteger(body.days);
   const people = positiveInteger(body.people);
   const budget = nonNegativeNumber(body.budget);
