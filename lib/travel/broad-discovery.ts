@@ -167,6 +167,9 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
     `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](${bbox});`,
     `nwr["leisure"~"park|garden|nature_reserve|water_park"](${bbox});`,
     `nwr["natural"~"waterfall|peak|cave|beach"](${bbox});`,
+    // Geographic destinations: cities/towns are first-class travel results,
+    // so major places such as Munnar and Alappuzha are not lost among POIs.
+    `nwr["place"~"city|town|municipality|village"](${bbox});`,
     ");",
     "out center tags;",
   ].join("\n");
@@ -191,7 +194,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         const latitude = Number(element.lat ?? element.center?.lat);
         const longitude = Number(element.lon ?? element.center?.lon);
         if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-        const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.amenity ?? "place").toLowerCase();
+        const type = String(tags.place ?? tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.amenity ?? "place").toLowerCase();
         const address = [
           tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
           tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
