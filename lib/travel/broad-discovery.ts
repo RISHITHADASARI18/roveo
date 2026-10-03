@@ -140,13 +140,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
           website: String(tags.website ?? tags["contact:website"] ?? "").trim() || undefined,
           wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
           address: address || undefined,
-          openingHours: String(tags.opening_hours ?? "").trim() || undefined,
-          _importance: String(tags.wikidata ?? "").trim() ? 20 : 0,
-          _tourism: String(tags.tourism ?? "").trim(),
-          _historic: String(tags.historic ?? "").trim(),
-          _natural: String(tags.natural ?? "").trim(),
-          _leisure: String(tags.leisure ?? "").trim(),
-          _heritage: String(tags.heritage ?? tags["heritage:operator"] ?? "").trim(),
+          openingHours: String(tags.opening_hours ?? "").trim() || undefined
         } as DiscoveredPlace & Record<string, unknown>;
       }).filter(Boolean) as DiscoveredPlace[];
     } catch {
@@ -183,9 +177,7 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
         latitude, longitude, distanceKm: haversineKm(center, { latitude, longitude }),
         description: "Named destination place from Wikipedia.",
         website: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
-        wikipedia: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
-        _importance: 35,
-        _wikipedia: true,
+        wikipedia: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_"))
       } as DiscoveredPlace & Record<string, unknown>;
     }).filter(Boolean) as DiscoveredPlace[];
   } catch {
@@ -247,39 +239,25 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
   }
 }
 
-function importanceScore(place: DiscoveredPlace & Record<string, unknown>) {
-  const tourism = String(place._tourism ?? "").toLowerCase();
-  const historic = String(place._historic ?? "").toLowerCase();
-  const natural = String(place._natural ?? "").toLowerCase();
-  const leisure = String(place._leisure ?? "").toLowerCase();
-  const heritage = String(place._heritage ?? "").toLowerCase();
+function importanceScore(place: DiscoveredPlace) {
+  const type = place.type.toLowerCase();
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
-  let score = Number(place._importance ?? 0);
-
-  const tourismScores: Record<string, number> = {
+  let score = 0;
+  const typeScores: Record<string, number> = {
     attraction: 35, viewpoint: 30, museum: 28, theme_park: 28, zoo: 27,
-    aquarium: 27, gallery: 22, information: 6,
-  };
-  const historicScores: Record<string, number> = {
-    fort: 32, castle: 32, archaeological_site: 30, ruins: 27,
-    monument: 20, memorial: 18, heritage: 24,
-  };
-  const naturalScores: Record<string, number> = {
+    aquarium: 27, gallery: 22, fort: 32, castle: 32,
+    archaeological_site: 30, ruins: 27, monument: 20, memorial: 18,
     waterfall: 30, beach: 28, peak: 27, cave: 25,
+    nature_reserve: 24, park: 14, garden: 12, water_park: 20, landmark: 12,
   };
-  const leisureScores: Record<string, number> = {
-    nature_reserve: 24, park: 14, garden: 12, water_park: 20,
-  };
-
-  score += tourismScores[tourism] ?? 0;
-  score += historicScores[historic] ?? 0;
-  score += naturalScores[natural] ?? 0;
-  score += leisureScores[leisure] ?? 0;
-  if (heritage) score += 18;
+  score += typeScores[type] ?? 0;
   if (place.wikipedia) score += 22;
   if (place.website) score += 7;
   if (place.address) score += 3;
   if (/national park|wildlife sanctuary|palace|temple|church|mosque|sanctuary|reserve|falls|fort|museum|beach|lake|backwater|heritage|monument|viewpoint/.test(text)) score += 5;
+  if (place.group === "Attraction") score += 5;
+  if (place.group === "History") score += 4;
+  if (place.group === "Nature") score += 4;
   return score;
 }
 
@@ -363,17 +341,7 @@ export async function discoverBroadPlaces(
 
   return {
     center: coverage.center,
-    places: places.slice(0, limit).map((place) => {
-      const clean = { ...place } as DiscoveredPlace & Record<string, unknown>;
-      delete clean._importance;
-      delete clean._tourism;
-      delete clean._historic;
-      delete clean._natural;
-      delete clean._leisure;
-      delete clean._heritage;
-      delete clean._wikipedia;
-      return clean as DiscoveredPlace;
-    }),
+    places: places.slice(0, limit),
     source: "openstreetmap",
     fetchedAt: new Date().toISOString(),
   };
