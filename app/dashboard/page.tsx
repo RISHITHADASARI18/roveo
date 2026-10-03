@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+type Location = { id:string; name:string; displayName:string; lat:number; lon:number; boundingBox:{south:number;north:number;west:number;east:number}|null; type:string; importance:number };
 
 export default function DashboardPage() {
   const router = useRouter();
   const [stay, setStay] = useState("Hotel");
   const [source, setSource] = useState("");
+  const [sourceLocation, setSourceLocation] = useState<Location|null>(null);
+  const [destinationLocation, setDestinationLocation] = useState<Location|null>(null);
+  const [sourceSuggestions, setSourceSuggestions] = useState<Location[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<Location[]>([]);
+  const [activeLocation, setActiveLocation] = useState<"source"|"destination"|null>(null);
   const [destination, setDestination] = useState("");
   const [days, setDays] = useState("5");
   const [people, setPeople] = useState("4");
@@ -16,8 +23,39 @@ export default function DashboardPage() {
   const [startDate, setStartDate] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    let cancelled = false;
+    const query = activeLocation === "source" ? source.trim() : destination.trim();
+    if (!activeLocation || query.length < 2) {
+      if (activeLocation === "source") setSourceSuggestions([]);
+      if (activeLocation === "destination") setDestinationSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/geocode/search?q=" + encodeURIComponent(query), { cache: "no-store" });
+        const data = await response.json();
+        if (cancelled) return;
+        if (activeLocation === "source") setSourceSuggestions(data.locations || []);
+        else setDestinationSuggestions(data.locations || []);
+      } catch {
+        if (!cancelled) {
+          if (activeLocation === "source") setSourceSuggestions([]);
+          else setDestinationSuggestions([]);
+        }
+      }
+    }, 500);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [source, destination, activeLocation]);
+
+  function selectLocation(kind:"source"|"destination", location:Location) {
+    if (kind === "source") { setSource(location.name); setSourceLocation(location); setSourceSuggestions([]); }
+    else { setDestination(location.name); setDestinationLocation(location); setDestinationSuggestions([]); }
+    setActiveLocation(null);
+  }
+
   async function buildTrip() {
-    if (!source.trim() || !destination.trim() || !days || !people || !budget || !travel || !localTravel) {
+    if (!sourceLocation || !destinationLocation || !days || !people || !budget || !travel || !localTravel) {
       setError("Please fill in your route, trip details and both travel preferences first.");
       return;
     }
@@ -28,8 +66,8 @@ export default function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: source.trim(),
-          destination: destination.trim(),
+          source: sourceLocation,
+          destination: destinationLocation,
           days: Number(days),
           people: Number(people),
           budget: Number(budget),
@@ -48,8 +86,8 @@ export default function DashboardPage() {
 
       const params = new URLSearchParams({
         tripId: String(data.trip.id),
-        source: source.trim(),
-        destination: destination.trim(),
+        source: sourceLocation.name,
+        destination: destinationLocation.name,
         days,
         people,
         budget,
@@ -84,8 +122,8 @@ export default function DashboardPage() {
           <div className="form-section">
             <div className="form-title"><span>01</span><div><h2>Where are you going?</h2><p>Start with your route.</p></div></div>
             <div className="input-grid two">
-              <label><span>📍 Source</span><input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Starting location" /></label>
-              <label><span>🎯 Destination</span><input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Where do you want to go?" /></label>
+              <label><span>📍 Source</span><div className="location-picker"><input value={source} onFocus={() => setActiveLocation("source")} onChange={(e) => { setSource(e.target.value); setSourceLocation(null); }} placeholder="Starting location" autoComplete="off" />{activeLocation === "source" && sourceSuggestions.length > 0 && <div className="location-suggestions">{sourceSuggestions.map(location => <button type="button" key={location.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selectLocation("source", location)}><strong>{location.name}</strong><small>{location.displayName}</small></button>)}</div>}{sourceLocation && <small className="location-confirmed">✓ Location selected</small>}</div></label>
+              <label><span>🎯 Destination</span><div className="location-picker"><input value={destination} onFocus={() => setActiveLocation("destination")} onChange={(e) => { setDestination(e.target.value); setDestinationLocation(null); }} placeholder="Where do you want to go?" autoComplete="off" />{activeLocation === "destination" && destinationSuggestions.length > 0 && <div className="location-suggestions">{destinationSuggestions.map(location => <button type="button" key={location.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selectLocation("destination", location)}><strong>{location.name}</strong><small>{location.displayName}</small></button>)}</div>}{destinationLocation && <small className="location-confirmed">✓ Location selected</small>}</div></label>
             </div>
           </div>
           <div className="form-section">
