@@ -130,7 +130,7 @@ function PlacesContent(){
 
         let discoveryUrl;
         if (tripId) {
-          discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=200";
+          discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=1000";
           const geoRes=await fetch("/api/geocode/search?q="+encodeURIComponent(destination),{cache:"no-store"});
           const geoData=await geoRes.json().catch(()=>({}));
           const location=Array.isArray(geoData.locations)?geoData.locations[0]:null;
@@ -179,7 +179,7 @@ function PlacesContent(){
         const providerLabel=data.source==="google"?"Google Places":"OpenStreetMap";
         setMessage(
           mapped.length
-            ? mapped.length+" live places found from "+providerLabel+(liveQuery?" for your search.":" — showing popular places to visit in this region.")
+            ? mapped.length+" live places found from "+providerLabel+(liveQuery?" for your search.":" — all discovered places are shown, ranked by importance.")
             : "No places were found nearby."
         );
       }catch(e){
@@ -256,7 +256,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Roveo automatically finds popular places worth visiting in your destination. Pick the ones you want and we’ll use them for your trip plan.</p>
+        <p>Roveo finds a broad set of real places across your destination, ranks the most important ones first, and lets you choose any places you want for your trip.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
     </section>
