@@ -255,6 +255,82 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
   }
 }
 
+async function wikipediaDestinationSearch(destination: string): Promise<DiscoveredPlace[]> {
+  try {
+    const searchParams = new URLSearchParams({
+      action: "query",
+      list: "search",
+      srsearch: "tourist attractions places to visit " + destination,
+      srnamespace: "0",
+      srlimit: "50",
+      format: "json",
+      origin: "*",
+    });
+    const searchResponse = await fetchWithTimeout(
+      "https://en.wikipedia.org/w/api.php?" + searchParams,
+      {
+        headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" },
+        cache: "no-store",
+      },
+      6000,
+    );
+    if (!searchResponse.ok) return [] as DiscoveredPlace[];
+
+    const searchData = await searchResponse.json();
+    const results = Array.isArray(searchData?.query?.search) ? searchData.query.search : [];
+    const titles = results
+      .map((item: any) => String(item?.title ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 50);
+
+    if (!titles.length) return [];
+
+    const coordinateParams = new URLSearchParams({
+      action: "query",
+      titles: titles.join("|"),
+      prop: "coordinates",
+      coprimary: "all",
+      format: "json",
+      origin: "*",
+    });
+    const coordinateResponse = await fetchWithTimeout(
+      "https://en.wikipedia.org/w/api.php?" + coordinateParams,
+      {
+        headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" },
+        cache: "no-store",
+      },
+      6000,
+    );
+    if (!coordinateResponse.ok) return [];
+
+    const coordinateData = await coordinateResponse.json();
+    const pages = Object.values(coordinateData?.query?.pages ?? {}) as any[];
+
+    return pages.map((page: any) => {
+      const coordinate = Array.isArray(page?.coordinates) ? page.coordinates[0] : null;
+      const latitude = Number(coordinate?.lat);
+      const longitude = Number(coordinate?.lon);
+      const name = String(page?.title ?? "").trim();
+      if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+      return {
+        id: "wikipedia-search-" + String(page.pageid ?? normalizeName(name)),
+        name,
+        type: "landmark",
+        group: groupFor(name),
+        latitude,
+        longitude,
+        distanceKm: 0,
+        description: "Named destination place from Wikipedia.",
+        website: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
+        wikipedia: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
+      } as DiscoveredPlace;
+    }).filter(Boolean) as DiscoveredPlace[];
+  } catch {
+    return [] as DiscoveredPlace[];
+  }
+}
+
 async function googleFallback(destination: string, bounds: Bounds | undefined, center: Coordinates, limit: number) {
   const key = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [] as DiscoveredPlace[];
