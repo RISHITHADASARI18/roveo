@@ -18,6 +18,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const url = new URL(request.url);
   const maxResults = Number(url.searchParams.get("maxResults") ?? "200");
   const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+  const suppliedLat = Number(url.searchParams.get("lat"));
+  const suppliedLon = Number(url.searchParams.get("lon"));
+  const suppliedSouth = Number(url.searchParams.get("south"));
+  const suppliedNorth = Number(url.searchParams.get("north"));
+  const suppliedWest = Number(url.searchParams.get("west"));
+  const suppliedEast = Number(url.searchParams.get("east"));
 
   try {
     // Existing production databases may predate the exact-location columns.
@@ -47,7 +53,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const west = Number(row.destination_west);
     const east = Number(row.destination_east);
     let storedCoverage =
-      Number.isFinite(lat) && Number.isFinite(lon)
+      Number.isFinite(suppliedLat) && Number.isFinite(suppliedLon)
+        ? {
+            center: { latitude: suppliedLat, longitude: suppliedLon },
+            bounds:
+              [suppliedSouth, suppliedNorth, suppliedWest, suppliedEast].every(Number.isFinite)
+                ? { south: suppliedSouth, north: suppliedNorth, west: suppliedWest, east: suppliedEast }
+                : undefined,
+          }
+        : Number.isFinite(lat) && Number.isFinite(lon)
         ? {
             center: { latitude: lat, longitude: lon },
             bounds:
