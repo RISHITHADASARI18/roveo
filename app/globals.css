@@ -241,3 +241,19 @@ footer a:hover{color:#1676a5}
 .explore-actions{gap:5px;padding-top:10px}
 .explore-actions button,.explore-actions a{padding:6px 8px;font-size:8px}
 .places-grid{gap:10px}
+
+/* Places category explorer */
+.place-explorer{margin:46px 0 54px}
+.category-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.category-card{display:flex;align-items:center;gap:12px;text-align:left;padding:17px;border:1px solid #d8edf5;border-radius:18px;background:#fff;cursor:pointer;transition:.16s ease;box-shadow:0 8px 24px rgba(28,96,125,.04)}
+.category-card:hover,.category-card.active{transform:translateY(-2px);border-color:#79c8e3;box-shadow:0 12px 28px rgba(28,96,125,.09)}
+.category-card-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:#eaf8fd;color:#1676a5;font-size:19px;font-weight:900;flex:0 0 auto}
+.category-card span:nth-child(2){display:flex;flex-direction:column;gap:4px;min-width:0}
+.category-card strong{font-size:12px;color:#284a5c}
+.category-card small{font-size:9px;color:#8297a0}
+.category-card>b{margin-left:auto;color:#1676a5;font-size:15px}
+.category-results{margin-top:25px;padding:24px;background:#f8fdff;border:1px solid #d8edf5;border-radius:22px}
+.category-results .places-grid{margin-top:20px}
+.category-close{border:1px solid #cbe5ef;background:white;color:#39758d;border-radius:999px;padding:8px 12px;font-size:9px;font-weight:800;cursor:pointer}
+@media(max-width:900px){.category-card-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.category-card-grid{grid-template-columns:1fr}.category-results{padding:17px}.category-card{padding:14px}}
