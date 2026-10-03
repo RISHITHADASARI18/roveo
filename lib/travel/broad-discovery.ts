@@ -6,7 +6,8 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
 ];
 
-type Bounds = { south: number; north: number; west: number; east: number };\ntype DestinationCoverage = { center: Coordinates; bounds?: Bounds };
+type Bounds = { south: number; north: number; west: number; east: number };
+type DestinationCoverage = { center: Coordinates; bounds?: Bounds };
 
 function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController();
@@ -331,7 +332,7 @@ export async function discoverBroadPlaces(
   }
 
   places.sort((a, b) => {
-    const scoreDiff = importanceScore(b as DiscoveredPlace & Record<string, unknown>) - importanceScore(a as DiscoveredPlace & Record<string, unknown>);
+    const scoreDiff = importanceScore(b) - importanceScore(a);
     return scoreDiff || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name);
   });
 
