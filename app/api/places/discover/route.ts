@@ -14,8 +14,8 @@ export async function GET(request: Request) {
   if (!destination) return NextResponse.json({ error: "A destination is required." }, { status: 400 });
   try {
     const result = desiredQuery
-      ? await discoverBroadPlaces(destination, 0, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery)
-      : await discoverBroadPlaces(destination, 0, Math.min(Math.max(Math.round(maxResults), 1), 250));
+      ? await discoverBroadPlaces(destination, 0, Math.min(Math.max(Math.round(maxResults), 1), 1000), desiredQuery)
+      : await discoverBroadPlaces(destination, 0, Math.min(Math.max(Math.round(maxResults), 1), 1000));
 
     return NextResponse.json({ tripId: null, destination, ...result });
   } catch (error) {
