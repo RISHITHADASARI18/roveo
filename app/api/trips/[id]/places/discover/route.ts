@@ -46,7 +46,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const north = Number(row.destination_north);
     const west = Number(row.destination_west);
     const east = Number(row.destination_east);
-    const storedCoverage =
+    let storedCoverage =
       Number.isFinite(lat) && Number.isFinite(lon)
         ? {
             center: { latitude: lat, longitude: lon },
@@ -56,6 +56,87 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 : undefined,
           }
         : undefined;
+
+    // Backfill coordinates for older trips that only stored the destination name.
+    if (!storedCoverage) {
+      let recovered: { center: { latitude: number; longitude: number }; bounds?: { south: number; north: number; west: number; east: number } } | null = null;
+      try {
+        const params = new URLSearchParams({
+          q: String(row.destination), format: "jsonv2", limit: "1",
+          addressdetails: "1", namedetails: "1", "accept-language": "en",
+        });
+        const response = await fetch("https://nominatim.openstreetmap.org/search?" + params, {
+          headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination backfill)" },
+          cache: "no-store", signal: AbortSignal.timeout(5000),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const first = Array.isArray(data) ? data[0] : null;
+          const latitude = Number(first?.lat);
+          const longitude = Number(first?.lon);
+          if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+            const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
+            recovered = {
+              center: { latitude, longitude },
+              bounds: box.length === 4 && box.every((v: number) => Number.isFinite(v))
+                ? { south: box[0], north: box[1], west: box[2], east: box[3] }
+                : undefined,
+            };
+          }
+        }
+      } catch {
+        // Try Photon below.
+      }
+
+      if (!recovered) {
+        try {
+          const params = new URLSearchParams({ q: String(row.destination), limit: "1", lang: "en" });
+          const response = await fetch("https://photon.komoot.io/api/?" + params, {
+            headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination backfill)" },
+            cache: "no-store", signal: AbortSignal.timeout(5000),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            const feature = Array.isArray(data?.features) ? data.features[0] : null;
+            const coords = feature?.geometry?.coordinates;
+            const longitude = Number(coords?.[0]);
+            const latitude = Number(coords?.[1]);
+            if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+              const box = Array.isArray(feature?.bbox) ? feature.bbox.map(Number) : [];
+              recovered = {
+                center: { latitude, longitude },
+                bounds: box.length === 4 && box.every((v: number) => Number.isFinite(v))
+                  ? { south: box[1], north: box[3], west: box[0], east: box[2] }
+                  : undefined,
+              };
+            }
+          }
+        } catch {
+          // Both free geocoders failed.
+        }
+      }
+
+      if (recovered) {
+        storedCoverage = recovered;
+        await db.query(
+          `UPDATE trips
+              SET destination_lat = $1, destination_lon = $2,
+                  destination_south = $3, destination_north = $4,
+                  destination_west = $5, destination_east = $6,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE id = $7`,
+          [
+            recovered.center.latitude, recovered.center.longitude,
+            recovered.bounds?.south ?? null, recovered.bounds?.north ?? null,
+            recovered.bounds?.west ?? null, recovered.bounds?.east ?? null, tripId,
+          ],
+        );
+      }
+    }
+
+    if (!storedCoverage) {
+      return NextResponse.json({ error: "Could not locate destination: " + String(row.destination) }, { status: 502 });
+    }
 
     const result = desiredQuery
       ? await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery, storedCoverage)
