@@ -20,6 +20,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
 
   try {
+    // Existing production databases may predate the exact-location columns.
+    // Add them before the SELECT so place discovery works without requiring a manual migration.
+    await db.query(`
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_lat DOUBLE PRECISION;
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_lon DOUBLE PRECISION;
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_south DOUBLE PRECISION;
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_north DOUBLE PRECISION;
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_west DOUBLE PRECISION;
+      ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_east DOUBLE PRECISION;
+    `);
+
     const trip = await db.query(
       `SELECT id, destination, destination_lat, destination_lon,
               destination_south, destination_north, destination_west, destination_east
