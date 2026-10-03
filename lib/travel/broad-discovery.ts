@@ -1,4 +1,5 @@
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
+import { ensurePlaceCatalogTable, readPlaceCatalog, savePlaceCatalog } from "./place-catalog";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -482,6 +483,9 @@ export async function discoverBroadPlaces(
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
+  // Database is the primary place source. External providers only backfill the catalog.
+  await ensurePlaceCatalogTable();
+  const catalogPlaces = await readPlaceCatalog(destination);
   const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
@@ -498,8 +502,17 @@ export async function discoverBroadPlaces(
   }];
   const cellResults = await Promise.all(cells.map(overpassCell));
   const unique = new Map<string, DiscoveredPlace>();
+
+  // Reuse places already stored for this destination before contacting live providers.
+  for (const place of catalogPlaces) {
+    if (!insideBounds(place, coverage.bounds)) continue;
+    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
+    if (key) unique.set(key, place);
+  }
+
   console.info("Roveo places discovery:", {
     destination,
+    catalogCount: catalogPlaces.length,
     cellCount: cells.length,
     overpassCounts: cellResults.map((items) => items.length),
   });
@@ -576,6 +589,22 @@ export async function discoverBroadPlaces(
   if (desiredQuery) {
     const query = desiredQuery.toLowerCase();
     places = places.filter((place) => (place.name + " " + place.description + " " + place.type).toLowerCase().includes(query));
+  }
+
+  // Persist the complete candidate set, then read it back from PostgreSQL.
+  // The response shown to the user therefore comes from the database, not directly
+  // from whichever provider happened to answer this request.
+  await savePlaceCatalog(destination, places);
+  places = (await readPlaceCatalog(destination))
+    .filter((place) => insideBounds(place, coverage.bounds))
+    .map((place) => ({
+      ...place,
+      distanceKm: haversineKm(coverage.center, place),
+    }));
+
+  if (desiredQuery) {
+    const query = desiredQuery.toLowerCase();
+    places = places.filter((place) => (place.name + " " + (place.description ?? "") + " " + place.type).toLowerCase().includes(query));
   }
 
   places.sort((a, b) => {
