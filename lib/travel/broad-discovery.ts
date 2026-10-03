@@ -341,7 +341,7 @@ const KERALA_CORE_PLACES = [
 ] as const;
 
 function isKeralaDestination(destination: string) {
-  return /\\bkerala\\b/i.test(destination);
+  return /\bkerala\b/i.test(destination);
 }
 
 function isKeralaCorePlace(name: string) {
