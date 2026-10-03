@@ -9,7 +9,8 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 type Bounds = { south: number; north: number; west: number; east: number };
-type DestinationCoverage = { center: Coordinates; bounds?: Bounds };
+type DestinationScope = "state" | "district" | "city" | "place" | "unknown";
+type DestinationCoverage = { center: Coordinates; bounds?: Bounds; scope: DestinationScope; state?: string; district?: string };
 
 function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController();
@@ -71,12 +72,22 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       const longitude = Number(first?.lon);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
       const box = Array.isArray(first?.boundingbox) ? first.boundingbox.map(Number) : [];
+      const address = first?.address ?? {};
+      const addressType = String(first?.addresstype ?? first?.type ?? "").toLowerCase();
+      const scope: DestinationScope =
+        addressType === "state" || address.state === first?.name ? "state" :
+        addressType === "county" || addressType === "district" || Boolean(address.county && !address.city && !address.town) ? "district" :
+        addressType === "city" || address.city ? "city" :
+        "place";
+      const bounds = box.length === 4 && box.every((value: number) => Number.isFinite(value))
+        ? { south: box[0], north: box[1], west: box[2], east: box[3] }
+        : undefined;
       return {
         center: { latitude, longitude },
-        bounds:
-          box.length === 4 && box.every((value: number) => Number.isFinite(value))
-            ? { south: box[0], north: box[1], west: box[2], east: box[3] }
-            : undefined,
+        bounds,
+        scope,
+        state: String(address.state ?? "").trim() || undefined,
+        district: String(address.county ?? "").trim() || undefined,
       };
     },
     async (): Promise<DestinationCoverage | null> => {
@@ -106,12 +117,22 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
       const latitude = Number(coordinates?.[1]);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
       const bbox = Array.isArray(feature?.bbox) ? feature.bbox.map(Number) : [];
+      const properties = feature?.properties ?? {};
+      const osmType = String(properties.osm_type ?? "").toLowerCase();
+      const osmValue = String(properties.osm_value ?? "").toLowerCase();
+      const scope: DestinationScope =
+        osmValue === "state" ? "state" :
+        osmValue === "county" || osmValue === "district" ? "district" :
+        osmValue === "city" || osmValue === "town" ? "city" : "place";
+      const bounds = bbox.length === 4 && bbox.every((value: number) => Number.isFinite(value))
+        ? { west: bbox[0], south: bbox[1], east: bbox[2], north: bbox[3] }
+        : undefined;
       return {
         center: { latitude, longitude },
-        bounds:
-          bbox.length === 4 && bbox.every((value: number) => Number.isFinite(value))
-            ? { west: bbox[0], south: bbox[1], east: bbox[2], north: bbox[3] }
-            : undefined,
+        bounds,
+        scope,
+        state: String(properties.state ?? "").trim() || undefined,
+        district: String(properties.county ?? properties.district ?? "").trim() || undefined,
       };
     },
   ];
@@ -133,12 +154,14 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     return {
       center: { latitude: 10.8505, longitude: 76.2711 },
       bounds: { south: 8.17, north: 12.80, west: 74.85, east: 77.40 },
+      scope: "state",
+      state: "Kerala",
     };
   }
 
   if (Number.isFinite(fallback.latitude) && Number.isFinite(fallback.longitude) &&
       (fallback.latitude !== 0 || fallback.longitude !== 0)) {
-    return { center: fallback };
+    return { center: fallback, scope: "unknown" };
   }
 
   throw new Error("Could not locate destination: " + destination);
@@ -507,11 +530,26 @@ export async function discoverBroadPlaces(
     throw new Error("Could not locate destination: " + destination);
   }
 
+  // Scope controls the geographic search:
+  // state = the whole state; district = the district plus a small surrounding
+  // ring so nearby districts are useful; city/place = the geocoded area only.
+  let searchBounds = coverage.bounds;
+  if (coverage.scope === "district" && searchBounds) {
+    const latPad = Math.max(0.25, Math.min(0.75, (searchBounds.north - searchBounds.south) * 0.35));
+    const lonPad = Math.max(0.25, Math.min(0.75, (searchBounds.east - searchBounds.west) * 0.35));
+    searchBounds = {
+      south: searchBounds.south - latPad,
+      north: searchBounds.north + latPad,
+      west: searchBounds.west - lonPad,
+      east: searchBounds.east + lonPad,
+    };
+  }
+
   // OSM/Overpass is the primary discovery source. Never return early from a
   // smaller provider result: ranking must order the complete candidate set,
   // not replace it with a top-20/top-provider subset.
   // Free OSM fallback: at most four geographic cells, queried in parallel.
-  const cells = coverage.bounds ? buildCells(coverage.bounds) : [{
+  const cells = searchBounds ? buildCells(searchBounds) : [{
     south: coverage.center.latitude - 0.15, north: coverage.center.latitude + 0.15,
     west: coverage.center.longitude - 0.15, east: coverage.center.longitude + 0.15,
   }];
@@ -520,7 +558,7 @@ export async function discoverBroadPlaces(
 
   // Reuse places already stored for this destination before contacting live providers.
   for (const place of catalogPlaces) {
-    if (!insideBounds(place, coverage.bounds)) continue;
+    if (!insideBounds(place, searchBounds)) continue;
     const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
     if (key) unique.set(key, place);
   }
@@ -533,7 +571,7 @@ export async function discoverBroadPlaces(
   });
 
   for (const place of cellResults.flat()) {
-    if (!insideBounds(place, coverage.bounds)) continue;
+    if (!insideBounds(place, searchBounds)) continue;
     const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
     if (!key) continue;
     const existing = unique.get(key);
@@ -560,7 +598,7 @@ export async function discoverBroadPlaces(
       return wikipediaFallback(cellCenter, radiusMeters);
     }));
     for (const place of wikiResults.flat()) {
-      if (!insideBounds(place, coverage.bounds)) continue;
+      if (!insideBounds(place, searchBounds)) continue;
       const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
       if (key && !unique.has(key)) unique.set(key, place);
     }
@@ -579,7 +617,7 @@ export async function discoverBroadPlaces(
       "Pookode Lake", "Sabarimala",
     ]);
     for (const place of coreResults) {
-      if (!insideBounds(place, coverage.bounds)) continue;
+      if (!insideBounds(place, searchBounds)) continue;
       place.distanceKm = haversineKm(coverage.center, place);
       const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
       if (key && !unique.has(key)) unique.set(key, place);
@@ -591,7 +629,7 @@ export async function discoverBroadPlaces(
   // missing from a broad Overpass query (for example Munnar and Alappuzha in Kerala).
   const destinationResults = await wikipediaDestinationSearch(destination);
   for (const place of destinationResults) {
-    if (!insideBounds(place, coverage.bounds)) continue;
+    if (!insideBounds(place, searchBounds)) continue;
     place.distanceKm = haversineKm(coverage.center, place);
     const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
     if (key && !unique.has(key)) unique.set(key, place);
@@ -613,7 +651,7 @@ export async function discoverBroadPlaces(
     const cached = await readPlaceCatalog(destination);
     if (cached.length) {
       places = cached
-        .filter((place) => insideBounds(place, coverage.bounds))
+        .filter((place) => insideBounds(place, searchBounds))
         .map((place) => ({
           ...place,
           distanceKm: haversineKm(coverage.center, place),
