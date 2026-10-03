@@ -1,5 +1,6 @@
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
 
+// Vercel rebuild trigger: current discovery implementation uses the corrected Overpass query syntax.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
   "https://overpass.kumi.systems/api/interpreter",
