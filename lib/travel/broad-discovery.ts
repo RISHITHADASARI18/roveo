@@ -524,7 +524,24 @@ export async function discoverBroadPlaces(
   } catch (error) {
     console.warn("Roveo places catalog read skipped:", error);
   }
-  const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
+  let coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
+  // Trips created before scope-aware discovery only stored coordinates/bounds.
+  // Resolve the destination once more to determine whether the query is a state,
+  // district, city, or ordinary place, while retaining the stored geometry.
+  if (storedCoverage && (!storedCoverage.scope || storedCoverage.scope === "unknown")) {
+    try {
+      const classified = await destinationCoverage(destination, storedCoverage.center);
+      coverage = {
+        ...coverage,
+        scope: classified.scope,
+        state: classified.state,
+        district: classified.district,
+        bounds: coverage.bounds ?? classified.bounds,
+      };
+    } catch {
+      // Keep the stored trip geometry if classification is temporarily unavailable.
+    }
+  }
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
     throw new Error("Could not locate destination: " + destination);
