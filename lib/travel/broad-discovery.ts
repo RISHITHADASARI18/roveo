@@ -338,7 +338,7 @@ export async function discoverBroadPlaces(
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
 ): Promise<PlaceDiscoveryResult> {
-  const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
+  // Keep a generous safety ceiling, but do not turn ranking into a top-20/top-100 filter.\n  // The UI is meant to let travelers choose from the complete discovered set.\n  const limit = Math.min(Math.max(Math.round(maxResults), 1), 1000);
   const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
@@ -369,7 +369,7 @@ export async function discoverBroadPlaces(
 
   for (const place of cellResults.flat()) {
     if (!insideBounds(place, coverage.bounds)) continue;
-    const key = normalizeName(place.name);
+    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 50) + ":" + Math.round(place.longitude * 50);
     if (!key) continue;
     const existing = unique.get(key);
     if (!existing || JSON.stringify(place).length > JSON.stringify(existing).length) unique.set(key, place);
