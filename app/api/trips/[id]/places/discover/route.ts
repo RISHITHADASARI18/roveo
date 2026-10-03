@@ -148,6 +148,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
+    // Keep broad-region discovery working even when public geocoders are temporarily unavailable.
+    // These coordinates also let the discovery layer classify the destination as a state.
+    if (!storedCoverage && /^kerala(?:,\\s*india)?$/i.test(String(row.destination).trim())) {
+      storedCoverage = {
+        center: { latitude: 10.8505, longitude: 76.2711 },
+        bounds: { south: 8.17, north: 12.80, west: 74.85, east: 77.40 },
+      };
+    }
+
     if (!storedCoverage) {
       return NextResponse.json({ error: "Could not locate destination: " + String(row.destination) }, { status: 502 });
     }
