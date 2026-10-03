@@ -10,7 +10,7 @@ const OVERPASS_ENDPOINTS = [
 
 type Bounds = { south: number; north: number; west: number; east: number };
 type DestinationScope = "state" | "district" | "city" | "place" | "unknown";
-type DestinationCoverage = { center: Coordinates; bounds?: Bounds; scope: DestinationScope; state?: string; district?: string };
+type DestinationCoverage = { center: Coordinates; bounds?: Bounds; scope?: DestinationScope; state?: string; district?: string };
 
 function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController();
