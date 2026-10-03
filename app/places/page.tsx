@@ -296,7 +296,7 @@ function PlacesContent(){
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
       </div>
 
-      {!loading&&places.length>0&&<section className="place-explorer">
+      {!loading&&<section className="place-explorer">
         <div className="section-heading">
           <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>What kind of places do you want?</h2><p>Start with the important destinations, then open a category to browse all the matching places. A place can appear in more than one category when it genuinely fits.</p></div>
           <span className="live-badge">{categories.length} categories</span>
@@ -311,7 +311,9 @@ function PlacesContent(){
         </div>
         {openCategory&&<section className="category-results">
           <div className="section-heading"><div><span className="eyebrow">CATEGORY</span><h2>{categories.find(item=>item.key===openCategory)?.label}</h2><p>Browse the complete list for this type. Repeated places across different categories are intentional when they are relevant to both.</p></div><button type="button" className="category-close" onClick={()=>setOpenCategory(null)}>Close</button></div>
-          <div className="places-grid">{categoryPlaces.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}</div>
+          {categoryPlaces.length>0
+            ? <div className="places-grid">{categoryPlaces.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}</div>
+            : <div className="empty-result"><strong>No places are currently classified under this category.</strong><span>The category is ready; once the discovery service returns matching records, they will appear here.</span></div>}
         </section>}
       </section>}
 
