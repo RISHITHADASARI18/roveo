@@ -228,3 +228,16 @@ footer a:hover{color:#1676a5}
 .location-suggestions strong{font-size:14px;color:#172033}
 .location-suggestions small{font-size:12px;color:#64748b;line-height:1.35}
 .location-confirmed{display:block;margin-top:5px;color:#15803d;font-size:12px}
+
+
+/* Compact Places to Explore cards */
+.explore-card{grid-template-columns:110px 1fr;border-radius:16px}
+.explore-visual{min-height:155px}
+.explore-visual span{width:44px;height:44px;border-radius:14px;font-size:18px}
+.explore-body{padding:13px}
+.explore-body h3{font-size:15px;margin:6px 0 5px}
+.explore-description{font-size:10px!important;line-height:1.45!important;min-height:32px}
+.explore-facts{gap:3px;margin:7px 0;font-size:8px}
+.explore-actions{gap:5px;padding-top:10px}
+.explore-actions button,.explore-actions a{padding:6px 8px;font-size:8px}
+.places-grid{gap:10px}
