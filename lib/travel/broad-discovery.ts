@@ -345,15 +345,9 @@ export async function discoverBroadPlaces(
     throw new Error("Could not locate destination: " + destination);
   }
 
-  // Google is optional. Only one bounded Google request is made.
-  if (!desiredQuery) {
-    const googlePlaces = await googleFallback(destination, coverage.bounds, coverage.center, limit);
-    const valid = googlePlaces.filter((place) => insideBounds(place, coverage.bounds));
-    if (valid.length) {
-      return { center: coverage.center, places: valid.slice(0, limit), source: "google", fetchedAt: new Date().toISOString() };
-    }
-  }
-
+  // OSM/Overpass is the primary discovery source. Never return early from a
+  // smaller provider result: ranking must order the complete candidate set,
+  // not replace it with a top-20/top-provider subset.
   // Free OSM fallback: at most four geographic cells, queried in parallel.
   const cells = coverage.bounds ? buildCells(coverage.bounds) : [{
     south: coverage.center.latitude - 0.15, north: coverage.center.latitude + 0.15,
@@ -379,8 +373,10 @@ export async function discoverBroadPlaces(
     ...place, distanceKm: haversineKm(coverage.center, place),
   }));
 
-  // One small supplementary request only if OSM produced very few results.
-  if (places.length < Math.min(limit, 20)) {
+  // Supplement OSM with a bounded set of named Wikipedia places every time.
+  // This prevents famous named destinations from disappearing just because
+  // OSM already returned many smaller/local POIs.
+  {
     const radiusMeters = coverage.bounds
       ? Math.min(50000, Math.max(5000, Math.ceil(Math.max(
           coverage.bounds.north - coverage.bounds.south,
@@ -389,7 +385,7 @@ export async function discoverBroadPlaces(
       : 25000;
     for (const place of await wikipediaFallback(coverage.center, radiusMeters)) {
       if (!insideBounds(place, coverage.bounds)) continue;
-      const key = normalizeName(place.name);
+      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 50) + ":" + Math.round(place.longitude * 50);
       if (key && !unique.has(key)) unique.set(key, place);
     }
     places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
