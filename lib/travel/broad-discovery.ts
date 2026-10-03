@@ -475,6 +475,20 @@ export async function discoverBroadPlaces(
     places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
   }
 
+  // Destination-wide Wikipedia search catches famous named places that may be
+  // missing from a broad Overpass query (for example Munnar and Alappuzha in Kerala).
+  const destinationResults = await wikipediaDestinationSearch(destination);
+  for (const place of destinationResults) {
+    if (!insideBounds(place, coverage.bounds)) continue;
+    place.distanceKm = haversineKm(coverage.center, place);
+    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
+    if (key && !unique.has(key)) unique.set(key, place);
+  }
+  places = [...unique.values()].map((place) => ({
+    ...place,
+    distanceKm: haversineKm(coverage.center, place),
+  }));
+
   if (desiredQuery) {
     const query = desiredQuery.toLowerCase();
     places = places.filter((place) => (place.name + " " + place.description + " " + place.type).toLowerCase().includes(query));
