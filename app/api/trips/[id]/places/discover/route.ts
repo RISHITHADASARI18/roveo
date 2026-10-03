@@ -153,8 +153,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const result = desiredQuery
-      ? await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 250), desiredQuery, storedCoverage)
-      : await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 250), "", storedCoverage);
+      ? await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 1000), desiredQuery, storedCoverage)
+      : await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 1000), "", storedCoverage);
 
     return NextResponse.json({ tripId, destination: trip.rows[0].destination, ...result });
   } catch (error) {
