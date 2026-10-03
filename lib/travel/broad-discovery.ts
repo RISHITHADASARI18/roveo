@@ -331,6 +331,68 @@ async function wikipediaDestinationSearch(destination: string): Promise<Discover
   }
 }
 
+const KERALA_CORE_PLACES = [
+  "kochi", "fort kochi", "thiruvananthapuram", "trivandrum", "guruvayoor", "guruvayur",
+  "munnar", "alappuzha", "alleppey", "thekkady", "wayanad", "kovalam", "varkala",
+  "kozhikode", "calicut", "kumarakom", "bekal", "kollam", "wagamon", "vagamon",
+  "malampuzha", "ponmudi", "jadayu earth center", "jatayu earth center", "athirappilly",
+  "sree padmanabhaswamy temple", "padmanabhaswamy temple", "guruvayur temple",
+  "sabarimala", "bekal fort", "kuttanad", "pookode lake", "poo kode lake",
+] as const;
+
+function isKeralaDestination(destination: string) {
+  return /\\bkerala\\b/i.test(destination);
+}
+
+function isKeralaCorePlace(name: string) {
+  const normalized = normalizeName(name);
+  return KERALA_CORE_PLACES.some((item) => normalized === item || normalized.includes(item));
+}
+
+async function wikipediaExactPlaces(titles: string[]): Promise<DiscoveredPlace[]> {
+  if (!titles.length) return [];
+  try {
+    const params = new URLSearchParams({
+      action: "query",
+      titles: titles.join("|"),
+      prop: "coordinates|extracts",
+      exintro: "1",
+      explaintext: "1",
+      exchars: "500",
+      format: "json",
+      origin: "*",
+    });
+    const response = await fetchWithTimeout(
+      "https://en.wikipedia.org/w/api.php?" + params,
+      { headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" }, cache: "no-store" },
+      6000,
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+    const pages = Object.values(data?.query?.pages ?? {}) as any[];
+    return pages.map((page: any) => {
+      const coordinate = Array.isArray(page?.coordinates) ? page.coordinates[0] : null;
+      const latitude = Number(coordinate?.lat);
+      const longitude = Number(coordinate?.lon);
+      const name = String(page?.title ?? "").trim();
+      if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return {
+        id: "wikipedia-core-" + String(page.pageid ?? normalizeName(name)),
+        name,
+        type: "landmark",
+        group: groupFor(name + " " + String(page?.extract ?? "")),
+        latitude,
+        longitude,
+        distanceKm: 0,
+        description: String(page?.extract ?? "").trim() || "Major Kerala destination.",
+        wikipedia: "https://en.wikipedia.org/wiki/" + encodeURIComponent(name.replaceAll(" ", "_")),
+      } as DiscoveredPlace;
+    }).filter(Boolean) as DiscoveredPlace[];
+  } catch {
+    return [];
+  }
+}
+
 async function googleFallback(destination: string, bounds: Bounds | undefined, center: Coordinates, limit: number) {
   const key = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [] as DiscoveredPlace[];
@@ -389,14 +451,16 @@ function importanceScore(place: DiscoveredPlace) {
   const type = place.type.toLowerCase();
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
   let score = 0;
+  // Core Kerala destinations and iconic landmarks must stay above secondary nature/POI results.
+  if (isKeralaCorePlace(place.name)) score += 140;
   const typeScores: Record<string, number> = {
     // Major geographic destinations must outrank ordinary local POIs.
     city: 65, town: 62, municipality: 58, village: 24,
     attraction: 35, viewpoint: 30, museum: 28, theme_park: 28, zoo: 27,
     aquarium: 27, gallery: 22, fort: 32, castle: 32,
     archaeological_site: 30, ruins: 27, monument: 20, memorial: 18,
-    waterfall: 30, beach: 28, peak: 27, cave: 25,
-    nature_reserve: 24, park: 14, garden: 12, water_park: 20, landmark: 12,
+    waterfall: 10, beach: 20, peak: 12, cave: 10,
+    nature_reserve: 8, park: 6, garden: 5, water_park: 12, landmark: 18,
   };
   score += typeScores[type] ?? 0;
   if (place.wikipedia) score += 22;
@@ -469,6 +533,26 @@ export async function discoverBroadPlaces(
     }));
     for (const place of wikiResults.flat()) {
       if (!insideBounds(place, coverage.bounds)) continue;
+      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
+      if (key && !unique.has(key)) unique.set(key, place);
+    }
+    places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
+  }
+
+  // Seed Kerala's nationally/frequently visited destinations and iconic landmarks explicitly.
+  // This prevents the result set from depending on whether Overpass/Wikipedia happens to surface them.
+  if (isKeralaDestination(destination)) {
+    const coreResults = await wikipediaExactPlaces([
+      "Munnar", "Alappuzha", "Kochi", "Fort Kochi", "Thiruvananthapuram",
+      "Guruvayur", "Guruvayur Temple", "Sree Padmanabhaswamy Temple",
+      "Thekkady", "Wayanad", "Kovalam", "Varkala", "Kozhikode",
+      "Kumarakom", "Bekal Fort", "Kollam", "Wagamon", "Malampuzha",
+      "Ponmudi", "Jatayu Earth's Center", "Athirappilly Falls", "Kuttanad",
+      "Pookode Lake", "Sabarimala",
+    ]);
+    for (const place of coreResults) {
+      if (!insideBounds(place, coverage.bounds)) continue;
+      place.distanceKm = haversineKm(coverage.center, place);
       const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
       if (key && !unique.has(key)) unique.set(key, place);
     }
