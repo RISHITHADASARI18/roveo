@@ -59,7 +59,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     // Backfill coordinates for older trips that only stored the destination name.
     if (!storedCoverage) {
-      let recovered: { center: { latitude: number; longitude: number }; bounds?: { south: number; north: number; west: number; east: number } } | null = null;
+      let recovered: { center: { latitude: number; longitude: number }; bounds: { south: number; north: number; west: number; east: number } | undefined } | null = null;
       try {
         const params = new URLSearchParams({
           q: String(row.destination), format: "jsonv2", limit: "1",
