@@ -128,13 +128,26 @@ function PlacesContent(){
         setLoading(true);
         setMessage("Finding live places around your destination…");
 
-        const res=await fetch(
-          (tripId
-            ? "/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=200"
-            : "/api/places/discover?destination="+encodeURIComponent(destination)+"&maxResults=200")
-            +(liveQuery?"&q="+encodeURIComponent(liveQuery):""),
-          {cache:"no-store"}
-        );
+        let discoveryUrl;
+        if (tripId) {
+          discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=200";
+          const geoRes=await fetch("/api/geocode/search?q="+encodeURIComponent(destination),{cache:"no-store"});
+          const geoData=await geoRes.json().catch(()=>({}));
+          const location=Array.isArray(geoData.locations)?geoData.locations[0]:null;
+          if (location && Number.isFinite(Number(location.lat)) && Number.isFinite(Number(location.lon))) {
+            const geoParams=new URLSearchParams({lat:String(location.lat),lon:String(location.lon)});
+            if(location.boundingBox){
+              geoParams.set("south",String(location.boundingBox.south));
+              geoParams.set("north",String(location.boundingBox.north));
+              geoParams.set("west",String(location.boundingBox.west));
+              geoParams.set("east",String(location.boundingBox.east));
+            }
+            discoveryUrl+="&"+geoParams.toString();
+          }
+        } else {
+          discoveryUrl="/api/places/discover?destination="+encodeURIComponent(destination)+"&maxResults=200";
+        }
+        const res=await fetch(discoveryUrl+(liveQuery?"&q="+encodeURIComponent(liveQuery):""),{cache:"no-store"});
         const data=await res.json().catch(()=>({}));
         if(!res.ok)throw new Error(data.error||"Could not discover places.");
 
