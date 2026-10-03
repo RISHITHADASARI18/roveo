@@ -67,7 +67,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         });
         const response = await fetch("https://nominatim.openstreetmap.org/search?" + params, {
           headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination backfill)" },
-          cache: "no-store", signal: AbortSignal.timeout(5000),
+          cache: "no-store",
         });
         if (response.ok) {
           const data = await response.json();
@@ -93,7 +93,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           const params = new URLSearchParams({ q: String(row.destination), limit: "1", lang: "en" });
           const response = await fetch("https://photon.komoot.io/api/?" + params, {
             headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination backfill)" },
-            cache: "no-store", signal: AbortSignal.timeout(5000),
+            cache: "no-store",
           });
           if (response.ok) {
             const data = await response.json();
