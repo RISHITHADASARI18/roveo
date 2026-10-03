@@ -77,6 +77,9 @@ export async function savePlaceCatalog(destination: string, places: DiscoveredPl
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    // Replace the destination snapshot instead of accumulating stale provider
+    // records from previous discovery runs.
+    await client.query("DELETE FROM places_catalog WHERE destination_key = $1", [key]);
     for (const place of places) {
       const rawId = String(place.id || place.name);
       const provider = rawId.startsWith("wikipedia") ? "wikipedia" : rawId.startsWith("google") ? "google" : "openstreetmap";
