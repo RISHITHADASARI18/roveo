@@ -99,12 +99,14 @@ function buildCells(bounds: Bounds) {
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const bbox = [cell.south, cell.west, cell.north, cell.east].join(",");
   const query = [
-    "[out:json][timeout:10];", "(",
-    'nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](' + bbox + ");",
-    'nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](' + bbox + ");',
-    'nwr["leisure"~"park|garden|nature_reserve|water_park"](' + bbox + ");",
-    'nwr["natural"~"waterfall|peak|cave|beach"](' + bbox + ");",
-    ");", "out center tags;",
+    "[out:json][timeout:10];",
+    "(",
+    `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork"](${bbox});`,
+    `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage"](${bbox});`,
+    `nwr["leisure"~"park|garden|nature_reserve|water_park"](${bbox});`,
+    `nwr["natural"~"waterfall|peak|cave|beach"](${bbox});`,
+    ");",
+    "out center tags;",
   ].join("\n");
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
