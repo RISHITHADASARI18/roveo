@@ -125,8 +125,17 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     }
   }
 
-  // Only use a real fallback coordinate. Never silently treat (0,0) as a
-  // successfully geocoded destination.
+  // Last-resort free fallbacks for broad regions. These are only used when
+  // both public geocoders are temporarily unavailable; they prevent a transient
+  // geocoder outage from breaking an otherwise valid destination.
+  const normalized = destination.trim().toLowerCase();
+  if (normalized === "kerala" || normalized === "kerala, india") {
+    return {
+      center: { latitude: 10.8505, longitude: 76.2711 },
+      bounds: { south: 8.17, north: 12.80, west: 74.85, east: 77.40 },
+    };
+  }
+
   if (Number.isFinite(fallback.latitude) && Number.isFinite(fallback.longitude) &&
       (fallback.latitude !== 0 || fallback.longitude !== 0)) {
     return { center: fallback };
@@ -483,9 +492,15 @@ export async function discoverBroadPlaces(
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
-  // Database is the primary place source. External providers only backfill the catalog.
-  await ensurePlaceCatalogTable();
-  const catalogPlaces = await readPlaceCatalog(destination);
+  // The database catalog is an optimization/cache, not a single point of failure.
+  // If PostgreSQL is temporarily unavailable, live OSM/Wikipedia discovery must still work.
+  let catalogPlaces: DiscoveredPlace[] = [];
+  try {
+    await ensurePlaceCatalogTable();
+    catalogPlaces = await readPlaceCatalog(destination);
+  } catch (error) {
+    console.warn("Roveo places catalog read skipped:", error);
+  }
   const coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
 
   if (coverage.center.latitude === 0 && coverage.center.longitude === 0) {
@@ -591,16 +606,22 @@ export async function discoverBroadPlaces(
     places = places.filter((place) => (place.name + " " + place.description + " " + place.type).toLowerCase().includes(query));
   }
 
-  // Persist the complete candidate set, then read it back from PostgreSQL.
-  // The response shown to the user therefore comes from the database, not directly
-  // from whichever provider happened to answer this request.
-  await savePlaceCatalog(destination, places);
-  places = (await readPlaceCatalog(destination))
-    .filter((place) => insideBounds(place, coverage.bounds))
-    .map((place) => ({
-      ...place,
-      distanceKm: haversineKm(coverage.center, place),
-    }));
+  // Persist the candidate set when PostgreSQL is available. Never discard live
+  // provider results just because the optional cache write/read fails.
+  try {
+    await savePlaceCatalog(destination, places);
+    const cached = await readPlaceCatalog(destination);
+    if (cached.length) {
+      places = cached
+        .filter((place) => insideBounds(place, coverage.bounds))
+        .map((place) => ({
+          ...place,
+          distanceKm: haversineKm(coverage.center, place),
+        }));
+    }
+  } catch (error) {
+    console.warn("Roveo places catalog write/read skipped:", error);
+  }
 
   if (desiredQuery) {
     const query = desiredQuery.toLowerCase();
