@@ -541,7 +541,19 @@ export async function discoverBroadPlaces(
   // state = the whole state; district = the district plus a small surrounding
   // ring so nearby districts are useful; city/place = the geocoded area only.
   let searchBounds = coverage.bounds;
-  if (coverage.scope === "district" && searchBounds) {
+  if (searchBounds && (coverage.scope === "city" || coverage.scope === "place")) {
+    // Geocoders often return a very tight administrative bbox for cities and
+    // named attractions. That is too restrictive for travel discovery: nearby
+    // landmarks can sit just outside the administrative boundary.
+    const latPad = coverage.scope === "city" ? 0.30 : 0.12;
+    const lonPad = coverage.scope === "city" ? 0.30 : 0.12;
+    searchBounds = {
+      south: searchBounds.south - latPad,
+      north: searchBounds.north + latPad,
+      west: searchBounds.west - lonPad,
+      east: searchBounds.east + lonPad,
+    };
+  } else if (coverage.scope === "district" && searchBounds) {
     const latPad = Math.max(0.25, Math.min(0.75, (searchBounds.north - searchBounds.south) * 0.35));
     const lonPad = Math.max(0.25, Math.min(0.75, (searchBounds.east - searchBounds.west) * 0.35));
     searchBounds = {
