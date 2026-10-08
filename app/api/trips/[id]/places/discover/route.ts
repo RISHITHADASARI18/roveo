@@ -18,6 +18,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const url = new URL(request.url);
   const maxResults = Number(url.searchParams.get("maxResults") ?? "200");
   const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+  const destinationId = Number(url.searchParams.get("destinationId"));
+  const hasDestinationId = Number.isInteger(destinationId) && destinationId > 0;
   const suppliedLat = Number(url.searchParams.get("lat"));
   const suppliedLon = Number(url.searchParams.get("lon"));
   const suppliedSouth = Number(url.searchParams.get("south"));
@@ -45,7 +47,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     );
     if (!trip.rows[0]) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
-    const row = trip.rows[0];
+    // Phase 2: discovery is scoped to one selected trip destination at a time.
+    // This keeps Delhi, Agra and Jaipur independent instead of accidentally
+    // discovering everything around only the first destination.
+    let row = trip.rows[0];
+    if (hasDestinationId) {
+      const selected = await db.query(
+        `SELECT destination_name AS destination, latitude AS destination_lat, longitude AS destination_lon,
+                bounding_south AS destination_south, bounding_north AS destination_north,
+                bounding_west AS destination_west, bounding_east AS destination_east
+           FROM trip_destinations
+          WHERE id = $1 AND trip_id = $2`,
+        [destinationId, tripId]
+      );
+      if (!selected.rows[0]) {
+        return NextResponse.json({ error: "Trip destination not found." }, { status: 404 });
+      }
+      row = { ...row, ...selected.rows[0] };
+    }
     const lat = Number(row.destination_lat);
     const lon = Number(row.destination_lon);
     const south = Number(row.destination_south);
@@ -165,7 +184,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ? await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 1000), desiredQuery, storedCoverage)
       : await discoverBroadPlaces(String(row.destination), 0, Math.min(Math.max(Math.round(maxResults), 1), 1000), "", storedCoverage);
 
-    return NextResponse.json({ tripId, destination: trip.rows[0].destination, ...result });
+    return NextResponse.json({
+      tripId,
+      destinationId: hasDestinationId ? destinationId : null,
+      destination: row.destination,
+      ...result
+    });
   } catch (error) {
     console.error("GET /api/trips/[id]/places/discover failed:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not discover places." }, { status: 502 });
