@@ -262,7 +262,11 @@ function PlacesContent(){
               destination:item,
               places:mapped,
               center:{lat:Number(data.center?.latitude),lon:Number(data.center?.longitude)},
-              message:mapped.length ? mapped.length+" places found." : "No places were found nearby."
+              message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
+              nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
+                name:String(nearby.name||""),latitude:Number(nearby.latitude),longitude:Number(nearby.longitude),
+                distanceKm:Number(nearby.distanceKm||0),type:String(nearby.type||"town")
+              })).filter((nearby:NearbyDestination)=>nearby.name&&Number.isFinite(nearby.latitude)&&Number.isFinite(nearby.longitude)):[] 
             });
           }catch(error){
             results.push({
@@ -298,6 +302,10 @@ function PlacesContent(){
       setMessage(selected.message);
     }
   },[activeDestinationId,destinationResults]);
+
+  const activeDestination=destinationResults.find(item=>item.destination.id===activeDestinationId)?.destination || destinations.find(item=>item.id===activeDestinationId) || destinations[0];
+  const destination=activeDestination?.name || destinationParam;
+  const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
   const visible=useMemo(()=>places.filter(p=>{
     const categoryMatch=category==="all" || p.group===category || placeCategories(p).includes(category);
@@ -403,13 +411,13 @@ function PlacesContent(){
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
       </div>
-      {!loading && activeDestinationId && destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations.length>0 && <section className="nearby-destinations">
+      {!loading && activeDestinationId && activeNearbyDestinations.length>0 && <section className="nearby-destinations">
         <div className="section-heading">
           <div><span className="eyebrow">NEARBY DESTINATIONS</span><h2>Want to add another stop?</h2><p>These are nearby cities and towns found around the selected destination. They are suggestions only and are never added automatically.</p></div>
           <span className="live-badge">Suggestions</span>
         </div>
         <div className="nearby-destination-grid">
-          {destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations.map(nearby=>
+          {activeNearbyDestinations.map(nearby=>
             <div className="nearby-destination-card" key={nearby.name}>
               <div><strong>{nearby.name}</strong><small>{nearby.distanceKm.toFixed(0)} km · {titleCase(nearby.type)}</small></div>
               <button type="button" onClick={()=>addNearbyDestination(nearby)}>+ Add destination</button>
