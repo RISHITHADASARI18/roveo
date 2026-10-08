@@ -1,5 +1,4 @@
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
-import { ensurePlaceCatalogTable, readPlaceCatalog, savePlaceCatalog } from "./place-catalog";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -515,15 +514,6 @@ export async function discoverBroadPlaces(
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
-  // The database catalog is an optimization/cache, not a single point of failure.
-  // If PostgreSQL is temporarily unavailable, live OSM/Wikipedia discovery must still work.
-  let catalogPlaces: DiscoveredPlace[] = [];
-  try {
-    await ensurePlaceCatalogTable();
-    catalogPlaces = await readPlaceCatalog(destination);
-  } catch (error) {
-    console.warn("Roveo places catalog read skipped:", error);
-  }
   let coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
   // Trips created before scope-aware discovery only stored coordinates/bounds.
   // Resolve the destination once more to determine whether the query is a state,
@@ -562,49 +552,16 @@ export async function discoverBroadPlaces(
     };
   }
 
-  // OSM/Overpass is the primary discovery source. Never return early from a
-  // smaller provider result: ranking must order the complete candidate set,
-  // not replace it with a top-20/top-provider subset.
-  // Free OSM fallback: at most four geographic cells, queried in parallel.
+  // Keep the critical path bounded: public Overpass/Wikipedia services can be slow or rate-limited.
+  // Discovery must still return useful places instead of leaving the page on “Finding places…”.
   const cells = searchBounds ? buildCells(searchBounds) : [{
     south: coverage.center.latitude - 0.15, north: coverage.center.latitude + 0.15,
     west: coverage.center.longitude - 0.15, east: coverage.center.longitude + 0.15,
   }];
-  const cellResults = await Promise.all(cells.map(overpassCell));
-  const unique = new Map<string, DiscoveredPlace>();
 
-  // Reuse places already stored for this destination before contacting live providers.
-  for (const place of catalogPlaces) {
-    if (!insideBounds(place, searchBounds)) continue;
-    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
-    if (key) unique.set(key, place);
-  }
-
-  console.info("Roveo places discovery:", {
-    destination,
-    catalogCount: catalogPlaces.length,
-    cellCount: cells.length,
-    overpassCounts: cellResults.map((items) => items.length),
-  });
-
-  for (const place of cellResults.flat()) {
-    if (!insideBounds(place, searchBounds)) continue;
-    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
-    if (!key) continue;
-    const existing = unique.get(key);
-    if (!existing || JSON.stringify(place).length > JSON.stringify(existing).length) unique.set(key, place);
-  }
-
-  let places = [...unique.values()].map((place) => ({
-    ...place, distanceKm: haversineKm(coverage.center, place),
-  }));
-
-  // Supplement OSM with bounded Wikipedia searches across the same cells.
-  // A single center search can miss named destinations on the edges of a
-  // large region, so search each cell once while keeping the request count
-  // bounded by the existing geographic grid.
-  {
-    const wikiResults = await Promise.all(cells.map(async (cell) => {
+  const [cellResults, wikiResults, coreResults, destinationResults] = await Promise.all([
+    Promise.all(cells.map(overpassCell)),
+    Promise.all(cells.map(async (cell) => {
       const cellCenter = {
         latitude: (cell.south + cell.north) / 2,
         longitude: (cell.west + cell.east) / 2,
@@ -613,75 +570,79 @@ export async function discoverBroadPlaces(
       const widthKm = (cell.east - cell.west) * 111 * Math.max(Math.cos(cellCenter.latitude * Math.PI / 180), 0.25);
       const radiusMeters = Math.min(50000, Math.max(5000, Math.ceil(Math.max(heightKm, widthKm) * 500)));
       return wikipediaFallback(cellCenter, radiusMeters);
-    }));
-    for (const place of wikiResults.flat()) {
-      if (!insideBounds(place, searchBounds)) continue;
-      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
-      if (key && !unique.has(key)) unique.set(key, place);
-    }
-    places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
-  }
-
-  // Seed Kerala's nationally/frequently visited destinations and iconic landmarks explicitly.
-  // This prevents the result set from depending on whether Overpass/Wikipedia happens to surface them.
-  if (isKeralaDestination(destination)) {
-    const coreResults = await wikipediaExactPlaces([
+    })),
+    isKeralaDestination(destination) ? wikipediaExactPlaces([
       "Munnar", "Alappuzha", "Kochi", "Fort Kochi", "Thiruvananthapuram",
       "Guruvayur", "Guruvayur Temple", "Sree Padmanabhaswamy Temple",
       "Thekkady", "Wayanad", "Kovalam", "Varkala", "Kozhikode",
       "Kumarakom", "Bekal Fort", "Kollam", "Wagamon", "Malampuzha",
       "Ponmudi", "Jatayu Earth's Center", "Athirappilly Falls", "Kuttanad",
       "Pookode Lake", "Sabarimala",
-    ]);
-    for (const place of coreResults) {
+    ]) : Promise.resolve([] as DiscoveredPlace[]),
+    wikipediaDestinationSearch(destination),
+  ]);
+
+  const unique = new Map<string, DiscoveredPlace>();
+  const addPlaces = (items: DiscoveredPlace[]) => {
+    for (const place of items) {
       if (!insideBounds(place, searchBounds)) continue;
-      place.distanceKm = haversineKm(coverage.center, place);
       const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
-      if (key && !unique.has(key)) unique.set(key, place);
+      if (!key) continue;
+      const existing = unique.get(key);
+      if (!existing || JSON.stringify(place).length > JSON.stringify(existing).length) unique.set(key, place);
     }
-    places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
+  };
+
+  addPlaces(cellResults.flat());
+  addPlaces(wikiResults.flat());
+  addPlaces(coreResults);
+  addPlaces(destinationResults);
+
+  // Last-resort static anchors for Kerala. These are deliberately only major,
+  // well-known destinations; live OSM/Wikipedia results remain the main source.
+  if (isKeralaDestination(destination) && unique.size === 0) {
+    const anchors: Array<[string, number, number, string]> = [
+      ["Munnar",10.0889,77.0595,"town"], ["Alappuzha",9.4981,76.3388,"city"],
+      ["Kochi",9.9312,76.2673,"city"], ["Fort Kochi",9.9658,76.2421,"place"],
+      ["Thiruvananthapuram",8.5241,76.9366,"city"], ["Guruvayur",10.5941,76.0411,"town"],
+      ["Thekkady",9.6031,77.1616,"place"], ["Wayanad",11.6854,76.1320,"place"],
+      ["Kovalam",8.4004,76.9787,"place"], ["Varkala",8.7379,76.7163,"town"],
+      ["Kozhikode",11.2588,75.7804,"city"], ["Kumarakom",9.6175,76.4304,"place"],
+      ["Bekal",12.3914,75.0315,"place"], ["Kollam",8.8932,76.6141,"city"],
+      ["Vagamon",9.6850,76.9070,"place"], ["Malampuzha",10.8270,76.6850,"place"],
+      ["Ponmudi",8.7590,77.1160,"place"], ["Jatayu Earth's Center",8.8570,76.8660,"attraction"],
+      ["Athirappilly Falls",10.2850,76.5690,"waterfall"], ["Kuttanad",9.4000,76.4800,"place"],
+      ["Pookode Lake",11.5460,76.0100,"lake"], ["Sabarimala",9.4330,77.0800,"place"],
+    ];
+    addPlaces(anchors.map(([name, latitude, longitude, type]) => ({
+      id: "kerala-anchor-" + normalizeName(name), name, type,
+      group: groupFor(name + " " + type), latitude, longitude,
+      distanceKm: haversineKm(coverage.center, { latitude, longitude }),
+      description: "Major Kerala destination.",
+    })));
   }
 
-  // Destination-wide Wikipedia search catches famous named places that may be
-  // missing from a broad Overpass query (for example Munnar and Alappuzha in Kerala).
-  const destinationResults = await wikipediaDestinationSearch(destination);
-  for (const place of destinationResults) {
-    if (!insideBounds(place, searchBounds)) continue;
-    place.distanceKm = haversineKm(coverage.center, place);
-    const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
-    if (key && !unique.has(key)) unique.set(key, place);
-  }
-  places = [...unique.values()].map((place) => ({
-    ...place,
-    distanceKm: haversineKm(coverage.center, place),
+  let places = [...unique.values()].map((place) => ({
+    ...place, distanceKm: haversineKm(coverage.center, place),
   }));
 
-  if (desiredQuery) {
-    const query = desiredQuery.toLowerCase();
-    places = places.filter((place) => (place.name + " " + place.description + " " + place.type).toLowerCase().includes(query));
-  }
-
-  // Persist the candidate set when PostgreSQL is available. Never discard live
-  // provider results just because the optional cache write/read fails.
-  try {
-    await savePlaceCatalog(destination, places);
-    const cached = await readPlaceCatalog(destination);
-    if (cached.length) {
-      places = cached
-        .filter((place) => insideBounds(place, searchBounds))
-        .map((place) => ({
-          ...place,
-          distanceKm: haversineKm(coverage.center, place),
-        }));
-    }
-  } catch (error) {
-    console.warn("Roveo places catalog write/read skipped:", error);
-  }
+  console.info("Roveo places discovery:", {
+    destination, cellCount: cells.length,
+    overpassCounts: cellResults.map((items) => items.length),
+    wikipediaCount: wikiResults.flat().length,
+    coreCount: coreResults.length,
+    destinationCount: destinationResults.length,
+    mergedCount: places.length,
+  });
 
   if (desiredQuery) {
     const query = desiredQuery.toLowerCase();
     places = places.filter((place) => (place.name + " " + (place.description ?? "") + " " + place.type).toLowerCase().includes(query));
   }
+
+  // Do not write the live result set to PostgreSQL on the request path. The old
+  // row-by-row catalog write could take long enough to make Vercel appear stuck.
+  // Live discovery is the source of truth for this page.
 
   places.sort((a, b) => {
     const scoreDiff = importanceScore(b) - importanceScore(a);
