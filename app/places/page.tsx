@@ -26,6 +26,7 @@ const categories=[
   {key:"Viewpoints",label:"Viewpoints",icon:"◉",terms:/viewpoint|scenic|lookout|panorama|observation/i},
   {key:"Waterfalls",label:"Waterfalls",icon:"≋",terms:/waterfall|falls/i},
   {key:"Nature & Wildlife",label:"Nature & Wildlife",icon:"✦",terms:/wildlife|wildlife sanctuary|nature reserve|forest|national park|sanctuary/i},
+  {key:"National Parks & Sanctuaries",label:"National Parks & Sanctuaries",icon:"⌖",terms:/national park|wildlife sanctuary|sanctuary|biosphere reserve/i},
   {key:"Beaches",label:"Beaches",icon:"⌁",terms:/beach|coast|shore/i},
   {key:"History & Heritage",label:"History & Heritage",icon:"◈",terms:/fort|palace|museum|monument|historic|heritage|memorial|ruin|castle|archaeological/i},
   {key:"Temples & Spiritual",label:"Temples & Spiritual",icon:"◇",terms:/temple|church|mosque|shrine|worship|cathedral|basilica/i},
@@ -57,6 +58,41 @@ function titleCase(value:string){
   return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
 }
 
+const curatedDescriptions:Record<string,string>={
+  "Munnar":"Hill station known for tea plantations, misty valleys and mountain scenery.",
+  "Alappuzha":"Famous for Kerala backwaters, houseboats and relaxed waterside landscapes.",
+  "Alleppey":"Famous for Kerala backwaters, houseboats and relaxed waterside landscapes.",
+  "Kochi":"Historic coastal city known for Fort Kochi, heritage streets and its harbour.",
+  "Fort Kochi":"Historic waterfront area with colonial-era buildings, art spaces and Chinese fishing nets.",
+  "Thiruvananthapuram":"Kerala’s capital, known for heritage sites, museums and the Padmanabhaswamy Temple.",
+  "Guruvayur":"Temple town best known for the Guruvayur Sri Krishna Temple.",
+  "Thekkady":"Gateway to Periyar, with forest landscapes and wildlife experiences around the lake.",
+  "Wayanad":"Green hill district known for forests, viewpoints, waterfalls and wildlife.",
+  "Kovalam":"Coastal destination known for its beaches, lighthouse and seaside views.",
+  "Varkala":"Clifftop coastal destination known for its beach, views and relaxed promenade.",
+  "Kozhikode":"Historic Malabar city known for its coastline, food culture and heritage.",
+  "Kumarakom":"Backwater destination on Vembanad Lake, known for waterways and birdlife.",
+  "Bekal":"Coastal area known for Bekal Fort and wide Arabian Sea views.",
+  "Kollam":"Historic coastal city and gateway to Kerala’s southern backwaters.",
+  "Vagamon":"Quiet hill destination known for green meadows, pine forests and valley views.",
+  "Malampuzha":"Popular Palakkad destination with a dam, gardens and nearby hill scenery.",
+  "Ponmudi":"Hill retreat near Thiruvananthapuram known for winding roads and forested hills.",
+  "Jatayu Earth's Center":"Hilltop attraction featuring the Jatayu sculpture and panoramic views.",
+  "Athirappilly Falls":"Kerala’s best-known waterfall, set amid forested landscapes.",
+  "Kuttanad":"Low-lying backwater region known for waterways and paddy fields.",
+  "Pookode Lake":"Freshwater lake in Wayanad surrounded by forested hills.",
+  "Sabarimala":"Major pilgrimage destination in the forested hills of Pathanamthitta."
+};
+
+function conciseDescription(place:Place){
+  const curated=curatedDescriptions[place.name.trim()];
+  if(curated)return curated;
+  const raw=(place.description||"").replace(/\s+/g," ").trim();
+  if(!raw || /^Popular place to visit in /i.test(raw))return "";
+  const first=raw.split(/(?<=[.!?])\s+/)[0];
+  return first.length<=155 ? first : first.slice(0,152).replace(/\s+\S*$/,"")+"…";
+}
+
 function classify(tags:any):Place["group"]{
   const tourism=tags.tourism||"";
   const historic=tags.historic||"";
@@ -72,8 +108,7 @@ function classify(tags:any):Place["group"]{
 
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
-  const generic=place.description?.startsWith("Popular place to visit in ");
-  const description=generic ? "" : place.description||"";
+  const description=conciseDescription(place);
   return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
     <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
     <div className="explore-body">
@@ -286,7 +321,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Roveo finds a broad set of real places across your destination, ranks the most important ones first, and lets you choose any places you want for your trip.</p>
+        <p>Discover the places worth adding to your trip, from major destinations to smaller local spots.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
     </section>
@@ -298,7 +333,7 @@ function PlacesContent(){
 
       {!loading&&<section className="place-explorer">
         <div className="section-heading">
-          <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>What kind of places do you want?</h2><p>Start with the important destinations, then open a category to browse all the matching places. A place can appear in more than one category when it genuinely fits.</p></div>
+          <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>Explore by category</h2><p>Pick a type to browse matching places. Some places appear in more than one category when they genuinely fit.</p></div>
           <span className="live-badge">{categories.length} categories</span>
         </div>
         <div className="category-card-grid">
@@ -317,7 +352,7 @@ function PlacesContent(){
         </section>}
       </section>}
 
-      {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>Every place in the current list gets its own pin, so you can see which attractions and smaller spots are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
+      {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>See where your discovered places sit and which ones are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
       <div className="places-result-head">
         <div>
@@ -337,7 +372,7 @@ function PlacesContent(){
               <div>
                 <span className="eyebrow">START HERE</span>
                 <h2>{category==="all"?"Main places to visit.":"Places in this selection."}</h2>
-                <p>{category==="all"?"The main destinations and well-known places stay up front. The detailed types are organized into the category boxes above, so waterfalls and similar places do not overwhelm the main list.":"Browse the places matching your current selection."}</p>
+                <p>{category==="all"?"Start with the most important destinations. Use the categories above when you want a specific type of place.":"Browse the places matching your current selection."}</p>
               </div>
               <span className="live-badge">{highlights.length} places</span>
             </div>
