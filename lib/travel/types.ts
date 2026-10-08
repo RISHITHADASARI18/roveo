@@ -24,6 +24,13 @@ export type DiscoveredPlace = {
 export type PlaceDiscoveryResult = {
   center: Coordinates;
   places: DiscoveredPlace[];
+  nearbyDestinations?: Array<{
+    name: string;
+    latitude: number;
+    longitude: number;
+    distanceKm: number;
+    type: string;
+  }>;
   source: "google" | "openstreetmap";
   fetchedAt: string;
 };
