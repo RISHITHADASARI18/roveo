@@ -190,6 +190,52 @@ function buildCells(bounds: Bounds) {
   return cells.slice(0, 4);
 }
 
+async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: DestinationCoverage) {
+  if (!bounds) return [] as Array<{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>;
+  const pad = coverage.scope === "state" ? 1.0 : coverage.scope === "district" ? 0.6 : 0.4;
+  const outer: Bounds = {
+    south: Math.max(-90, bounds.south - pad),
+    north: Math.min(90, bounds.north + pad),
+    west: Math.max(-180, bounds.west - pad),
+    east: Math.min(180, bounds.east + pad),
+  };
+  const bbox = [outer.south, outer.west, outer.north, outer.east].join(",");
+  const query = [
+    "[out:json][timeout:8];",
+    'nwr["place"~"city|town|municipality"](' + bbox + ');',
+    "out center tags;",
+  ].join("\n");
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const response = await fetchWithTimeout(endpoint, {
+        method:"POST",
+        headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
+        body:"data="+encodeURIComponent(query),
+        cache:"no-store",
+      },9000);
+      if(!response.ok) continue;
+      const data=await response.json();
+      const results=new Map<string,{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>();
+      for(const element of Array.isArray(data?.elements)?data.elements:[]){
+        const tags=element?.tags??{};
+        const name=String(tags["name:en"]??tags.name??"").trim();
+        const latitude=Number(element.lat??element.center?.lat);
+        const longitude=Number(element.lon??element.center?.lon);
+        if(!name||!Number.isFinite(latitude)||!Number.isFinite(longitude))continue;
+        // Suggestions may live just outside a city/district/state boundary.
+        // Do not leak the current destination itself back as a suggestion.
+        if(haversineKm(coverage.center,{latitude,longitude})<10)continue;
+        const key=normalizeName(name);
+        if(!results.has(key))results.set(key,{name,latitude,longitude,distanceKm:haversineKm(coverage.center,{latitude,longitude}),type:String(tags.place??"town")});
+      }
+      return [...results.values()].sort((a,b)=>a.distanceKm-b.distanceKm).slice(0,12);
+    }catch{
+      // Try the second public Overpass endpoint.
+    }
+  }
+  return [];
+}
+
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const bbox = [cell.south, cell.west, cell.north, cell.east].join(",");
   const query = [
@@ -713,9 +759,12 @@ export async function discoverBroadPlaces(
     throw new Error("No live places were returned for " + destination + ". The destination was located, but the place providers returned no usable records.");
   }
 
+  const nearbyDestinations = await nearbyDestinationSearch(searchBounds, coverage);
+
   return {
     center: coverage.center,
     places: places.slice(0, limit),
+    nearbyDestinations,
     source: "openstreetmap",
     fetchedAt: new Date().toISOString(),
   };
