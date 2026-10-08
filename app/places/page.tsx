@@ -133,7 +133,8 @@ function PlacesContent(){
   const days=Number(params.get("days"))||1;
   const people=Number(params.get("people"))||1;
   type TripDestination={id:string;name:string;lat:number;lon:number;order:number;days:number|null};
-  type DestinationResult={destination:TripDestination;places:Place[];center:GeoPoint|null;message:string};
+  type NearbyDestination={name:string;latitude:number;longitude:number;distanceKm:number;type:string};
+  type DestinationResult={destination:TripDestination;places:Place[];center:GeoPoint|null;message:string;nearbyDestinations:NearbyDestination[]};
   const [destinations,setDestinations]=useState<TripDestination[]>([]);
   const [destinationResults,setDestinationResults]=useState<DestinationResult[]>([]);
   const [activeDestinationId,setActiveDestinationId]=useState("");
@@ -150,6 +151,7 @@ function PlacesContent(){
   const [savedPlaceIds,setSavedPlaceIds]=useState<Record<string,string>>({});
   const [saveMessage,setSaveMessage]=useState("");
   const [savingId,setSavingId]=useState<string|null>(null);
+  const [discoveryRefresh,setDiscoveryRefresh]=useState(0);
 
   useEffect(()=>{
     let cancelled=false;
@@ -265,7 +267,8 @@ function PlacesContent(){
           }catch(error){
             results.push({
               destination:item,places:[],center:null,
-              message:error instanceof Error?error.message:"Could not discover places."
+              message:error instanceof Error?error.message:"Could not discover places.",
+              nearbyDestinations:[]
             });
           }
         }
@@ -284,7 +287,7 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destinationParam,tripId,liveQuery]);
+  },[destinationParam,tripId,liveQuery,discoveryRefresh]);
 
   useEffect(()=>{
     if(!activeDestinationId)return;
@@ -313,6 +316,24 @@ function PlacesContent(){
     if(!selected)return [];
     return places.filter(place=>selected.terms.test((place.name+" "+place.type+" "+(place.description||"")+" "+place.group))).filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index);
   },[places,openCategory]);
+
+  async function addNearbyDestination(nearby:NearbyDestination){
+    if(!tripId)return;
+    try{
+      const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/destinations",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({destination:{
+          name:nearby.name,lat:nearby.latitude,lon:nearby.longitude
+        }})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Could not add destination.");
+      setActiveDestinationId(String(data.destination?.id||""));
+      setDiscoveryRefresh(value=>value+1);
+    }catch(error){
+      setSaveMessage(error instanceof Error?error.message:"Could not add destination.");
+    }
+  }
 
   async function toggleAdd(id:string){
     if(!tripId){
@@ -382,6 +403,20 @@ function PlacesContent(){
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
       </div>
+      {!loading && activeDestinationId && destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations.length>0 && <section className="nearby-destinations">
+        <div className="section-heading">
+          <div><span className="eyebrow">NEARBY DESTINATIONS</span><h2>Want to add another stop?</h2><p>These are nearby cities and towns found around the selected destination. They are suggestions only and are never added automatically.</p></div>
+          <span className="live-badge">Suggestions</span>
+        </div>
+        <div className="nearby-destination-grid">
+          {destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations.map(nearby=>
+            <div className="nearby-destination-card" key={nearby.name}>
+              <div><strong>{nearby.name}</strong><small>{nearby.distanceKm.toFixed(0)} km · {titleCase(nearby.type)}</small></div>
+              <button type="button" onClick={()=>addNearbyDestination(nearby)}>+ Add destination</button>
+            </div>
+          )}
+        </div>
+      </section>}
       {!loading && destinations.length>1 && <section className="destination-switcher">
         <div className="section-heading">
           <div><span className="eyebrow">YOUR ROUTE</span><h2>Explore each destination separately.</h2><p>Roveo discovers places independently for every destination in your trip.</p></div>
