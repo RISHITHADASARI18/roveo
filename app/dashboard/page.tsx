@@ -69,6 +69,16 @@ export default function DashboardPage() {
     setDestinationLocations((current) => current.filter((item) => item.id !== id));
   }
 
+  function moveDestination(index:number, direction:-1|1) {
+    setDestinationLocations((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   async function buildTrip() {
     if (!sourceLocation || destinationLocations.length === 0 || !days || !people || !budget || !travel || !localTravel) {
       setError("Please choose a starting location, at least one destination, trip details and both travel preferences first.");
@@ -158,7 +168,11 @@ export default function DashboardPage() {
                       {destinationLocations.map((location, index) => (
                         <div className="destination-chip" key={location.id}>
                           <span><b>{index + 1}.</b> {location.name}</span>
-                          <button type="button" onClick={() => removeDestination(location.id)} aria-label={"Remove " + location.name}>×</button>
+                          <div className="destination-chip-actions">
+                            <button type="button" onClick={() => moveDestination(index, -1)} disabled={index === 0} aria-label={"Move " + location.name + " up"}>↑</button>
+                            <button type="button" onClick={() => moveDestination(index, 1)} disabled={index === destinationLocations.length - 1} aria-label={"Move " + location.name + " down"}>↓</button>
+                            <button type="button" onClick={() => removeDestination(location.id)} aria-label={"Remove " + location.name}>×</button>
+                          </div>
                         </div>
                       ))}
                     </div>
