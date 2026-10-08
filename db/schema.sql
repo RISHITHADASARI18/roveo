@@ -137,3 +137,26 @@ CREATE INDEX IF NOT EXISTS itinerary_route_legs_trip_id_idx
 
 CREATE INDEX IF NOT EXISTS itinerary_route_legs_day_id_idx
   ON itinerary_route_legs (day_id);
+
+
+-- Multi-destination trip planning
+CREATE TABLE IF NOT EXISTS trip_destinations (
+  id BIGSERIAL PRIMARY KEY,
+  trip_id BIGINT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  destination_name TEXT NOT NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  bounding_south DOUBLE PRECISION,
+  bounding_north DOUBLE PRECISION,
+  bounding_west DOUBLE PRECISION,
+  bounding_east DOUBLE PRECISION,
+  order_index INTEGER NOT NULL CHECK (order_index > 0),
+  days INTEGER CHECK (days IS NULL OR days > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (trip_id, order_index),
+  UNIQUE (trip_id, destination_name)
+);
+
+CREATE INDEX IF NOT EXISTS trip_destinations_trip_id_idx
+  ON trip_destinations (trip_id, order_index);
