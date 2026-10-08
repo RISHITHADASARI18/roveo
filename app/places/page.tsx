@@ -128,10 +128,15 @@ function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;des
 
 function PlacesContent(){
   const params=useSearchParams();
-  const destination=params.get("destination")||"";
+  const destinationParam=params.get("destination")||"";
   const source=params.get("source")||"";
   const days=Number(params.get("days"))||1;
   const people=Number(params.get("people"))||1;
+  type TripDestination={id:string;name:string;lat:number;lon:number;order:number;days:number|null};
+  type DestinationResult={destination:TripDestination;places:Place[];center:GeoPoint|null;message:string};
+  const [destinations,setDestinations]=useState<TripDestination[]>([]);
+  const [destinationResults,setDestinationResults]=useState<DestinationResult[]>([]);
+  const [activeDestinationId,setActiveDestinationId]=useState("");
   const [places,setPlaces]=useState<Place[]>([]);
   const [center,setCenter]=useState<GeoPoint|null>(null);
   const [category,setCategory]=useState("all");
@@ -175,65 +180,102 @@ function PlacesContent(){
   useEffect(()=>{
     let cancelled=false;
     async function load(){
-      if(!destination){setLoading(false);setMessage("No destination was provided.");return;}
+      if(!tripId && !destinationParam){
+        setLoading(false);
+        setMessage("No destination was provided.");
+        return;
+      }
       try{
         setLoading(true);
-        setMessage("Finding live places around your destination…");
+        setMessage("Finding places for each destination…");
 
-        let discoveryUrl;
-        if (tripId) {
-          discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=1000";
-          const geoRes=await fetch("/api/geocode/search?q="+encodeURIComponent(destination),{cache:"no-store"});
+        let tripDestinations:TripDestination[]=[];
+        if(tripId){
+          const destinationRes=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/destinations",{cache:"no-store"});
+          const destinationData=await destinationRes.json().catch(()=>({}));
+          if(destinationRes.ok && Array.isArray(destinationData.destinations)){
+            tripDestinations=destinationData.destinations.map((item:any,index:number)=>({
+              id:String(item.id),
+              name:String(item.name||""),
+              lat:Number(item.lat),
+              lon:Number(item.lon),
+              order:Number(item.order)||index+1,
+              days:Number.isFinite(Number(item.days))?Number(item.days):null
+            })).filter((item:TripDestination)=>item.name&&Number.isFinite(item.lat)&&Number.isFinite(item.lon));
+          }
+        }
+
+        if(!tripDestinations.length && destinationParam){
+          const geoRes=await fetch("/api/geocode/search?q="+encodeURIComponent(destinationParam),{cache:"no-store"});
           const geoData=await geoRes.json().catch(()=>({}));
           const location=Array.isArray(geoData.locations)?geoData.locations[0]:null;
-          if (location && Number.isFinite(Number(location.lat)) && Number.isFinite(Number(location.lon))) {
-            const geoParams=new URLSearchParams({lat:String(location.lat),lon:String(location.lon)});
-            if(location.boundingBox){
-              geoParams.set("south",String(location.boundingBox.south));
-              geoParams.set("north",String(location.boundingBox.north));
-              geoParams.set("west",String(location.boundingBox.west));
-              geoParams.set("east",String(location.boundingBox.east));
-            }
-            discoveryUrl+="&"+geoParams.toString();
+          if(location && Number.isFinite(Number(location.lat)) && Number.isFinite(Number(location.lon))){
+            tripDestinations=[{
+              id:"param-"+destinationParam.toLowerCase().replace(/[^a-z0-9]+/g,"-"),
+              name:destinationParam,
+              lat:Number(location.lat),
+              lon:Number(location.lon),
+              order:1,
+              days
+            }];
+          }else{
+            tripDestinations=[{
+              id:"param-"+destinationParam.toLowerCase().replace(/[^a-z0-9]+/g,"-"),
+              name:destinationParam,lat:0,lon:0,order:1,days
+            }];
           }
-        } else {
-          discoveryUrl="/api/places/discover?destination="+encodeURIComponent(destination)+"&maxResults=200";
         }
-        const res=await fetch(discoveryUrl+(liveQuery?"&q="+encodeURIComponent(liveQuery):""),{cache:"no-store"});
-        const data=await res.json().catch(()=>({}));
-        if(!res.ok)throw new Error(data.error||"Could not discover places.");
+
+        if(!tripDestinations.length) throw new Error("No destinations were found for this trip.");
+        if(cancelled)return;
+        setDestinations(tripDestinations);
+        const requestedActive=activeDestinationId && tripDestinations.some(item=>item.id===activeDestinationId)
+          ? activeDestinationId : tripDestinations[0].id;
+        setActiveDestinationId(requestedActive);
+
+        const results:DestinationResult[]=[];
+        for(const item of tripDestinations){
+          if(cancelled) return;
+          try{
+            let discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=1000&destinationId="+encodeURIComponent(item.id);
+            if(!tripId){
+              discoveryUrl="/api/places/discover?destination="+encodeURIComponent(item.name)+"&maxResults=200";
+            }else{
+              const geoParams=new URLSearchParams({lat:String(item.lat),lon:String(item.lon)});
+              discoveryUrl+="&"+geoParams.toString();
+            }
+            if(liveQuery) discoveryUrl+="&q="+encodeURIComponent(liveQuery);
+            const res=await fetch(discoveryUrl,{cache:"no-store"});
+            const data=await res.json().catch(()=>({}));
+            if(!res.ok) throw new Error(data.error||"Could not discover places.");
+            const mapped:Place[]=(data.places||[])
+              .map((place:any)=>({
+                id:String(place.id),name:String(place.name||""),type:String(place.type||"place"),
+                group:place.group as Place["group"],lat:Number(place.latitude),lon:Number(place.longitude),
+                distance:Number(place.distanceKm||0),description:place.description,openingHours:place.openingHours,
+                website:place.website,wikipedia:place.wikipedia,address:place.address
+              }))
+              .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
+            results.push({
+              destination:item,
+              places:mapped,
+              center:{lat:Number(data.center?.latitude),lon:Number(data.center?.longitude)},
+              message:mapped.length ? mapped.length+" places found." : "No places were found nearby."
+            });
+          }catch(error){
+            results.push({
+              destination:item,places:[],center:null,
+              message:error instanceof Error?error.message:"Could not discover places."
+            });
+          }
+        }
 
         if(cancelled)return;
-
-        setCenter({
-          lat:Number(data.center?.latitude),
-          lon:Number(data.center?.longitude)
-        });
-
-        const mapped:Place[]=(data.places||[])
-          .map((place:any)=>({
-            id:String(place.id),
-            name:String(place.name||""),
-            type:String(place.type||"place"),
-            group:place.group as Place["group"],
-            lat:Number(place.latitude),
-            lon:Number(place.longitude),
-            distance:Number(place.distanceKm||0),
-            description:place.description,
-            openingHours:place.openingHours,
-            website:place.website,
-            wikipedia:place.wikipedia,
-            address:place.address
-          }))
-          .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
-
-        setPlaces(mapped);
-        const providerLabel=data.source==="google"?"Google Places":"OpenStreetMap";
-        setMessage(
-          mapped.length
-            ? mapped.length+" live places found from "+providerLabel+(liveQuery?" for your search.":" — all discovered places are shown, ranked by importance.")
-            : "No places were found nearby."
-        );
+        setDestinationResults(results);
+        const selected=results.find(item=>item.destination.id===requestedActive)||results[0];
+        setPlaces(selected?.places||[]);
+        setCenter(selected?.center||null);
+        setMessage(results.length===1 ? (results[0]?.message||"") : "Each destination has its own independent place discovery.");
       }catch(e){
         if(!cancelled)setMessage(e instanceof Error?e.message:"Something went wrong.");
       }finally{
@@ -242,7 +284,17 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destination,tripId,liveQuery]);
+  },[destinationParam,tripId,liveQuery]);
+
+  useEffect(()=>{
+    if(!activeDestinationId)return;
+    const selected=destinationResults.find(item=>item.destination.id===activeDestinationId);
+    if(selected){
+      setPlaces(selected.places);
+      setCenter(selected.center);
+      setMessage(selected.message);
+    }
+  },[activeDestinationId,destinationResults]);
 
   const visible=useMemo(()=>places.filter(p=>{
     const categoryMatch=category==="all" || p.group===category || placeCategories(p).includes(category);
@@ -323,13 +375,24 @@ function PlacesContent(){
         <h1>Places to <span>Explore.</span></h1>
         <p>Discover the places worth adding to your trip, from major destinations to smaller local spots.</p>
       </div>
-      <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destination}</small></div>
+      <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destinations.length>1?"Multiple destinations":destination}</small></div>
     </section>
 
     <section className="places-content">
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
       </div>
+      {!loading && destinations.length>1 && <section className="destination-switcher">
+        <div className="section-heading">
+          <div><span className="eyebrow">YOUR ROUTE</span><h2>Explore each destination separately.</h2><p>Roveo discovers places independently for every destination in your trip.</p></div>
+          <span className="live-badge">{destinations.length} destinations</span>
+        </div>
+        <div className="destination-switcher-grid">
+          {destinations.map((item,index)=><button key={item.id} type="button" className={"destination-switch"+(activeDestinationId===item.id?" active":"")} onClick={()=>setActiveDestinationId(item.id)}>
+            <span>{index+1}</span><strong>{item.name}</strong>{item.days&&<small>{item.days} days</small>}
+          </button>)}
+        </div>
+      </section>}
 
       {!loading&&<section className="place-explorer">
         <div className="section-heading">
