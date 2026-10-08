@@ -363,6 +363,37 @@ async function wikipediaDestinationSearch(destination: string): Promise<Discover
   }
 }
 
+const DELHI_CORE_PLACES = [
+  "red fort", "india gate", "lotus temple", "bahai lotus temple", "humayuns tomb",
+  "jama masjid", "swaminarayan akshardham", "qutb minar", "gurdwara bangla sahib",
+  "lodhi garden", "rashtrapati bhavan", "dilli haat", "raj ghat", "birla mandir",
+  "dargah nizamuddin aulia", "sunder nursery", "iskcon temple", "agrassen ki baoli",
+  "purana qila", "national museum", "nehru planetarium", "gurudwara sis ganj sahib"
+];
+
+const DELHI_ANCHORS: Array<[string, number, number, string]> = [
+  ["Red Fort",28.6562,77.2410,"fort"],
+  ["India Gate",28.6129,77.2295,"monument"],
+  ["Bahá’í Lotus Temple",28.5535,77.2588,"temple"],
+  ["Humayun's Tomb",28.5933,77.2507,"heritage"],
+  ["Jama Masjid",28.6507,77.2334,"mosque"],
+  ["Swaminarayan Akshardham",28.6127,77.2773,"temple"],
+  ["Qutb Minar",28.5245,77.1855,"monument"],
+  ["Gurdwara Bangla Sahib",28.6268,77.2090,"place of worship"],
+  ["Lodhi Garden",28.5933,77.2197,"park"],
+  ["Rashtrapati Bhavan",28.6143,77.1996,"heritage"],
+  ["Dilli Haat - INA",28.5747,77.2067,"culture"],
+  ["Raj Ghat",28.6407,77.2495,"memorial"],
+  ["Shri Laxmi Narayan Temple (Birla Mandir)",28.6328,77.1990,"temple"],
+  ["Dargah Nizamuddin Aulia",28.5913,77.2420,"shrine"],
+  ["Sunder Nursery",28.5938,77.2452,"park"],
+  ["ISKCON Temple - Glory of India",28.5537,77.2510,"temple"],
+  ["Agrasen ki Baoli",28.6260,77.2250,"heritage"],
+  ["Purana Qila",28.6096,77.2430,"fort"],
+  ["National Museum",28.6118,77.2195,"museum"],
+  ["Nehru Planetarium",28.6027,77.1990,"museum"]
+];
+
 const KERALA_CORE_PLACES = [
   "kochi", "fort kochi", "thiruvananthapuram", "trivandrum", "guruvayoor", "guruvayur",
   "munnar", "alappuzha", "alleppey", "thekkady", "wayanad", "kovalam", "varkala",
@@ -371,6 +402,11 @@ const KERALA_CORE_PLACES = [
   "sree padmanabhaswamy temple", "padmanabhaswamy temple", "guruvayur temple",
   "sabarimala", "bekal fort", "kuttanad", "pookode lake", "poo kode lake",
 ] as const;
+
+function isDelhiDestination(destination: string) {
+  const normalized = normalizeName(destination);
+  return normalized === "delhi" || normalized === "new delhi" || normalized === "delhi india" || normalized === "new delhi india";
+}
 
 function isKeralaDestination(destination: string) {
   return /\bkerala\b/i.test(destination);
@@ -584,13 +620,14 @@ export async function discoverBroadPlaces(
       return wikipediaFallback(cellCenter, radiusMeters);
     })),
     isKeralaDestination(destination) ? wikipediaExactPlaces([
+
       "Munnar", "Alappuzha", "Kochi", "Fort Kochi", "Thiruvananthapuram",
       "Guruvayur", "Guruvayur Temple", "Sree Padmanabhaswamy Temple",
       "Thekkady", "Wayanad", "Kovalam", "Varkala", "Kozhikode",
       "Kumarakom", "Bekal Fort", "Kollam", "Wagamon", "Malampuzha",
       "Ponmudi", "Jatayu Earth's Center", "Athirappilly Falls", "Kuttanad",
       "Pookode Lake", "Sabarimala",
-    ]) : Promise.resolve([] as DiscoveredPlace[]),
+    ]) : isDelhiDestination(destination) ? wikipediaExactPlaces(DELHI_CORE_PLACES.map((name) => name.replace(/\s+/g, " "))) : Promise.resolve([] as DiscoveredPlace[]),
     wikipediaDestinationSearch(destination),
   ]);
 
@@ -609,6 +646,17 @@ export async function discoverBroadPlaces(
   addPlaces(wikiResults.flat());
   addPlaces(coreResults);
   addPlaces(destinationResults);
+
+  // Seed major Delhi attractions even when free POI providers return sparse data.
+  // These are well-known destination anchors, not a replacement for live discovery.
+  if (isDelhiDestination(destination)) {
+    addPlaces(DELHI_ANCHORS.map(([name, latitude, longitude, type]) => ({
+      id: "delhi-anchor-" + normalizeName(name), name, type,
+      group: groupFor(name + " " + type), latitude, longitude,
+      distanceKm: haversineKm(coverage.center, { latitude, longitude }),
+      description: "Major Delhi attraction.",
+    })));
+  }
 
   // Last-resort static anchors for Kerala. These are deliberately only major,
   // well-known destinations; live OSM/Wikipedia results remain the main source.
