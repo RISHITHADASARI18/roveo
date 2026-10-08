@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const [stay, setStay] = useState("Hotel");
   const [source, setSource] = useState("");
   const [sourceLocation, setSourceLocation] = useState<Location|null>(null);
-  const [destinationLocation, setDestinationLocation] = useState<Location|null>(null);
+  const [destinationLocations, setDestinationLocations] = useState<Location[]>([]);
   const [sourceSuggestions, setSourceSuggestions] = useState<Location[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<Location[]>([]);
   const [activeLocation, setActiveLocation] = useState<"source"|"destination"|null>(null);
@@ -49,14 +49,29 @@ export default function DashboardPage() {
   }, [source, destination, activeLocation]);
 
   function selectLocation(kind:"source"|"destination", location:Location) {
-    if (kind === "source") { setSource(location.name); setSourceLocation(location); setSourceSuggestions([]); }
-    else { setDestination(location.name); setDestinationLocation(location); setDestinationSuggestions([]); }
+    if (kind === "source") {
+      setSource(location.name);
+      setSourceLocation(location);
+      setSourceSuggestions([]);
+    } else {
+      setDestinationLocations((current) =>
+        current.some((item) => item.id === location.id || item.name.toLowerCase() === location.name.toLowerCase())
+          ? current
+          : [...current, location]
+      );
+      setDestination("");
+      setDestinationSuggestions([]);
+    }
     setActiveLocation(null);
   }
 
+  function removeDestination(id:string) {
+    setDestinationLocations((current) => current.filter((item) => item.id !== id));
+  }
+
   async function buildTrip() {
-    if (!sourceLocation || !destinationLocation || !days || !people || !budget || !travel || !localTravel) {
-      setError("Please fill in your route, trip details and both travel preferences first.");
+    if (!sourceLocation || destinationLocations.length === 0 || !days || !people || !budget || !travel || !localTravel) {
+      setError("Please choose a starting location, at least one destination, trip details and both travel preferences first.");
       return;
     }
     setError("");
@@ -67,7 +82,8 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source: sourceLocation,
-          destination: destinationLocation,
+          destination: destinationLocations[0],
+          destinations: destinationLocations,
           days: Number(days),
           people: Number(people),
           budget: Number(budget),
@@ -87,7 +103,8 @@ export default function DashboardPage() {
       const params = new URLSearchParams({
         tripId: String(data.trip.id),
         source: sourceLocation.name,
-        destination: destinationLocation.name,
+        destination: destinationLocations[0].name,
+        destinations: JSON.stringify(destinationLocations.map((item) => item.name)),
         days,
         people,
         budget,
@@ -123,7 +140,32 @@ export default function DashboardPage() {
             <div className="form-title"><span>01</span><div><h2>Where are you going?</h2><p>Start with your route.</p></div></div>
             <div className="input-grid two">
               <label><span>📍 Source</span><div className="location-picker"><input value={source} onFocus={() => setActiveLocation("source")} onChange={(e) => { setSource(e.target.value); setSourceLocation(null); }} placeholder="Starting location" autoComplete="off" />{activeLocation === "source" && sourceSuggestions.length > 0 && <div className="location-suggestions">{sourceSuggestions.map(location => <button type="button" key={location.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selectLocation("source", location)}><strong>{location.name}</strong><small>{location.displayName}</small></button>)}</div>}{sourceLocation && <small className="location-confirmed">✓ Location selected</small>}</div></label>
-              <label><span>🎯 Destination</span><div className="location-picker"><input value={destination} onFocus={() => setActiveLocation("destination")} onChange={(e) => { setDestination(e.target.value); setDestinationLocation(null); }} placeholder="Where do you want to go?" autoComplete="off" />{activeLocation === "destination" && destinationSuggestions.length > 0 && <div className="location-suggestions">{destinationSuggestions.map(location => <button type="button" key={location.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selectLocation("destination", location)}><strong>{location.name}</strong><small>{location.displayName}</small></button>)}</div>}{destinationLocation && <small className="location-confirmed">✓ Location selected</small>}</div></label>
+              <label>
+                <span>🎯 Destinations</span>
+                <div className="location-picker">
+                  <input value={destination} onFocus={() => setActiveLocation("destination")} onChange={(e) => { setDestination(e.target.value); setDestinationSuggestions([]); }} placeholder="Add a destination" autoComplete="off" />
+                  {activeLocation === "destination" && destinationSuggestions.length > 0 && (
+                    <div className="location-suggestions">
+                      {destinationSuggestions.map(location => (
+                        <button type="button" key={location.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selectLocation("destination", location)}>
+                          <strong>{location.name}</strong><small>{location.displayName}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {destinationLocations.length > 0 && (
+                    <div className="destination-list">
+                      {destinationLocations.map((location, index) => (
+                        <div className="destination-chip" key={location.id}>
+                          <span><b>{index + 1}.</b> {location.name}</span>
+                          <button type="button" onClick={() => removeDestination(location.id)} aria-label={"Remove " + location.name}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <small className="location-hint">{destinationLocations.length === 0 ? "Choose a destination from the suggestions." : "Add another destination above. You can reorder them later."}</small>
+                </div>
+              </label>
             </div>
           </div>
           <div className="form-section">
@@ -148,7 +190,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="planner-action">
-            <div><strong>Ready to build your trip?</strong><span>Roveo will find real places, locate your destination, organize nearby stops and shape a daily route.</span></div>
+            <div><strong>Ready to build your trip?</strong><span>Roveo will save your destinations in order so the next steps can plan the full route.</span></div>
             <button className="plan-button" type="button" onClick={buildTrip}>Find places &amp; build my trip <span>→</span></button>
           </div>
           {error && <p className="planner-error">{error}</p>}
