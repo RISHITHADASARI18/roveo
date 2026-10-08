@@ -314,3 +314,12 @@ footer a:hover{color:#1676a5}
 .live-badge{font-size:9px;padding:7px 10px}
 @media(max-width:900px){.places-content{padding-left:5vw;padding-right:5vw}.places-hero{padding-left:5vw;padding-right:5vw}.places-grid{grid-template-columns:1fr}.category-card-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.places-hero{padding-top:46px}.places-hero h1{letter-spacing:-2px}.places-content{padding-top:30px}.search-box{align-items:stretch;flex-wrap:wrap}.search-box input{flex:1;min-width:150px}.search-box button{width:100%}.category-card-grid{grid-template-columns:1fr}.explore-card{grid-template-columns:82px 1fr}.explore-visual{min-height:180px}.explore-map{height:400px}.section-heading h2{font-size:24px}}
+
+/* Multi-destination planner */
+.destination-list{display:flex;flex-direction:column;gap:7px;margin-top:9px}
+.destination-chip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:1px solid #d7eaf2;border-radius:11px;background:#f8fdff;color:#31596b;font-size:11px}
+.destination-chip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.destination-chip b{color:#1676a5;margin-right:4px}
+.destination-chip button{border:0;background:#eaf4f8;color:#557989;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1}
+.destination-chip button:hover{background:#dceef5;color:#a33}
+.location-hint{display:block;margin-top:7px;color:#8097a1;font-size:9px;line-height:1.4}
