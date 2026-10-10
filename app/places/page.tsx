@@ -235,9 +235,10 @@ function PlacesContent(){
           ? activeDestinationId : tripDestinations[0].id;
         setActiveDestinationId(requestedActive);
 
-        const results:DestinationResult[]=[];
-        for(const item of tripDestinations){
-          if(cancelled) return;
+        // Discover destinations concurrently so a slow provider for one stop does not
+        // make the whole page wait for every stop in sequence.
+        const results:DestinationResult[]=await Promise.all(tripDestinations.map(async(item):Promise<DestinationResult>=>{
+          if(cancelled) return {destination:item,places:[],center:null,message:"",nearbyDestinations:[]};
           try{
             let discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=1000&destinationId="+encodeURIComponent(item.id);
             if(!tripId){
@@ -258,24 +259,25 @@ function PlacesContent(){
                 website:place.website,wikipedia:place.wikipedia,address:place.address
               }))
               .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
-            results.push({
+            return {
               destination:item,
               places:mapped,
-              center:{lat:Number(data.center?.latitude),lon:Number(data.center?.longitude)},
+              center:Number.isFinite(Number(data.center?.latitude))&&Number.isFinite(Number(data.center?.longitude))
+                ? {lat:Number(data.center.latitude),lon:Number(data.center.longitude)} : null,
               message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
               nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
                 name:String(nearby.name||""),latitude:Number(nearby.latitude),longitude:Number(nearby.longitude),
                 distanceKm:Number(nearby.distanceKm||0),type:String(nearby.type||"town")
               })).filter((nearby:NearbyDestination)=>nearby.name&&Number.isFinite(nearby.latitude)&&Number.isFinite(nearby.longitude)):[] 
-            });
+            };
           }catch(error){
-            results.push({
+            return {
               destination:item,places:[],center:null,
               message:error instanceof Error?error.message:"Could not discover places.",
               nearbyDestinations:[]
-            });
+            };
           }
-        }
+        }));
 
         if(cancelled)return;
         setDestinationResults(results);
