@@ -413,7 +413,15 @@ function PlacesContent(){
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
       </div>
-      {!loading && activeDestinationId && activeNearbyDestinations.length>0 && <section className="nearby-destinations">
+      <nav className="places-jump-nav" aria-label="Jump to a section">
+        <span>Jump to</span>
+        <a href="#route">Your route</a>
+        <a href="#categories">Categories</a>
+        <a href="#map">Map</a>
+        <a href="#places">Places</a>
+        <a href="#nearby">Nearby stops</a>
+      </nav>
+      {!loading && activeDestinationId && activeNearbyDestinations.length>0 && <section id="nearby" className="nearby-destinations">
         <div className="section-heading">
           <div><span className="eyebrow">NEARBY DESTINATIONS</span><h2>Want to add another stop?</h2><p>These are nearby cities and towns found around the selected destination. They are suggestions only and are never added automatically.</p></div>
           <span className="live-badge">Suggestions</span>
@@ -427,7 +435,7 @@ function PlacesContent(){
           )}
         </div>
       </section>}
-      {!loading && destinations.length>1 && <section className="destination-switcher">
+      {!loading && destinations.length>1 && <section id="route" className="destination-switcher">
         <div className="section-heading">
           <div><span className="eyebrow">YOUR ROUTE</span><h2>Explore each destination separately.</h2><p>Roveo discovers places independently for every destination in your trip.</p></div>
           <span className="live-badge">{destinations.length} destinations</span>
@@ -439,7 +447,7 @@ function PlacesContent(){
         </div>
       </section>}
 
-      {!loading&&<section className="place-explorer">
+      {!loading&&<section id="categories" className="place-explorer">
         <div className="section-heading">
           <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>Explore by category</h2><p>Pick a type to browse matching places. Some places appear in more than one category when they genuinely fit.</p></div>
           <span className="live-badge">{categories.length} categories</span>
@@ -460,9 +468,9 @@ function PlacesContent(){
         </section>}
       </section>}
 
-      {center&&<section className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>See where your discovered places sit and which ones are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
+      {center&&<section id="map" className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>See where your discovered places sit and which ones are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
-      <div className="places-result-head">
+      <div id="places" className="places-result-head">
         <div>
           <span className="eyebrow">{liveQuery?"LIVE SEARCH":"PLACES TO VISIT"}</span>
           <h2>{loading?"Finding places…":visible.length+" places found"}</h2>
