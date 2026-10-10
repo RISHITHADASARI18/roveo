@@ -324,3 +324,14 @@ footer a:hover{color:#1676a5}
 .destination-chip button:hover{background:#dceef5;color:#a33}
 .location-hint{display:block;margin-top:7px;color:#8097a1;font-size:9px;line-height:1.4}
 .destination-chip-actions{display:flex;align-items:center;gap:4px;flex:0 0 auto}.destination-chip-actions button{display:grid;place-items:center}.destination-chip-actions button:disabled{opacity:.35;cursor:not-allowed}
+
+/* Clear, visible local transport selection */
+.local-travel-field{display:flex;flex-direction:column;gap:10px;min-width:0}
+.local-travel-label{font-size:13px;font-weight:700;color:#315366}
+.local-travel-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.local-travel-options button{display:flex;align-items:center;gap:8px;min-height:43px;padding:10px 11px;border:1px solid #d7eaf2;border-radius:12px;background:#fff;color:#426777;font:inherit;font-size:12px;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+.local-travel-options button:hover{border-color:#8bcde3;background:#f6fcff}
+.local-travel-options button.selected{border-color:#2494bd;background:#eaf8fd;color:#155c7b;box-shadow:inset 0 0 0 1px #2494bd}
+.local-travel-options button span{overflow-wrap:anywhere}
+@media(min-width:901px){.local-travel-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.local-travel-options{grid-template-columns:1fr 1fr}}
