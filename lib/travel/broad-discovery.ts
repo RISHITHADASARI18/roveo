@@ -247,9 +247,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
     `nwr["natural"~"waterfall|peak|cave|beach|lake|cliff|hot_spring|volcano|glacier"](${bbox});`,
     `nwr["man_made"~"lighthouse|pier|tower"](${bbox});`,
     `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,
-    // Geographic destinations: cities/towns are first-class travel results,
-    // so major places such as Munnar and Alappuzha are not lost among POIs.
-    `nwr["place"~"city|town|municipality|village"](${bbox});`,
+    // Keep this feed focused on visitable attractions, not every village or administrative area.
     ");",
     "out center tags;",
   ].join("\n");
@@ -274,7 +272,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         const latitude = Number(element.lat ?? element.center?.lat);
         const longitude = Number(element.lon ?? element.center?.lon);
         if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-        const type = String(tags.place ?? tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? "place").toLowerCase();
+        const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.place ?? "place").toLowerCase();
         const address = [
           tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
           tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
@@ -704,7 +702,7 @@ export async function discoverBroadPlaces(
       const measured = { ...place, distanceKm: actualDistanceKm };
       if (!insideBounds(place, searchBounds)) continue;
       if (measured.description === "Named destination place from Wikipedia." &&
-          /^(list of\\b|bids for\\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$|.* olympic bids?)/i.test(measured.name.trim())) continue;
+          /^(list of\\b|bids for\\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$|.* olympic bids?|.* municipal district$|.* district$|.* county$|.* province$|.* region$|.* basalts?$|.* glacial(s)?$|.* sandstone$|.* series( in .*)?$|.* power station$|.* facilities in .*)/i.test(measured.name.trim())) continue;
       if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
       const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       if (!key) continue;
