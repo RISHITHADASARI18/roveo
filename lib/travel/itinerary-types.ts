@@ -6,4 +6,5 @@ export type PlannerPlace = {
   category?: string;
   description?: string;
   address?: string;
+  websiteUrl?: string;
 };
