@@ -331,8 +331,10 @@ function PlacesContent(){
     // name list that left other cities with an empty "Main places" section.
     const preferred=places.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
     const ranked=preferred.length>=6?preferred:places;
-    return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,18);
-  },[places]);
+    const daysForDestination=Number(activeDestination?.days)||days;
+    const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
+    return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
+  },[places,activeDestination?.days,days]);
 
   const categoryPlaces=useMemo(()=>{
     if(!openCategory)return [];
