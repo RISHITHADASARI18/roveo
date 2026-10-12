@@ -75,6 +75,38 @@ function ItineraryContent(){
       if(!res.ok)return false;
       const data=await res.json();
       if(!Array.isArray(data.days)||!data.days.length)return false;
+
+      // Older saved itineraries may contain only the first city. Keep manual
+      // edits when every selected destination is represented; otherwise rebuild
+      // once using the destination-aware planner below.
+      const destinationResponse=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/destinations",{cache:"no-store"});
+      const destinationData=await destinationResponse.json().catch(()=>({}));
+      const savedDestinations=destinationResponse.ok&&Array.isArray(destinationData.destinations)
+        ?destinationData.destinations.filter((item:any)=>item.name&&Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)))
+        :[];
+      if(savedDestinations.length>1){
+        const savedPlaces=data.days.flatMap((day:any)=>(day.items||[]).map((item:any)=>item.place?{
+          lat:Number(item.place.latitude),lon:Number(item.place.longitude)
+        }:null).filter(Boolean));
+        const covered=new Set<string>();
+        for(const place of savedPlaces){
+          const nearest=[...savedDestinations].sort((a:any,b:any)=>
+            km({lat:place.lat,lon:place.lon},{lat:Number(a.lat),lon:Number(a.lon)})-
+            km({lat:place.lat,lon:place.lon},{lat:Number(b.lat),lon:Number(b.lon)})
+          )[0];
+          if(nearest)covered.add(String(nearest.id));
+        }
+        if(savedDestinations.some((item:any)=>!covered.has(String(item.id))))return false;
+        setPlanDestinations(data.days.map((day:any)=>{
+          const savedPlaces=(day.items||[]).map((item:any)=>item.place?{lat:Number(item.place.latitude),lon:Number(item.place.longitude)}:null).filter(Boolean);
+          if(!savedPlaces.length)return "";
+          const nearest=[...savedDestinations].sort((a:any,b:any)=>{
+            const avg=(destination:any)=>savedPlaces.reduce((sum:number,place:any)=>sum+km(place,{lat:Number(destination.lat),lon:Number(destination.lon)}),0)/savedPlaces.length;
+            return avg(a)-avg(b);
+          })[0];
+          return String(nearest?.name||"");
+        }));
+      }
       const restored=data.days.map((day:any)=>
         (day.items||[]).map((item:any)=>item.place?{
           id:String(item.tripPlaceId),
