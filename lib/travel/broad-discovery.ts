@@ -653,7 +653,9 @@ export async function discoverBroadPlaces(
     west: coverage.center.longitude - 0.15, east: coverage.center.longitude + 0.15,
   }];
 
-  const [cellResults, wikiResults, coreResults, destinationResults] = await Promise.all([
+  // Run nearby-stop suggestions alongside the main place providers instead of
+  // waiting for all attractions to finish before starting this extra lookup.
+  const [cellResults, wikiResults, coreResults, destinationResults, nearbyDestinations] = await Promise.all([
     Promise.all(cells.map(overpassCell)),
     Promise.all(cells.map(async (cell) => {
       const cellCenter = {
@@ -675,6 +677,7 @@ export async function discoverBroadPlaces(
       "Pookode Lake", "Sabarimala",
     ]) : isDelhiDestination(destination) ? wikipediaExactPlaces(DELHI_CORE_PLACES.map((name) => name.replace(/\s+/g, " "))) : Promise.resolve([] as DiscoveredPlace[]),
     wikipediaDestinationSearch(destination),
+    nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
   const unique = new Map<string, DiscoveredPlace>();
@@ -758,8 +761,6 @@ export async function discoverBroadPlaces(
   if (!places.length) {
     throw new Error("No live places were returned for " + destination + ". The destination was located, but the place providers returned no usable records.");
   }
-
-  const nearbyDestinations = await nearbyDestinationSearch(searchBounds, coverage);
 
   return {
     center: coverage.center,
