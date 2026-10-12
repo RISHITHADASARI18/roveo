@@ -76,6 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       description: row.description ? String(row.description) : undefined,
       address: row.address ? String(row.address) : undefined,
       websiteUrl: row.websiteUrl ? String(row.websiteUrl) : undefined,
+      destinationId: row.destinationId == null ? null : String(row.destinationId),
     }));
 
     let destinations: TripDestination[] = [];
@@ -125,10 +126,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       destinations.map((destination) => [destination.id, []])
     );
     for (const place of places) {
-      const nearest = [...destinations].sort((a, b) =>
+      // New saves carry the exact destination selected in Places to Explore.
+      // Older saved places without this field are safely assigned to the nearest destination.
+      const assigned = place.destinationId
+        ? destinations.find((destination) => destination.id === place.destinationId)
+        : undefined;
+      const destination = assigned ?? [...destinations].sort((a, b) =>
         distanceKm(place, a) - distanceKm(place, b)
       )[0];
-      if (nearest) placesByDestination.get(nearest.id)!.push(place);
+      if (destination) placesByDestination.get(destination.id)!.push(place);
     }
 
     const allocations = allocateDays(dayCount, destinations.length);
