@@ -598,11 +598,13 @@ function importanceScore(place: DiscoveredPlace) {
   const typeScores: Record<string, number> = {
     // Towns are useful as destinations, but must not outrank attractions to visit.
     city: 0, town: 0, municipality: -3, village: -8,
-    attraction: 45, viewpoint: 38, museum: 36, theme_park: 35, zoo: 32,
-    aquarium: 32, gallery: 25, fort: 42, castle: 40,
+    attraction: 45, tourist_attraction: 45, historical_landmark: 42,
+    viewpoint: 38, museum: 36, theme_park: 35, amusement_park: 35, zoo: 32,
+    aquarium: 32, gallery: 25, art_gallery: 25, fort: 42, castle: 40,
     archaeological_site: 38, ruins: 32, monument: 30, memorial: 25,
-    waterfall: 28, beach: 30, peak: 24, cave: 22,
-    nature_reserve: 22, park: 18, garden: 18, water_park: 28, landmark: 8,
+    waterfall: 28, beach: 30, peak: 24, cave: 22, natural_feature: 24,
+    nature_reserve: 22, national_park: 30, park: 18, garden: 18, botanical_garden: 22,
+    water_park: 28, place_of_worship: 20, hindu_temple: 25, church: 22, mosque: 22, landmark: 8,
   };
   score += typeScores[type] ?? 0;
   // A nearby Wikipedia article alone is weak evidence of tourist relevance.
