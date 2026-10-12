@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const dayCount = Math.max(1, Math.min(30, Number(body.days ?? trip.rows[0].days ?? 1) || 1));
     const placesResult = await db.query(
-      "SELECT id, name, latitude, longitude, category, description, address, website_url AS \"websiteUrl\" FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
+      "SELECT id, name, latitude, longitude, category, description, address, website_url AS \"websiteUrl\", destination_id AS \"destinationId\" FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId]
     );
 
