@@ -407,6 +407,25 @@ async function wikipediaDestinationSearch(destination: string): Promise<Discover
   }
 }
 
+const OOTY_ANCHORS: Array<[string, number, number, string, string]> = [
+  ["Government Botanical Garden",11.4126,76.7110,"garden","Landscaped botanical garden with extensive plant collections and hillside views."],
+  ["Ooty Lake",11.4064,76.6952,"attraction","Popular lake for boating and relaxed views of the surrounding hills."],
+  ["Doddabetta Peak",11.4002,76.7350,"viewpoint","The highest peak in the Nilgiri Hills, known for panoramic mountain views."],
+  ["Government Rose Garden",11.4055,76.7087,"garden","Terraced rose garden with a wide variety of roses and views over Ooty."],
+  ["Pykara Falls",11.4753,76.5880,"waterfall","Scenic waterfalls surrounded by the forests and hills of the Nilgiris."],
+  ["Pykara Lake",11.4765,76.5885,"lake","Scenic reservoir and boating area near the Pykara waterfalls."],
+  ["Nilgiri Mountain Railway",11.4060,76.6950,"heritage","Historic mountain railway known for its scenic route through the Nilgiris."],
+  ["Avalanche Lake",11.2940,76.5760,"lake","Quiet mountain lake surrounded by forest and rolling hills."],
+  ["Emerald Lake",11.3238,76.5783,"lake","Peaceful lake in the Nilgiri hills, known for green scenery and viewpoints."],
+  ["Ooty Tea Factory and Tea Museum",11.4050,76.6960,"museum","Tea museum explaining local tea production, with factory displays and tastings."],
+  ["Wenlock Downs",11.3650,76.6320,"viewpoint","Open grasslands with sweeping Nilgiri hill scenery."],
+  ["St Stephen's Church",11.4080,76.6960,"heritage","Historic church and one of Ooty's notable heritage landmarks."],
+];
+
+function isOotyDestination(destination: string) {
+  return /\\b(?:ooty|udhagamandalam|nilgiris)\\b/i.test(destination);
+}
+
 const DELHI_CORE_PLACES = [
   "red fort", "india gate", "lotus temple", "bahai lotus temple", "humayuns tomb",
   "jama masjid", "swaminarayan akshardham", "qutb minar", "gurdwara bangla sahib",
@@ -559,29 +578,43 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
   }
 }
 
+function isLowQualityWikipediaTitle(name: string) {
+  const title = name.trim();
+  return [
+    /^(?:list of\\b|bids? for\\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$)/i,
+    /^(?:geography|history|climate|economy|demographics|transport|education|administration|politics|infrastructure) of\\b/i,
+    /\\b(?:municipal district|administrative district|electoral district|county|province|region|prefecture|department|municipality|commune|borough|district)\\s*$/i,
+    /\\b(?:basalts?|sandstone|limestone|glacier|glacial|geology|rock formation|power station|facilities in)\\b/i,
+    /\\b(?:olympic bid|bids for the olympics|facilities in)\\b/i,
+    /\\(disambiguation\\)$/i,
+  ].some((pattern) => pattern.test(title));
+}
+
 function importanceScore(place: DiscoveredPlace) {
   const type = place.type.toLowerCase();
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
   let score = 0;
-  // Core Kerala destinations and iconic landmarks must stay above secondary nature/POI results.
-  if (isKeralaCorePlace(place.name)) score += 140;
+  // Curated destination anchors and actual attractions outrank ordinary map records.
+  if (isKeralaCorePlace(place.name)) score += 80;
   const typeScores: Record<string, number> = {
-    // Major geographic destinations must outrank ordinary local POIs.
-    city: 65, town: 62, municipality: 58, village: 24,
-    attraction: 35, viewpoint: 30, museum: 28, theme_park: 28, zoo: 27,
-    aquarium: 27, gallery: 22, fort: 32, castle: 32,
-    archaeological_site: 30, ruins: 27, monument: 20, memorial: 18,
-    waterfall: 10, beach: 20, peak: 12, cave: 10,
-    nature_reserve: 8, park: 6, garden: 5, water_park: 12, landmark: 18,
+    // Towns are useful as destinations, but must not outrank attractions to visit.
+    city: 0, town: 0, municipality: -3, village: -8,
+    attraction: 45, viewpoint: 38, museum: 36, theme_park: 35, zoo: 32,
+    aquarium: 32, gallery: 25, fort: 42, castle: 40,
+    archaeological_site: 38, ruins: 32, monument: 30, memorial: 25,
+    waterfall: 28, beach: 30, peak: 24, cave: 22,
+    nature_reserve: 22, park: 18, garden: 18, water_park: 28, landmark: 8,
   };
   score += typeScores[type] ?? 0;
-  if (place.wikipedia) score += 22;
-  if (place.website) score += 7;
-  if (place.address) score += 3;
-  if (/national park|wildlife sanctuary|palace|temple|church|mosque|sanctuary|reserve|falls|fort|museum|beach|lake|backwater|heritage|monument|viewpoint/.test(text)) score += 5;
-  if (place.group === "Attraction") score += 5;
-  if (place.group === "History") score += 4;
-  if (place.group === "Nature") score += 4;
+  // A nearby Wikipedia article alone is weak evidence of tourist relevance.
+  // Exact curated articles and OSM attraction tags should rank ahead of general articles.
+  if (place.wikipedia) score += place.description === "Named destination place from Wikipedia." ? 2 : 8;
+  if (place.website) score += 5;
+  if (place.address) score += 2;
+  if (/national park|wildlife sanctuary|palace|temple|church|mosque|sanctuary|reserve|falls|fort|museum|beach|lake|backwater|heritage|monument|viewpoint|botanical garden|tea estate|zoo|aquarium/.test(text)) score += 12;
+  if (place.group === "Attraction") score += 8;
+  if (place.group === "History") score += 7;
+  if (place.group === "Nature") score += 6;
   return score;
 }
 
@@ -702,7 +735,7 @@ export async function discoverBroadPlaces(
       const measured = { ...place, distanceKm: actualDistanceKm };
       if (!insideBounds(place, searchBounds)) continue;
       if (measured.description === "Named destination place from Wikipedia." &&
-          /^(list of\\b|bids for\\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$|.* olympic bids?|.* municipal district$|.* district$|.* county$|.* province$|.* region$|.* basalts?$|.* glacial(s)?$|.* sandstone$|.* series( in .*)?$|.* power station$|.* facilities in .*)/i.test(measured.name.trim())) continue;
+          isLowQualityWikipediaTitle(measured.name)) continue;
       if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
       const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       if (!key) continue;
@@ -724,6 +757,17 @@ export async function discoverBroadPlaces(
       group: groupFor(name + " " + type), latitude, longitude,
       distanceKm: haversineKm(coverage.center, { latitude, longitude }),
       description: "Major Delhi attraction.",
+    })));
+  }
+
+  // Curated Ooty/Nilgiris must-visits keep the page useful when public POI
+  // providers are sparse or temporarily unavailable.
+  if (isOotyDestination(destination)) {
+    addPlaces(OOTY_ANCHORS.map(([name, latitude, longitude, type, description]) => ({
+      id: "ooty-anchor-" + normalizeName(name), name, type,
+      group: groupFor(name + " " + type), latitude, longitude,
+      distanceKm: haversineKm(coverage.center, { latitude, longitude }),
+      description,
     })));
   }
 
