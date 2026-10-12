@@ -43,11 +43,6 @@ function placeCategories(place:Place){
   return categories.filter(category=>category.terms.test(text)).map(category=>category.key);
 }
 
-function isMainDestination(place:Place){
-  const text=place.name.toLowerCase();
-  return /munnar|alappuzha|alleppey|kochi|fort kochi|thiruvananthapuram|trivandrum|guruvayur|guruvayoor|thekkady|wayanad|kovalam|varkala|kozhikode|calicut|kumarakom|bekal|kollam|wagamon|vagamon|malampuzha|ponmudi|jatayu|jadayu|sree padmanabhaswamy|padmanabhaswamy|sabarimala|kuttanad|pookode/i.test(text);
-}
-
 function haversine(a:GeoPoint,b:GeoPoint){
   const r=6371,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
   const x=Math.sin(dLat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLon/2)**2;
