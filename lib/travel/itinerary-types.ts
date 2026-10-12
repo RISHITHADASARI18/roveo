@@ -7,4 +7,5 @@ export type PlannerPlace = {
   description?: string;
   address?: string;
   websiteUrl?: string;
+  destinationId?: string | null;
 };
