@@ -416,3 +416,12 @@ html{scroll-behavior:smooth}
   .explore-next{align-items:flex-start;flex-direction:column}
   .places-content{padding-bottom:50px}
 }
+
+
+/* Multi-select local travel preferences */
+.local-travel-hint{display:block;color:#7b929d;font-size:10px;line-height:1.45}
+.local-travel-options button{position:relative;min-width:0}
+.local-travel-options button b{margin-left:auto;display:grid;place-items:center;width:19px;height:19px;flex:0 0 19px;border:1px solid #d5e8ef;border-radius:6px;background:#fff;color:#7795a2;font-size:11px}
+.local-travel-options button.selected b{border-color:#2494bd;background:#2494bd;color:#fff}
+.local-travel-options button.selected{background:#eaf8fd;border-color:#2494bd;color:#155c7b}
+.local-travel-options button:focus-visible{outline:3px solid #9bd9ed;outline-offset:2px}
