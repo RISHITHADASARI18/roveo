@@ -553,7 +553,7 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
       method: "POST",
       headers: {
         Accept: "application/json", "Content-Type": "application/json", "X-Goog-Api-Key": key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.websiteUri",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.websiteUri,places.rating,places.userRatingCount",
       },
       body: JSON.stringify(body), cache: "no-store",
     }, 5000);
@@ -571,6 +571,8 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
         description: String(place.formattedAddress ?? "").trim() || undefined,
         address: String(place.formattedAddress ?? "").trim() || undefined,
         website: String(place.websiteUri ?? "").trim() || undefined,
+        rating: Number.isFinite(Number(place.rating)) ? Number(place.rating) : undefined,
+        userRatingCount: Number.isFinite(Number(place.userRatingCount)) ? Number(place.userRatingCount) : undefined,
       } as DiscoveredPlace;
     }).filter(Boolean) as DiscoveredPlace[];
   } catch {
@@ -612,6 +614,10 @@ function importanceScore(place: DiscoveredPlace) {
   if (place.wikipedia) score += place.description === "Named destination place from Wikipedia." ? 2 : 8;
   if (place.website) score += 5;
   if (place.address) score += 2;
+  if (Number.isFinite(place.rating)) score += Math.max(0, Number(place.rating) - 3) * 5;
+  if (Number.isFinite(place.userRatingCount) && Number(place.userRatingCount) > 0) {
+    score += Math.min(14, Math.log10(Number(place.userRatingCount) + 1) * 3);
+  }
   if (/national park|wildlife sanctuary|palace|temple|church|mosque|sanctuary|reserve|falls|fort|museum|beach|lake|backwater|heritage|monument|viewpoint|botanical garden|tea estate|zoo|aquarium/.test(text)) score += 12;
   if (place.group === "Attraction") score += 8;
   if (place.group === "History") score += 7;
@@ -741,7 +747,7 @@ export async function discoverBroadPlaces(
       if (!insideBounds(place, searchBounds)) continue;
       if (measured.description === "Named destination place from Wikipedia." &&
           isLowQualityWikipediaTitle(measured.name)) continue;
-      if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
+      if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35)) continue;
       const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       if (!key) continue;
       const existing = unique.get(key);
