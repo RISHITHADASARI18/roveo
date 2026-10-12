@@ -697,7 +697,7 @@ export async function discoverBroadPlaces(
 
   // Run nearby-stop suggestions alongside the main place providers instead of
   // waiting for all attractions to finish before starting this extra lookup.
-  const [cellResults, wikiResults, coreResults, destinationResults, nearbyDestinations] = await Promise.all([
+  const [cellResults, wikiResults, coreResults, googleResults, destinationResults, nearbyDestinations] = await Promise.all([
     Promise.all(cells.map(overpassCell)),
     Promise.all(cells.map(async (cell) => {
       const cellCenter = {
@@ -711,6 +711,10 @@ export async function discoverBroadPlaces(
       // radius bounded and let the merge layer verify distance from destination.
       return wikipediaFallback(cellCenter, Math.min(radiusMeters, coverage.scope === "state" ? 50000 : 30000));
     })),
+    // Google Places is the strongest source for famous, visitor-facing attractions
+    // when configured. Keep it parallel with the free sources so it adds quality
+    // without making each destination wait for the others.
+    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20)),
     isKeralaDestination(destination) ? wikipediaExactPlaces([
 
       "Munnar", "Alappuzha", "Kochi", "Fort Kochi", "Thiruvananthapuram",
@@ -746,6 +750,7 @@ export async function discoverBroadPlaces(
   addPlaces(cellResults.flat());
   addPlaces(wikiResults.flat());
   addPlaces(coreResults);
+  addPlaces(googleResults);
   addPlaces(destinationResults);
 
   // Seed major Delhi attractions even when free POI providers return sparse data.
@@ -803,6 +808,7 @@ export async function discoverBroadPlaces(
     overpassCounts: cellResults.map((items) => items.length),
     wikipediaCount: wikiResults.flat().length,
     coreCount: coreResults.length,
+    googleCount: googleResults.length,
     destinationCount: destinationResults.length,
     mergedCount: places.length,
   });
