@@ -331,9 +331,12 @@ function PlacesContent(){
   }),[places,category,search]);
 
   const mainPlaces=useMemo(()=>{
-    const preferred=places.filter(isMainDestination);
-    const fallback=places.filter(p=>!placeCategories(p).some(Boolean));
-    return [...preferred,...fallback].filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,18);
+    // The discovery API ranks real tourist attractions before secondary POIs.
+    // Use that relevance order for every destination instead of a Kerala-only
+    // name list that left other cities with an empty "Main places" section.
+    const preferred=places.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
+    const ranked=preferred.length>=6?preferred:places;
+    return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,18);
   },[places]);
 
   const categoryPlaces=useMemo(()=>{
@@ -420,7 +423,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Discover the places worth adding to your trip, from major destinations to smaller local spots.</p>
+        <p>Find famous must-visit attractions, landmarks and worthwhile local places for each destination.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destinations.length>1?"Multiple destinations":destination}</small></div>
     </section>
@@ -515,7 +518,7 @@ function PlacesContent(){
 
           {category==="all"&&visible.length>highlights.length&&<section className="places-section">
             <div className="section-heading">
-              <div><span className="eyebrow">COMPLETE COLLECTION</span><h2>Everything else Roveo found.</h2><p>Use the category boxes above when you want the full waterfall, viewpoint, nature, beach, heritage, spiritual, or activity lists.</p></div>
+              <div><span className="eyebrow">COMPLETE COLLECTION</span><h2>More places to explore.</h2><p>Use the categories above to explore more waterfalls, viewpoints, nature spots, beaches, heritage sites, spiritual places and activities.</p></div>
               <span className="live-badge">{visible.length-highlights.length} more</span>
             </div>
             <div className="places-grid">
