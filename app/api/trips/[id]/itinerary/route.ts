@@ -54,6 +54,8 @@ export async function GET(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
+    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
+
     const result = await db.query(
       `SELECT
         d.id AS "dayId",
@@ -64,6 +66,7 @@ export async function GET(
         i.duration_minutes AS "durationMinutes",
         i.travel_time_minutes AS "travelTimeMinutes",
         p.id AS "tripPlaceId",
+        p.destination_id AS "destinationId",
         p.name,
         p.latitude,
         p.longitude,
@@ -106,6 +109,7 @@ export async function GET(
           place: row.tripPlaceId
             ? {
                 id: row.tripPlaceId,
+                destinationId: row.destinationId,
                 name: row.name,
                 latitude: row.latitude,
                 longitude: row.longitude,
