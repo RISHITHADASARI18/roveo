@@ -676,7 +676,7 @@ export async function discoverBroadPlaces(
       "Ponmudi", "Jatayu Earth's Center", "Athirappilly Falls", "Kuttanad",
       "Pookode Lake", "Sabarimala",
     ]) : isDelhiDestination(destination) ? wikipediaExactPlaces(DELHI_CORE_PLACES.map((name) => name.replace(/\s+/g, " "))) : Promise.resolve([] as DiscoveredPlace[]),
-    wikipediaDestinationSearch(destination),
+    Promise.resolve([] as DiscoveredPlace[]),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
@@ -684,6 +684,8 @@ export async function discoverBroadPlaces(
   const addPlaces = (items: DiscoveredPlace[]) => {
     for (const place of items) {
       if (!insideBounds(place, searchBounds)) continue;
+      if (place.description === "Named destination place from Wikipedia." && /^(list of|bids for|antipodes on earth|equator|prime meridian|geographical centre|geographical center|natural earth|null island|radio clock|hops)/i.test(place.name.trim())) continue;
+      if (place.distanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
       const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
       if (!key) continue;
       const existing = unique.get(key);
