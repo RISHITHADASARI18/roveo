@@ -372,7 +372,7 @@ function ItineraryContent(){
             const dayTitle=day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time";
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
-                <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]||dayTitle}</h3></div>
+                <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]?planDestinations[day]+" · "+dayTitle:dayTitle}</h3></div>
                 <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km between stops</span></div>
               </div>
 
