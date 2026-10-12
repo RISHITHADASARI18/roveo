@@ -29,6 +29,8 @@ type PlannedPlace = {
 function ItineraryContent(){
   const params=useSearchParams();
   const destination=params.get("destination")||"";
+  const routeDestinations=(()=>{try{const value=JSON.parse(params.get("destinations")||"[]");return Array.isArray(value)?value.filter((item:any)=>typeof item==="string"&&item.trim()):destination?[destination]:[]}catch{return destination?[destination]:[]}})();
+  const routeLabel=routeDestinations.length>1?routeDestinations.join(" → "):destination;
   const source=params.get("source")||"";
   const days=Math.max(1,Number(params.get("days"))||1);
   const people=Math.max(1,Number(params.get("people"))||1);
@@ -41,6 +43,7 @@ function ItineraryContent(){
   const [center,setCenter]=useState<any>(null);
   const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<PlannedPlace[][]>([]);
+  const [planDestinations,setPlanDestinations]=useState<string[]>([]);
   const [loading,setLoading]=useState(true);
   const [planning,setPlanning]=useState(false);
   const [message,setMessage]=useState("Loading your selected places…");
@@ -128,6 +131,7 @@ function ItineraryContent(){
         }))
       );
       setPlans(next);
+      setPlanDestinations((data.days||[]).map((day:any)=>String(day.destinationName||"")));
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
@@ -285,7 +289,7 @@ function ItineraryContent(){
     </div>
 
     <section className="itinerary-hero">
-      <div><span className="eyebrow">02 · SMART ITINERARY</span><h1>Where to visit <span>each day.</span></h1><p>{destination||"Your destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"}</p></div>
+      <div><span className="eyebrow">02 · SMART ITINERARY</span><h1>Where to visit <span>each day.</span></h1><p>{routeLabel||"Your destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"}</p></div>
       <div className="itinerary-budget"><span>TRIP BUDGET</span><strong>₹{formattedBudget}</strong><small>{travel} to destination · {localTravel} locally · {stay}</small></div>
     </section>
 
@@ -318,7 +322,7 @@ function ItineraryContent(){
             const dayTitle=day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time";
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
-                <div><span className="day-number">DAY {day+1}</span><h3>{dayTitle}</h3></div>
+                <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]||dayTitle}</h3></div>
                 <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km between stops</span></div>
               </div>
 
