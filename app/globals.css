@@ -425,3 +425,15 @@ html{scroll-behavior:smooth}
 .local-travel-options button.selected b{border-color:#2494bd;background:#2494bd;color:#fff}
 .local-travel-options button.selected{background:#eaf8fd;border-color:#2494bd;color:#155c7b}
 .local-travel-options button:focus-visible{outline:3px solid #9bd9ed;outline-offset:2px}
+
+
+/* Daily itinerary: clear, actionable stop cards */
+.planned-place{align-items:flex-start;gap:14px}
+.planned-place>div:nth-child(2){min-width:0;display:flex;flex-direction:column;gap:5px}
+.planned-place>div:nth-child(2)>strong{font-size:15px;line-height:1.4;color:#244d60;overflow-wrap:anywhere}
+.planned-place>div:nth-child(2)>small{font-size:11px;line-height:1.55;color:#718b97;overflow-wrap:anywhere}
+.planned-place-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px}
+.planned-place-links a{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid #cfe7f0;border-radius:9px;background:#f2fbff;color:#1676a5;font-size:10px;font-weight:800;text-decoration:none}
+.planned-place-links a:hover{background:#e0f5fc;border-color:#8bcde3}
+.itinerary-intro .planning-rule{margin-top:8px;max-width:680px}
+@media(max-width:600px){.planned-place{gap:9px}.planned-place-links a{font-size:10px}}
