@@ -623,6 +623,18 @@ export async function discoverBroadPlaces(
   // state = the whole state; district = the district plus a small surrounding
   // ring so nearby districts are useful; city/place = the geocoded area only.
   let searchBounds = coverage.bounds;
+  // Older trip links send only the center coordinates. Always build a local
+  // search box when stored/geocoded geometry is missing, never a global search.
+  if (!searchBounds) {
+    const latPad = coverage.scope === "state" ? 1.4 : coverage.scope === "district" ? 0.65 : coverage.scope === "city" ? 0.22 : 0.12;
+    const lonPad = latPad / Math.max(Math.cos(coverage.center.latitude * Math.PI / 180), 0.25);
+    searchBounds = {
+      south: Math.max(-90, coverage.center.latitude - latPad),
+      north: Math.min(90, coverage.center.latitude + latPad),
+      west: Math.max(-180, coverage.center.longitude - lonPad),
+      east: Math.min(180, coverage.center.longitude + lonPad),
+    };
+  }
   if (searchBounds && (coverage.scope === "city" || coverage.scope === "place")) {
     // Geocoders often return a very tight administrative bbox for cities and
     // named attractions. That is too restrictive for travel discovery: nearby
@@ -665,7 +677,9 @@ export async function discoverBroadPlaces(
       const heightKm = (cell.north - cell.south) * 111;
       const widthKm = (cell.east - cell.west) * 111 * Math.max(Math.cos(cellCenter.latitude * Math.PI / 180), 0.25);
       const radiusMeters = Math.min(50000, Math.max(5000, Math.ceil(Math.max(heightKm, widthKm) * 500)));
-      return wikipediaFallback(cellCenter, radiusMeters);
+      // Wikipedia geosearch is a supplementary local source only. Keep the
+      // radius bounded and let the merge layer verify distance from destination.
+      return wikipediaFallback(cellCenter, Math.min(radiusMeters, coverage.scope === "state" ? 50000 : 30000));
     })),
     isKeralaDestination(destination) ? wikipediaExactPlaces([
 
@@ -683,13 +697,19 @@ export async function discoverBroadPlaces(
   const unique = new Map<string, DiscoveredPlace>();
   const addPlaces = (items: DiscoveredPlace[]) => {
     for (const place of items) {
+      // Never trust provider-supplied distance values: some sources calculate
+      // distance from a search tile, or omit it entirely. The destination's
+      // resolved coordinates are the single source of truth.
+      const actualDistanceKm = haversineKm(coverage.center, place);
+      const measured = { ...place, distanceKm: actualDistanceKm };
       if (!insideBounds(place, searchBounds)) continue;
-      if (place.description === "Named destination place from Wikipedia." && /^(list of|bids for|antipodes on earth|equator|prime meridian|geographical centre|geographical center|natural earth|null island|radio clock|hops)/i.test(place.name.trim())) continue;
-      if (place.distanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
-      const key = normalizeName(place.name) + ":" + Math.round(place.latitude * 10000) + ":" + Math.round(place.longitude * 10000);
+      if (measured.description === "Named destination place from Wikipedia." &&
+          /^(list of\\b|bids for\\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$|.* olympic bids?)/i.test(measured.name.trim())) continue;
+      if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 75 : 40)) continue;
+      const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       if (!key) continue;
       const existing = unique.get(key);
-      if (!existing || JSON.stringify(place).length > JSON.stringify(existing).length) unique.set(key, place);
+      if (!existing || JSON.stringify(measured).length > JSON.stringify(existing).length) unique.set(key, measured);
     }
   };
 
