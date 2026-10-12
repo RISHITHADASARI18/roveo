@@ -20,12 +20,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const desiredQuery = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
   const destinationId = Number(url.searchParams.get("destinationId"));
   const hasDestinationId = Number.isInteger(destinationId) && destinationId > 0;
-  const suppliedLat = Number(url.searchParams.get("lat"));
-  const suppliedLon = Number(url.searchParams.get("lon"));
-  const suppliedSouth = Number(url.searchParams.get("south"));
-  const suppliedNorth = Number(url.searchParams.get("north"));
-  const suppliedWest = Number(url.searchParams.get("west"));
-  const suppliedEast = Number(url.searchParams.get("east"));
+  // Number(null) is 0, which falsely made omitted query parameters look
+  // like real coordinates (0,0) and a valid all-zero bounding box.
+  const readCoordinate = (key: string) => {
+    const raw = url.searchParams.get(key);
+    if (raw === null || raw.trim() === "") return Number.NaN;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : Number.NaN;
+  };
+  const suppliedLat = readCoordinate("lat");
+  const suppliedLon = readCoordinate("lon");
+  const suppliedSouth = readCoordinate("south");
+  const suppliedNorth = readCoordinate("north");
+  const suppliedWest = readCoordinate("west");
+  const suppliedEast = readCoordinate("east");
 
   try {
     // Existing production databases may predate the exact-location columns.
