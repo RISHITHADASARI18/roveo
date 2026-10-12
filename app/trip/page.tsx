@@ -14,6 +14,8 @@ function TripContent(){
   const params=useSearchParams();
   const source=params.get("source")||"";
   const destination=params.get("destination")||"";
+  const routeDestinations=(()=>{try{const value=JSON.parse(params.get("destinations")||"[]");return Array.isArray(value)?value.filter((item:any)=>typeof item==="string"&&item.trim()):destination?[destination]:[]}catch{return destination?[destination]:[]}})();
+  const routeLabel=routeDestinations.length>1?routeDestinations.join(" → "):destination;
   const days=Math.max(1,Number(params.get("days"))||1);
   const people=Math.max(1,Number(params.get("people"))||1);
   const budget=Math.max(0,Number(params.get("budget"))||0);
@@ -147,7 +149,7 @@ function TripContent(){
 
     <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
     <section className="trip-hero">
-      <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{destination||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {destination||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally · {stay}</p></div>
+      <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{routeLabel||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {routeLabel||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally · {stay}</p></div>
       <div className="budget-card"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>≈ ₹{money(budget/days)} / day for the group</small></div>
     </section>
 
