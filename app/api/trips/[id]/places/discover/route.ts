@@ -73,27 +73,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }
       row = { ...row, ...selected.rows[0] };
     }
-    const lat = Number(row.destination_lat);
-    const lon = Number(row.destination_lon);
-    const south = Number(row.destination_south);
-    const north = Number(row.destination_north);
-    const west = Number(row.destination_west);
-    const east = Number(row.destination_east);
-    const storedBounds =
-    [suppliedSouth, suppliedNorth, suppliedWest, suppliedEast].every(Number.isFinite)
+    // Database NULLs must stay missing. Number(null) is 0, which can
+    // accidentally create a valid-looking bounding box at (0, 0) and filter
+    // every real attraction out of the destination results.
+    const readOptionalCoordinate = (value: unknown): number | undefined => {
+      if (value === null || value === undefined || value === "") return undefined;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : undefined;
+    };
+    const lat = readOptionalCoordinate(row.destination_lat);
+    const lon = readOptionalCoordinate(row.destination_lon);
+    const south = readOptionalCoordinate(row.destination_south);
+    const north = readOptionalCoordinate(row.destination_north);
+    const west = readOptionalCoordinate(row.destination_west);
+    const east = readOptionalCoordinate(row.destination_east);
+    const suppliedBounds = [suppliedSouth, suppliedNorth, suppliedWest, suppliedEast].every(Number.isFinite)
       ? { south: suppliedSouth, north: suppliedNorth, west: suppliedWest, east: suppliedEast }
-      : [south, north, west, east].every(Number.isFinite)
-      ? { south, north, west, east }
       : undefined;
-  let storedCoverage =
+    const savedBounds = [south, north, west, east].every((value) => value !== undefined)
+      ? { south: south!, north: north!, west: west!, east: east! }
+      : undefined;
+    const storedBounds = suppliedBounds ?? savedBounds;
+    let storedCoverage =
       Number.isFinite(suppliedLat) && Number.isFinite(suppliedLon)
         ? {
             center: { latitude: suppliedLat, longitude: suppliedLon },
             // The Places page supplies the center but not always the bounding
-            // box. Preserve the selected destination's saved bounds in that case.
+            // box. Only reuse a complete, non-null saved bounding box.
             bounds: storedBounds,
           }
-        : Number.isFinite(lat) && Number.isFinite(lon)
+        : lat !== undefined && lon !== undefined
         ? {
             center: { latitude: lat, longitude: lon },
             bounds: storedBounds,
