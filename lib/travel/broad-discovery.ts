@@ -581,11 +581,11 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
 function isLowQualityWikipediaTitle(name: string) {
   const title = name.trim();
   return [
-    /^(?:list of\b|bids? for\b|antipodes on earth$|equator$|prime meridian$|geographical centre$|geographical center$|natural earth$|null island$|radio clock$|hops$)/i,
+    /^(?:list of\b|bids? for\b|antipodes on earth$|equator$|prime meridian$|geographical centre\b|geographical center\b|natural earth$|null island$|radio clock$|hops$)/i,
     /^(?:geography|history|climate|economy|demographics|transport|education|administration|politics|infrastructure) of\b/i,
     /\b(?:municipal district|administrative district|electoral district|county|province|region|prefecture|department|municipality|commune|borough|district)\s*$/i,
     /\b(?:basalts?|sandstone|limestone|glacier|glacial|geology|rock formation|power station|facilities in)\b/i,
-    /\b(?:olympic bid|bids for the olympics|facilities in)\b/i,
+    /\b(?:olympic bids?|bids for the olympics|facilities in)\b/i,
     /\(disambiguation\)$/i,
   ].some((pattern) => pattern.test(title));
 }
