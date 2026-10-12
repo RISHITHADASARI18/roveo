@@ -71,22 +71,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const north = Number(row.destination_north);
     const west = Number(row.destination_west);
     const east = Number(row.destination_east);
-    let storedCoverage =
+    const storedBounds =
+    [suppliedSouth, suppliedNorth, suppliedWest, suppliedEast].every(Number.isFinite)
+      ? { south: suppliedSouth, north: suppliedNorth, west: suppliedWest, east: suppliedEast }
+      : [south, north, west, east].every(Number.isFinite)
+      ? { south, north, west, east }
+      : undefined;
+  let storedCoverage =
       Number.isFinite(suppliedLat) && Number.isFinite(suppliedLon)
         ? {
             center: { latitude: suppliedLat, longitude: suppliedLon },
-            bounds:
-              [suppliedSouth, suppliedNorth, suppliedWest, suppliedEast].every(Number.isFinite)
-                ? { south: suppliedSouth, north: suppliedNorth, west: suppliedWest, east: suppliedEast }
-                : undefined,
+            // The Places page supplies the center but not always the bounding
+            // box. Preserve the selected destination's saved bounds in that case.
+            bounds: storedBounds,
           }
         : Number.isFinite(lat) && Number.isFinite(lon)
         ? {
             center: { latitude: lat, longitude: lon },
-            bounds:
-              [south, north, west, east].every(Number.isFinite)
-                ? { south, north, west, east }
-                : undefined,
+            bounds: storedBounds,
           }
         : undefined;
 
