@@ -19,6 +19,8 @@ export type DiscoveredPlace = {
   website?: string;
   wikipedia?: string;
   address?: string;
+  rating?: number;
+  userRatingCount?: number;
 };
 
 export type PlaceDiscoveryResult = {
