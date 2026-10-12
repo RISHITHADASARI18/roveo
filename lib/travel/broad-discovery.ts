@@ -719,10 +719,6 @@ export async function discoverBroadPlaces(
       // radius bounded and let the merge layer verify distance from destination.
       return wikipediaFallback(cellCenter, Math.min(radiusMeters, coverage.scope === "state" ? 50000 : 30000));
     })),
-    // Google Places is the strongest source for famous, visitor-facing attractions
-    // when configured. Keep it parallel with the free sources so it adds quality
-    // without making each destination wait for the others.
-    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20)),
     isKeralaDestination(destination) ? wikipediaExactPlaces([
 
       "Munnar", "Alappuzha", "Kochi", "Fort Kochi", "Thiruvananthapuram",
@@ -732,6 +728,10 @@ export async function discoverBroadPlaces(
       "Ponmudi", "Jatayu Earth's Center", "Athirappilly Falls", "Kuttanad",
       "Pookode Lake", "Sabarimala",
     ]) : isDelhiDestination(destination) ? wikipediaExactPlaces(DELHI_CORE_PLACES.map((name) => name.replace(/\s+/g, " "))) : Promise.resolve([] as DiscoveredPlace[]),
+    // Google Places is the strongest source for famous, visitor-facing attractions
+    // when configured. Keep it parallel with the free sources so it adds quality
+    // without making each destination wait for the others.
+    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20)),
     Promise.resolve([] as DiscoveredPlace[]),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
