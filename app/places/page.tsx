@@ -237,7 +237,7 @@ function PlacesContent(){
 
         // Discover destinations concurrently so a slow provider for one stop does not
         // make the whole page wait for every stop in sequence.
-        const results:DestinationResult[]=await Promise.all(tripDestinations.map(async(item):Promise<DestinationResult>=>{
+        const results:DestinationResult[]=await Promise.all(tripDestinations.map((item):Promise<DestinationResult> => (async ():Promise<DestinationResult>=>{
           if(cancelled) return {destination:item,places:[],center:null,message:"",nearbyDestinations:[]};
           try{
             let discoveryUrl="/api/trips/"+encodeURIComponent(tripId)+"/places/discover?maxResults=1000&destinationId="+encodeURIComponent(item.id);
@@ -277,7 +277,23 @@ function PlacesContent(){
               nearbyDestinations:[]
             };
           }
-        }));
+        })().then((result)=>{
+          // Publish each destination as soon as its discovery finishes. The first
+          // destination can be explored while slower stops continue loading.
+          if(!cancelled){
+            setDestinationResults(current=>{
+              const next=[...current.filter(entry=>entry.destination.id!==item.id),result];
+              return tripDestinations.map(destination=>next.find(entry=>entry.destination.id===destination.id)).filter(Boolean) as DestinationResult[];
+            });
+            if(item.id===requestedActive){
+              setPlaces(result.places);
+              setCenter(result.center);
+              setMessage(result.message);
+              setLoading(false);
+            }
+          }
+          return result;
+        })));
 
         if(cancelled)return;
         setDestinationResults(results);
