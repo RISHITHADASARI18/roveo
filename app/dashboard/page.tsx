@@ -19,7 +19,7 @@ export default function DashboardPage() {
   const [people, setPeople] = useState("4");
   const [budget, setBudget] = useState("");
   const [travel, setTravel] = useState("");
-  const [localTravel, setLocalTravel] = useState("");
+  const [localTravel, setLocalTravel] = useState<string[]>([]);
   const [startDate, setStartDate] = useState("");
   const [error, setError] = useState("");
 
@@ -80,7 +80,7 @@ export default function DashboardPage() {
   }
 
   async function buildTrip() {
-    if (!sourceLocation || destinationLocations.length === 0 || !days || !people || !budget || !travel || !localTravel) {
+    if (!sourceLocation || destinationLocations.length === 0 || !days || !people || !budget || !travel || localTravel.length === 0) {
       setError("Please choose a starting location, at least one destination, trip details and both travel preferences first.");
       return;
     }
@@ -98,7 +98,7 @@ export default function DashboardPage() {
           people: Number(people),
           budget: Number(budget),
           travel,
-          localTravel,
+          localTravel: localTravel.join(", "),
           stay,
           startDate: startDate || null,
         }),
@@ -119,7 +119,7 @@ export default function DashboardPage() {
         people,
         budget,
         travel,
-        localTravel,
+        localTravel: localTravel.join(", "),
         stay,
       });
       if (startDate) params.set("startDate", startDate);
@@ -190,7 +190,7 @@ export default function DashboardPage() {
               <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
               <label><span>🗓️ Start date (for live stay prices)</span><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
-              <div className="local-travel-field"><span className="local-travel-label">🗺️ How will you get around?</span><div className="local-travel-options" role="group" aria-label="Choose local transport"><button type="button" className={localTravel==="Car"?"selected":""} onClick={()=>setLocalTravel("Car")}>🚗 <span>Car</span></button><button type="button" className={localTravel==="Taxi"?"selected":""} onClick={()=>setLocalTravel("Taxi")}>🚕 <span>Taxi</span></button><button type="button" className={localTravel==="Public transport"?"selected":""} onClick={()=>setLocalTravel("Public transport")}>🚌 <span>Public transport</span></button><button type="button" className={localTravel==="Walking"?"selected":""} onClick={()=>setLocalTravel("Walking")}>🚶 <span>Walking</span></button><button type="button" className={localTravel==="Bike"?"selected":""} onClick={()=>setLocalTravel("Bike")}>🚲 <span>Bike</span></button></div></div>
+              <div className="local-travel-field"><span className="local-travel-label">🗺️ How will you get around?</span><small className="local-travel-hint">Choose all the options you might use.</small><div className="local-travel-options" role="group" aria-label="Choose one or more local transport options">{[{name:"Car",icon:"🚗"},{name:"Taxi",icon:"🚕"},{name:"Public transport",icon:"🚌"},{name:"Walking",icon:"🚶"},{name:"Bike",icon:"🚲"}].map(option=><button key={option.name} type="button" aria-pressed={localTravel.includes(option.name)} className={localTravel.includes(option.name)?"selected":""} onClick={()=>setLocalTravel(current=>current.includes(option.name)?current.filter(item=>item!==option.name):[...current,option.name])}>{option.icon} <span>{option.name}</span><b aria-hidden="true">{localTravel.includes(option.name)?"✓":"+"}</b></button>)}</div><small className="local-travel-hint">{localTravel.length ? localTravel.join(" · ") : "Select at least one option."}</small></div>
             </div>
           </div>
           <div className="form-section">
