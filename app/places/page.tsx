@@ -390,7 +390,8 @@ function PlacesContent(){
             category:place.group,
             description:place.description||null,
             websiteUrl:place.website||null,
-            address:place.address||null
+            address:place.address||null,
+            destinationId:activeDestinationId.startsWith("param-")?null:Number(activeDestinationId)
           })
         });
         const data=await res.json().catch(()=>({}));
