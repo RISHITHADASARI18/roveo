@@ -24,6 +24,9 @@ type PlannedPlace = {
   startTime?:string;
   durationMinutes?:number;
   travelTimeMinutes?:number;
+  address?:string;
+  description?:string;
+  websiteUrl?:string;
 };
 
 function ItineraryContent(){
@@ -68,13 +71,21 @@ function ItineraryContent(){
     }
   }
 
-  async function loadSavedItinerary(){
+  async function loadSavedItinerary(currentPlaces:any[]){
     if(!tripId)return false;
     try{
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{cache:"no-store"});
       if(!res.ok)return false;
       const data=await res.json();
       if(!Array.isArray(data.days)||!data.days.length)return false;
+
+      // The itinerary must match the exact places currently selected in Places to Explore.
+      // Rebuild if a place was added or removed there, rather than showing a stale plan.
+      const selectedIds=new Set(currentPlaces.map((place:any)=>String(place.id)));
+      const savedIds=new Set(data.days.flatMap((day:any)=>(day.items||[])
+        .map((item:any)=>item.tripPlaceId==null?null:String(item.tripPlaceId))
+        .filter((id:any)=>id!==null)));
+      if(selectedIds.size!==savedIds.size||[...selectedIds].some(id=>!savedIds.has(id)))return false;
 
       // Older saved itineraries may contain only the first city. Keep manual
       // edits when every selected destination is represented; otherwise rebuild
@@ -117,7 +128,10 @@ function ItineraryContent(){
           lon:Number(item.place.longitude),
           startTime:item.startTime||"",
           durationMinutes:Number(item.durationMinutes)||0,
-          travelTimeMinutes:Number(item.travelTimeMinutes)||0
+          travelTimeMinutes:Number(item.travelTimeMinutes)||0,
+          address:item.place.address||"",
+          description:item.place.description||"",
+          websiteUrl:item.place.websiteUrl||""
         }:null).filter(Boolean)
       );
       setPlans(restored);
@@ -159,7 +173,10 @@ function ItineraryContent(){
           lon:Number(place.longitude),
           startTime:place.startTime,
           durationMinutes:Number(place.durationMinutes)||0,
-          travelTimeMinutes:Number(place.travelTimeMinutes)||0
+          travelTimeMinutes:Number(place.travelTimeMinutes)||0,
+          address:place.address||"",
+          description:place.description||"",
+          websiteUrl:place.websiteUrl||""
         }))
       );
       setPlans(next);
@@ -213,7 +230,7 @@ function ItineraryContent(){
         setSelectedPlaces(mapped);
         setSelectedCount(mapped.length);
 
-        const savedItinerary=await loadSavedItinerary();
+        const savedItinerary=await loadSavedItinerary(mapped);
         if(cancelled)return;
 
         if(!savedItinerary)await buildPlan();
@@ -332,8 +349,9 @@ function ItineraryContent(){
             <span className="eyebrow">YOUR RECOMMENDED ITINERARY</span>
             <h2>Roveo plans the day, not just the list.</h2>
             <p>{loading||planning?message:plannerReason||message}</p>
+            <p className="planning-rule">Each stop below comes from your saved selections in Places to Explore. Visit times and durations are planning estimates; check opening hours before you go.</p>
           </div>
-          <div className="itinerary-count"><strong>{planned.length}</strong><span>of {selectedCount} selected places planned</span></div>
+          <div className="itinerary-count"><strong>{planned.length}</strong><span>of {selectedCount} selected places scheduled</span></div>
         </div>
 
         {!loading&&!planning&&!tripId&&<div className="itinerary-loading">{message}</div>}
@@ -365,8 +383,15 @@ function ItineraryContent(){
                   <div className="place-order">{index+1}</div>
                   <div>
                     <strong>{place.name}</strong>
-                    <small>{place.startTime||"Flexible time"} · {place.durationMinutes||90} min · {place.type||"place"}</small>
+                    <small>{place.startTime||"Suggested time"} · Visit for about {place.durationMinutes||90} min</small>
+                    <small>{String(place.type||"place").replaceAll("_"," ")}</small>
+                    {place.address&&<small>{place.address}</small>}
+                    {place.description&&<small>{place.description}</small>}
                     {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
+                    <div className="planned-place-links">
+                      <a href={"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(place.lat+","+place.lon)} target="_blank" rel="noreferrer">Directions ↗</a>
+                      {place.websiteUrl&&<a href={place.websiteUrl} target="_blank" rel="noreferrer">Official website ↗</a>}
+                    </div>
                   </div>
                   <div className="place-actions">
                     <button type="button" onClick={()=>remove(day,place.id)}>Remove</button>
