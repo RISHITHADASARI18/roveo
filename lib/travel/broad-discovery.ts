@@ -804,9 +804,9 @@ export async function discoverBroadPlaces(
     })), { allowOutsideBounds: true, maxDistanceKm: 50 });
   }
 
-  // Last-resort static anchors for Kerala. These are deliberately only major,
-  // well-known destinations; live OSM/Wikipedia results remain the main source.
-  if (isKeralaDestination(destination) && unique.size === 0) {
+  // Keep a curated set of major Kerala attractions even when free providers
+  // return only a few local records or saved bounds are misclassified as a city.
+  if (isKeralaDestination(destination)) {
     const anchors: Array<[string, number, number, string]> = [
       ["Munnar",10.0889,77.0595,"town"], ["Alappuzha",9.4981,76.3388,"city"],
       ["Kochi",9.9312,76.2673,"city"], ["Fort Kochi",9.9658,76.2421,"place"],
@@ -825,7 +825,7 @@ export async function discoverBroadPlaces(
       group: groupFor(name + " " + type), latitude, longitude,
       distanceKm: haversineKm(coverage.center, { latitude, longitude }),
       description: "Major Kerala destination.",
-    })));
+    })), { allowOutsideBounds: true, maxDistanceKm: 320 });
   }
 
   let places = [...unique.values()].map((place) => ({
