@@ -251,8 +251,16 @@ function ItineraryContent(){
         const savedItinerary=await loadSavedItinerary(mapped);
         if(cancelled)return;
 
-        if(!savedItinerary)await buildPlan();
-        await loadRoutes();
+        if(!savedItinerary){
+          await buildPlan();
+          if(cancelled)return;
+          // Existing saved route legs belong to the previous itinerary until
+          // the newly generated plan is saved and routes are recalculated.
+          setRoutes([]);
+          setRouteMessage("Save this plan to calculate road routes for its current stops.");
+        }else{
+          await loadRoutes();
+        }
       }catch(error){
         if(!cancelled){
           setLoading(false);
@@ -289,8 +297,9 @@ function ItineraryContent(){
       if(!res.ok)throw new Error(data.error||"Could not save the itinerary.");
 
       setSaveMessage("Itinerary saved to your trip.");
-      await loadRoutes();
-      if(!routes.length)await calculateRoutes();
+      // Recalculate even when older route legs exist: moving/removing stops
+      // makes the previously saved road routes stale.
+      await calculateRoutes();
     }catch(error){
       setSaveMessage(error instanceof Error?error.message:"Could not save the itinerary.");
     }finally{
@@ -391,7 +400,7 @@ function ItineraryContent(){
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
                 <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]?planDestinations[day]+" · "+dayTitle:dayTitle}</h3></div>
-                <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km between stops</span></div>
+                <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km straight-line between stops</span></div>
               </div>
 
               <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
