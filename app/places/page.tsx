@@ -22,27 +22,6 @@ type Place = {
 
 type GeoPoint={lat:number;lon:number};
 
-const categories=[
-  {key:"Viewpoints",label:"Viewpoints",icon:"◉",terms:/viewpoint|scenic|lookout|panorama|observation/i},
-  {key:"Waterfalls",label:"Waterfalls",icon:"≋",terms:/waterfall|falls/i},
-  {key:"Nature & Wildlife",label:"Nature & Wildlife",icon:"✦",terms:/wildlife|wildlife sanctuary|nature reserve|forest|national park|sanctuary/i},
-  {key:"National Parks & Sanctuaries",label:"National Parks & Sanctuaries",icon:"⌖",terms:/national park|wildlife sanctuary|sanctuary|biosphere reserve/i},
-  {key:"Beaches",label:"Beaches",icon:"⌁",terms:/beach|coast|shore/i},
-  {key:"History & Heritage",label:"History & Heritage",icon:"◈",terms:/fort|palace|museum|monument|historic|heritage|memorial|ruin|castle|archaeological/i},
-  {key:"Temples & Spiritual",label:"Temples & Spiritual",icon:"◇",terms:/temple|church|mosque|shrine|worship|cathedral|basilica/i},
-  {key:"Cities & Towns",label:"Cities & Towns",icon:"⌂",terms:/city|town|municipality/i},
-  {key:"Lakes & Backwaters",label:"Lakes & Backwaters",icon:"≈",terms:/lake|backwater|lagoon|kuttanad/i},
-  {key:"Parks & Gardens",label:"Parks & Gardens",icon:"❋",terms:/park|garden|botanical/i},
-  {key:"Hills & Mountains",label:"Hills & Mountains",icon:"△",terms:/hill|mountain|peak|mount/i},
-  {key:"Culture & Local",label:"Culture & Local",icon:"✧",terms:/culture|art|theatre|gallery|cultural|arts centre|information/i},
-  {key:"Activities & Adventure",label:"Activities & Adventure",icon:"↗",terms:/activity|adventure|amusement|theme park|zoo|aquarium|attraction/i},
-];
-
-function placeCategories(place:Place){
-  const text=(place.name+" "+place.type+" "+(place.description||"")+" "+place.group).toLowerCase();
-  return categories.filter(category=>category.terms.test(text)).map(category=>category.key);
-}
-
 function haversine(a:GeoPoint,b:GeoPoint){
   const r=6371,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
   const x=Math.sin(dLat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLon/2)**2;
@@ -135,8 +114,6 @@ function PlacesContent(){
   const [activeDestinationId,setActiveDestinationId]=useState("");
   const [places,setPlaces]=useState<Place[]>([]);
   const [center,setCenter]=useState<GeoPoint|null>(null);
-  const [category,setCategory]=useState("all");
-  const [openCategory,setOpenCategory]=useState<string|null>(null);
   const [search,setSearch]=useState("");
   const [liveQuery,setLiveQuery]=useState("");
   const [loading,setLoading]=useState(true);
@@ -320,10 +297,7 @@ function PlacesContent(){
   const destination=activeDestination?.name || destinationParam;
   const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
-  const visible=useMemo(()=>places.filter(p=>{
-    const categoryMatch=category==="all" || p.group===category || placeCategories(p).includes(category);
-    return categoryMatch && p.name.toLowerCase().includes(search.toLowerCase());
-  }),[places,category,search]);
+  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),[places,search]);
 
   const mainPlaces=useMemo(()=>{
     // The discovery API ranks real tourist attractions before secondary POIs.
@@ -335,13 +309,6 @@ function PlacesContent(){
     const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
     return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
   },[places,activeDestination?.days,days]);
-
-  const categoryPlaces=useMemo(()=>{
-    if(!openCategory)return [];
-    const selected=categories.find(item=>item.key===openCategory);
-    if(!selected)return [];
-    return places.filter(place=>selected.terms.test((place.name+" "+place.type+" "+(place.description||"")+" "+place.group))).filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index);
-  },[places,openCategory]);
 
   async function addNearbyDestination(nearby:NearbyDestination){
     if(!tripId)return;
@@ -464,27 +431,6 @@ function PlacesContent(){
         </div>
       </section>}
 
-      {!loading&&<section id="categories" className="place-explorer">
-        <div className="section-heading">
-          <div><span className="eyebrow">EXPLORE BY TYPE</span><h2>Explore by category</h2><p>Pick a type to browse matching places. Some places appear in more than one category when they genuinely fit.</p></div>
-          <span className="live-badge">{categories.length} categories</span>
-        </div>
-        <div className="category-card-grid">
-          {categories.map(item=>{
-            const count=places.filter(place=>item.terms.test((place.name+" "+place.type+" "+(place.description||"")+" "+place.group))).filter((place,index,array)=>array.findIndex(p=>p.id===place.id)===index).length;
-            return <button type="button" key={item.key} className={"category-card"+(openCategory===item.key?" active":"")} onClick={()=>{setOpenCategory(openCategory===item.key?null:item.key);setCategory("all");}}>
-              <span className="category-card-icon">{item.icon}</span><span><strong>{item.label}</strong><small>{count} places</small></span><b>→</b>
-            </button>;
-          })}
-        </div>
-        {openCategory&&<section className="category-results">
-          <div className="section-heading"><div><span className="eyebrow">CATEGORY</span><h2>{categories.find(item=>item.key===openCategory)?.label}</h2><p>Browse the complete list for this type. Repeated places across different categories are intentional when they are relevant to both.</p></div><button type="button" className="category-close" onClick={()=>setOpenCategory(null)}>Close</button></div>
-          {categoryPlaces.length>0
-            ? <div className="places-grid">{categoryPlaces.map(place=><PlaceCard key={place.id} place={place} destination={destination} added={added} savingId={savingId} toggleAdd={toggleAdd}/>)}</div>
-            : <div className="empty-result"><strong>No places are currently classified under this category.</strong><span>The category is ready; once the discovery service returns matching records, they will appear here.</span></div>}
-        </section>}
-      </section>}
-
       {center&&<section id="map" className="map-section"><div className="section-heading"><div><span className="eyebrow">DESTINATION MAP</span><h2>See everything on the map.</h2><p>See where your discovered places sit and which ones are close together.</p></div><span className="live-badge">{visible.length} pins</span></div><ExploreMap center={center} places={visible} selected={added} onToggle={toggleAdd}/></section>}
 
       <div id="places" className="places-result-head">
@@ -498,14 +444,14 @@ function PlacesContent(){
       {saveMessage&&<p className="places-message">{saveMessage}</p>}
 
       {!loading&&visible.length>0&&(()=>{
-        const highlights=(category==="all"?mainPlaces:visible).slice(0,18);
+        const highlights=mainPlaces.slice(0,18);
         return <>
           <section className="places-section">
             <div className="section-heading">
               <div>
                 <span className="eyebrow">START HERE</span>
-                <h2>{category==="all"?"Main places to visit.":"Places in this selection."}</h2>
-                <p>{category==="all"?"Start with the most important destinations. Use the categories above when you want a specific type of place.":"Browse the places matching your current selection."}</p>
+                <h2>Main places to visit.</h2>
+                <p>Start with the most important places around your destination.</p>
               </div>
               <span className="live-badge">{highlights.length} places</span>
             </div>
@@ -514,9 +460,9 @@ function PlacesContent(){
             </div>
           </section>
 
-          {category==="all"&&visible.length>highlights.length&&<section className="places-section">
+          {visible.length>highlights.length&&<section className="places-section">
             <div className="section-heading">
-              <div><span className="eyebrow">COMPLETE COLLECTION</span><h2>More places to explore.</h2><p>Use the categories above to explore more waterfalls, viewpoints, nature spots, beaches, heritage sites, spiritual places and activities.</p></div>
+              <div><span className="eyebrow">COMPLETE COLLECTION</span><h2>More places to explore.</h2><p>Explore the rest of the places discovered around your destination.</p></div>
               <span className="live-badge">{visible.length-highlights.length} more</span>
             </div>
             <div className="places-grid">
@@ -526,7 +472,7 @@ function PlacesContent(){
         </>;
       })()}
 
-      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Choose “Entire destination” or try a different category/search.</span></div>}
+      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a different place name or destination.</span></div>}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>
