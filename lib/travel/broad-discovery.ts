@@ -201,7 +201,7 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
   };
   const bbox = [outer.south, outer.west, outer.north, outer.east].join(",");
   const query = [
-    "[out:json][timeout:8];",
+    "[out:json][timeout:4];",
     'nwr["place"~"city|town|municipality"](' + bbox + ');',
     "out center tags;",
   ].join("\n");
@@ -212,7 +212,7 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
         headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
         body:"data="+encodeURIComponent(query),
         cache:"no-store",
-      },9000);
+      },4500);
       if(!response.ok) continue;
       const data=await response.json();
       const results=new Map<string,{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>();
@@ -239,7 +239,7 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const bbox = [cell.south, cell.west, cell.north, cell.east].join(",");
   const query = [
-    "[out:json][timeout:10];",
+    "[out:json][timeout:5];",
     "(",
     `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork|information|picnic_site"](${bbox});`,
     `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage|manor|palace"](${bbox});`,
@@ -263,7 +263,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         },
         body: "data=" + encodeURIComponent(query),
         cache: "no-store",
-      }, 11000);
+      }, 5000);
       if (!response.ok) continue;
       const data = await response.json();
       return (Array.isArray(data.elements) ? data.elements : []).map((element: any) => {
@@ -639,17 +639,31 @@ export async function discoverBroadPlaces(
   // Resolve the destination once more to determine whether the query is a state,
   // district, city, or ordinary place, while retaining the stored geometry.
   if (storedCoverage && (!storedCoverage.scope || storedCoverage.scope === "unknown")) {
-    try {
-      const classified = await destinationCoverage(destination, storedCoverage.center);
+    // Do not make every Places page load wait on a second round of public
+    // geocoding when the trip already has saved coordinates/bounds. Infer a
+    // sensible search scope from the saved box instead; only geocode again
+    // when no usable bounds were saved.
+    if (coverage.bounds) {
+      const height = coverage.bounds.north - coverage.bounds.south;
+      const width = coverage.bounds.east - coverage.bounds.west;
+      const span = Math.max(height, width);
       coverage = {
         ...coverage,
-        scope: classified.scope,
-        state: classified.state,
-        district: classified.district,
-        bounds: coverage.bounds ?? classified.bounds,
+        scope: span > 1.5 ? "state" : span > 0.5 ? "district" : "city",
       };
-    } catch {
-      // Keep the stored trip geometry if classification is temporarily unavailable.
+    } else {
+      try {
+        const classified = await destinationCoverage(destination, storedCoverage.center);
+        coverage = {
+          ...coverage,
+          scope: classified.scope,
+          state: classified.state,
+          district: classified.district,
+          bounds: classified.bounds,
+        };
+      } catch {
+        // Keep the stored trip geometry if classification is temporarily unavailable.
+      }
     }
   }
 
