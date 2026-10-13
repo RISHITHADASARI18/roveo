@@ -58,7 +58,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try { body = await request.json(); } catch {}
 
   try {
-    const trip = await db.query("SELECT days FROM trips WHERE id = $1", [tripId]);
+    const trip = await db.query("SELECT days, destination FROM trips WHERE id = $1", [tripId]);
     if (trip.rowCount === 0) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
     await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
@@ -69,17 +69,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       [tripId]
     );
 
+    // SQL NULL becomes 0 when passed through Number(null), which can silently
+    // create fake stops near (0, 0). Reject missing/out-of-range coordinates before
+    // geographic clustering so invalid legacy rows cannot distort the whole plan.
     const places: PlannerPlace[] = placesResult.rows.map((row) => ({
       id: String(row.id),
-      name: String(row.name),
-      latitude: Number(row.latitude),
-      longitude: Number(row.longitude),
+      name: String(row.name ?? "").trim(),
+      latitude: row.latitude == null ? NaN : Number(row.latitude),
+      longitude: row.longitude == null ? NaN : Number(row.longitude),
       category: row.category ? String(row.category) : undefined,
       description: row.description ? String(row.description) : undefined,
       address: row.address ? String(row.address) : undefined,
       websiteUrl: row.websiteUrl ? String(row.websiteUrl) : undefined,
       destinationId: row.destinationId == null ? null : String(row.destinationId),
-    }));
+    })).filter((place) =>
+      place.name &&
+      Number.isFinite(place.latitude) && place.latitude >= -90 && place.latitude <= 90 &&
+      Number.isFinite(place.longitude) && place.longitude >= -180 && place.longitude <= 180
+    );
 
     let destinations: TripDestination[] = [];
     try {
@@ -92,11 +99,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
       destinations = destinationResult.rows.map((row) => ({
         id: String(row.id),
-        name: String(row.name),
-        latitude: Number(row.latitude),
-        longitude: Number(row.longitude),
+        name: String(row.name ?? "").trim(),
+        latitude: row.latitude == null ? NaN : Number(row.latitude),
+        longitude: row.longitude == null ? NaN : Number(row.longitude),
         order: Number(row.order),
-      })).filter((item) => item.name && Number.isFinite(item.latitude) && Number.isFinite(item.longitude));
+      })).filter((item) =>
+        item.name &&
+        Number.isFinite(item.latitude) && item.latitude >= -90 && item.latitude <= 90 &&
+        Number.isFinite(item.longitude) && item.longitude >= -180 && item.longitude <= 180
+      );
     } catch (error) {
       // Older trips may not have the multi-destination table yet; retain the
       // original single-destination planner as a backward-compatible fallback.
@@ -106,7 +117,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (destinations.length <= 1) {
       const days = buildSmartItinerary(places, dayCount).map((day) => ({
         ...day,
-        destinationName: destinations[0]?.name ?? "",
+        destinationName: destinations[0]?.name ?? String(trip.rows[0].destination ?? ""),
       }));
       return NextResponse.json({
         tripId,
