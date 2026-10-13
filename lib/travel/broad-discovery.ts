@@ -751,17 +751,22 @@ export async function discoverBroadPlaces(
   ]);
 
   const unique = new Map<string, DiscoveredPlace>();
-  const addPlaces = (items: DiscoveredPlace[]) => {
+  const addPlaces = (
+    items: DiscoveredPlace[],
+    options: { allowOutsideBounds?: boolean; maxDistanceKm?: number } = {},
+  ) => {
     for (const place of items) {
       // Never trust provider-supplied distance values: some sources calculate
       // distance from a search tile, or omit it entirely. The destination's
       // resolved coordinates are the single source of truth.
       const actualDistanceKm = haversineKm(coverage.center, place);
       const measured = { ...place, distanceKm: actualDistanceKm };
-      if (!insideBounds(place, searchBounds)) continue;
+      if (!options.allowOutsideBounds && !insideBounds(place, searchBounds)) continue;
       if (measured.description === "Named destination place from Wikipedia." &&
           isLowQualityWikipediaTitle(measured.name)) continue;
-      if (actualDistanceKm > (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35)) continue;
+      const maxDistanceKm = options.maxDistanceKm ??
+        (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35);
+      if (actualDistanceKm > maxDistanceKm) continue;
       const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       if (!key) continue;
       const existing = unique.get(key);
