@@ -162,7 +162,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // When the user chooses fewer days than destinations, retain every stop
       // by grouping consecutive route destinations into each available day.
       const destinationBuckets = Array.from({ length: dayCount }, () => [] as TripDestination[]);
-      destinations.forEach((destination, index) => destinationBuckets[index % dayCount].push(destination));
+      // Keep destinations in consecutive route order. Modulo assignment would
+      // incorrectly put destination 1 and destination 3 on day 1, then send
+      // the traveler back to destination 2 on day 2.
+      destinations.forEach((destination, index) => {
+        const dayIndex = Math.min(dayCount - 1, Math.floor(index * dayCount / destinations.length));
+        destinationBuckets[dayIndex].push(destination);
+      });
       days = destinationBuckets.map((bucket, index) => {
         const bucketPlaces = bucket.flatMap((destination) => placesByDestination.get(destination.id) ?? []);
         const planned = buildSmartItinerary(bucketPlaces, 1)[0];
