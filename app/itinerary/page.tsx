@@ -97,11 +97,14 @@ function ItineraryContent(){
         :[];
       if(savedDestinations.length>1){
         const savedPlaces=data.days.flatMap((day:any)=>(day.items||[]).map((item:any)=>item.place?{
-          lat:Number(item.place.latitude),lon:Number(item.place.longitude)
+          lat:Number(item.place.latitude),
+          lon:Number(item.place.longitude),
+          destinationId:item.place.destinationId==null?"":String(item.place.destinationId)
         }:null).filter(Boolean));
         const covered=new Set<string>();
         for(const place of savedPlaces){
-          const nearest=[...savedDestinations].sort((a:any,b:any)=>
+          const explicit=savedDestinations.find((item:any)=>String(item.id)===place.destinationId);
+          const nearest=explicit||[...savedDestinations].sort((a:any,b:any)=>
             km({lat:place.lat,lon:place.lon},{lat:Number(a.lat),lon:Number(a.lon)})-
             km({lat:place.lat,lon:place.lon},{lat:Number(b.lat),lon:Number(b.lon)})
           )[0];
@@ -109,14 +112,33 @@ function ItineraryContent(){
         }
         if(savedDestinations.some((item:any)=>!covered.has(String(item.id))))return false;
         setPlanDestinations(data.days.map((day:any)=>{
-          const savedPlaces=(day.items||[]).map((item:any)=>item.place?{lat:Number(item.place.latitude),lon:Number(item.place.longitude)}:null).filter(Boolean);
+          const savedPlaces=(day.items||[]).map((item:any)=>item.place?{
+            lat:Number(item.place.latitude),
+            lon:Number(item.place.longitude),
+            destinationId:item.place.destinationId==null?"":String(item.place.destinationId)
+          }:null).filter(Boolean);
           if(!savedPlaces.length)return "";
+          // Prefer the saved destination association. Only use coordinates for
+          // legacy places that were saved before destination IDs were tracked.
+          const counts=new Map<string,number>();
+          for(const place of savedPlaces){
+            if(savedDestinations.some((item:any)=>String(item.id)===place.destinationId)){
+              counts.set(place.destinationId,(counts.get(place.destinationId)||0)+1);
+            }
+          }
+          const mostCommon=[...counts.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];
+          if(mostCommon){
+            return String(savedDestinations.find((item:any)=>String(item.id)===mostCommon)?.name||"");
+          }
           const nearest=[...savedDestinations].sort((a:any,b:any)=>{
             const avg=(destination:any)=>savedPlaces.reduce((sum:number,place:any)=>sum+km(place,{lat:Number(destination.lat),lon:Number(destination.lon)}),0)/savedPlaces.length;
             return avg(a)-avg(b);
           })[0];
           return String(nearest?.name||"");
         }));
+      }else{
+        // Also show the destination heading when restoring a saved single-city trip.
+        setPlanDestinations(data.days.map(()=>String(savedDestinations[0]?.name||destination)));
       }
       const restored=data.days.map((day:any)=>
         (day.items||[]).map((item:any)=>item.place?{
