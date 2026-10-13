@@ -225,22 +225,27 @@ function PlacesContent(){
             if(!res.ok) throw new Error(data.error||"Could not discover places.");
             const mapped:Place[]=(data.places||[])
               .map((place:any)=>({
-                id:String(place.id),name:String(place.name||""),type:String(place.type||"place"),
-                group:place.group as Place["group"],lat:Number(place.latitude),lon:Number(place.longitude),
+                id:String(place.id),name:String(place.name||"").trim(),type:String(place.type||"place"),
+                group:place.group as Place["group"],
+                lat:place.latitude==null?NaN:Number(place.latitude),
+                lon:place.longitude==null?NaN:Number(place.longitude),
                 distance:Number(place.distanceKm||0),description:place.description,openingHours:place.openingHours,
                 website:place.website,wikipedia:place.wikipedia,address:place.address
               }))
-              .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&Number.isFinite(place.lon));
+              // Null coordinates must not become valid-looking (0, 0) through Number(null).
+              .filter((place:Place)=>place.name&&Number.isFinite(place.lat)&&place.lat>=-90&&place.lat<=90&&Number.isFinite(place.lon)&&place.lon>=-180&&place.lon<=180);
             return {
               destination:item,
               places:mapped,
-              center:Number.isFinite(Number(data.center?.latitude))&&Number.isFinite(Number(data.center?.longitude))
+              center:data.center?.latitude!=null&&data.center?.longitude!=null&&Number.isFinite(Number(data.center.latitude))&&Number.isFinite(Number(data.center.longitude))&&Number(data.center.latitude)>=-90&&Number(data.center.latitude)<=90&&Number(data.center.longitude)>=-180&&Number(data.center.longitude)<=180
                 ? {lat:Number(data.center.latitude),lon:Number(data.center.longitude)} : null,
               message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
               nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
-                name:String(nearby.name||""),latitude:Number(nearby.latitude),longitude:Number(nearby.longitude),
+                name:String(nearby.name||"").trim(),
+                latitude:nearby.latitude==null?NaN:Number(nearby.latitude),
+                longitude:nearby.longitude==null?NaN:Number(nearby.longitude),
                 distanceKm:Number(nearby.distanceKm||0),type:String(nearby.type||"town")
-              })).filter((nearby:NearbyDestination)=>nearby.name&&Number.isFinite(nearby.latitude)&&Number.isFinite(nearby.longitude)):[] 
+              })).filter((nearby:NearbyDestination)=>nearby.name&&Number.isFinite(nearby.latitude)&&nearby.latitude>=-90&&nearby.latitude<=90&&Number.isFinite(nearby.longitude)&&nearby.longitude>=-180&&nearby.longitude<=180):[] 
             };
           }catch(error){
             return {
