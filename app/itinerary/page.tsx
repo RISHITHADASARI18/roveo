@@ -101,23 +101,19 @@ function ItineraryContent(){
           lon:Number(item.place.longitude),
           destinationId:item.place.destinationId==null?"":String(item.place.destinationId)
         }:null).filter(Boolean));
-        const covered=new Set<string>();
-        for(const place of savedPlaces){
-          const explicit=savedDestinations.find((item:any)=>String(item.id)===place.destinationId);
-          const nearest=explicit||[...savedDestinations].sort((a:any,b:any)=>
-            km({lat:place.lat,lon:place.lon},{lat:Number(a.lat),lon:Number(a.lon)})-
-            km({lat:place.lat,lon:place.lon},{lat:Number(b.lat),lon:Number(b.lon)})
-          )[0];
-          if(nearest)covered.add(String(nearest.id));
-        }
-        if(savedDestinations.some((item:any)=>!covered.has(String(item.id))))return false;
-        setPlanDestinations(data.days.map((day:any)=>{
-          const savedPlaces=(day.items||[]).map((item:any)=>item.place?{
+        // A destination with no selected attractions is valid. Do not rebuild
+        // on every page load just because that destination has no saved place;
+        // doing so would discard the user's manual itinerary edits.
+        setPlanDestinations(data.days.map((day:any,dayIndex:number)=>{
+          const savedPlaces=(day.items||[]).map((item:any)=>item.place&&item.place.latitude!=null&&item.place.longitude!=null?{
             lat:Number(item.place.latitude),
             lon:Number(item.place.longitude),
             destinationId:item.place.destinationId==null?"":String(item.place.destinationId)
           }:null).filter(Boolean);
-          if(!savedPlaces.length)return "";
+          if(!savedPlaces.length){
+            const fallback=savedDestinations[Math.min(savedDestinations.length-1,Math.floor(dayIndex*savedDestinations.length/Math.max(data.days.length,1)))];
+            return String(fallback?.name||"");
+          }
           // Prefer the saved destination association. Only use coordinates for
           // legacy places that were saved before destination IDs were tracked.
           const counts=new Map<string,number>();
@@ -241,12 +237,12 @@ function ItineraryContent(){
 
         const mapped=(savedData.places||[]).map((place:any)=>({
           id:String(place.id),
-          name:String(place.name),
+          name:String(place.name||"").trim(),
           type:place.category||"place",
           category:place.category||"",
-          lat:Number(place.latitude),
-          lon:Number(place.longitude)
-        })).filter((place:any)=>Number.isFinite(place.lat)&&Number.isFinite(place.lon));
+          lat:place.latitude==null?NaN:Number(place.latitude),
+          lon:place.longitude==null?NaN:Number(place.longitude)
+        })).filter((place:any)=>place.name&&Number.isFinite(place.lat)&&place.lat>=-90&&place.lat<=90&&Number.isFinite(place.lon)&&place.lon>=-180&&place.lon<=180);
 
         if(cancelled)return;
         setSelectedPlaces(mapped);
