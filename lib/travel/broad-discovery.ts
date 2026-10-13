@@ -794,12 +794,14 @@ export async function discoverBroadPlaces(
   // Curated Ooty/Nilgiris must-visits keep the page useful when public POI
   // providers are sparse or temporarily unavailable.
   if (isOotyDestination(destination)) {
+    // These verified Nilgiris landmarks may sit outside a geocoder's tiny town
+    // boundary. The distance cap still keeps results local to Ooty.
     addPlaces(OOTY_ANCHORS.map(([name, latitude, longitude, type, description]) => ({
       id: "ooty-anchor-" + normalizeName(name), name, type,
       group: groupFor(name + " " + type), latitude, longitude,
       distanceKm: haversineKm(coverage.center, { latitude, longitude }),
       description,
-    })));
+    })), { allowOutsideBounds: true, maxDistanceKm: 50 });
   }
 
   // Last-resort static anchors for Kerala. These are deliberately only major,
