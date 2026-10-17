@@ -17,9 +17,15 @@ function parseLocation(value: unknown) {
     boundingBox?: { south?: unknown; north?: unknown; west?: unknown; east?: unknown } | null;
   };
   const name = typeof item.name === "string" ? item.name.trim() : "";
+  // Number(null) and Number("") both become 0, so reject missing coordinates
+  // before conversion instead of silently saving a destination at (0, 0).
+  if (item.lat == null || item.lon == null ||
+      (typeof item.lat === "string" && !item.lat.trim()) ||
+      (typeof item.lon === "string" && !item.lon.trim())) return null;
   const lat = Number(item.lat);
   const lon = Number(item.lon);
-  if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (!name || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      !Number.isFinite(lon) || lon < -180 || lon > 180) return null;
   const box = item.boundingBox;
   const numberOrNull = (value: unknown) => {
     const number = Number(value);
@@ -106,6 +112,9 @@ export async function POST(
   if (!destination) return NextResponse.json({ error: "A valid destination is required." }, { status: 400 });
 
   try {
+    const trip = await db.query("SELECT 1 FROM trips WHERE id = $1", [tripId]);
+    if (trip.rowCount === 0) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+
     const existing = await db.query(
       `SELECT id FROM trip_destinations WHERE trip_id = $1 AND LOWER(destination_name) = LOWER($2) LIMIT 1`,
       [tripId, destination.name]
@@ -154,6 +163,39 @@ export async function DELETE(
     if (Number(count.rows[0].count) <= 1) {
       return NextResponse.json({ error: "A trip must keep at least one destination." }, { status: 400 });
     }
+
+    const target = await db.query(
+      `SELECT id FROM trip_destinations WHERE id = $1 AND trip_id = $2`,
+      [id, tripId]
+    );
+    if (!target.rows[0]) return NextResponse.json({ error: "Destination not found." }, { status: 404 });
+
+    // Keep saved attractions attached to a real destination when one is removed.
+    // Assign them to the nearest remaining destination before deleting the old one;
+    // the itinerary references saved-place IDs, so it remains intact.
+    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
+    await db.query(
+      `UPDATE trip_places AS p
+          SET destination_id = (
+            SELECT d.id
+              FROM trip_destinations AS d
+             WHERE d.trip_id = $1
+               AND d.id <> $2
+               AND d.latitude IS NOT NULL
+               AND d.longitude IS NOT NULL
+             ORDER BY
+               CASE
+                 WHEN p.latitude IS NULL OR p.longitude IS NULL THEN d.order_index::double precision
+                 ELSE
+                   POWER(d.latitude - p.latitude, 2) +
+                   POWER(COS(RADIANS(p.latitude)) * (d.longitude - p.longitude), 2)
+               END ASC,
+               d.order_index ASC
+             LIMIT 1
+          )
+        WHERE p.trip_id = $1 AND p.destination_id = $2`,
+      [tripId, id]
+    );
 
     const deleted = await db.query(
       `DELETE FROM trip_destinations WHERE id = $1 AND trip_id = $2 RETURNING id`,
