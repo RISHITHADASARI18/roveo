@@ -53,7 +53,7 @@ function isFullDayAttraction(place: PlannerPlace) {
 }
 
 function openingWindow(place: PlannerPlace) {
-  const hours = place.openingHours ?? (/ramoji\\s*(film|film city)|ramoji film city/i.test(place.name) ? "Mo-Su 09:00-17:30" : /wonderla/i.test(place.name) ? "Mo-Fr 11:00-18:00; Sa-Su 11:00-19:00" : "");
+  const hours = place.openingHours ?? (/ramoji\s*(film|film city)|ramoji film city/i.test(place.name) ? "Mo-Su 09:00-17:30" : /wonderla/i.test(place.name) ? "Mo-Fr 11:00-18:00; Sa-Su 11:00-19:00" : "");
   // Supports common OSM/Google display strings such as "Mo-Su 10:00-19:00".
   // If a provider returns a more complex weekly schedule, keep the safe default.
   const match = hours.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
