@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateBudget, calculateAccommodation, calculateDestinationTravel, calculateLocalTransport } from "../lib/budget/calculate.ts";
-import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates } from "../lib/budget/route-costs.ts";
+import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates, normalizeDateOnly } from "../lib/budget/route-costs.ts";
 import { estimatePlaceCosts } from "../lib/budget/place-costs.ts";
 import { modeFromLocalTravelMethod } from "../lib/travel/route-mode.ts";
 import { searchStays } from "../lib/accommodation/staying.ts";
@@ -28,7 +28,10 @@ test("duration charges days minus one accommodation nights", () => {
   assert.ok(four.items.food > two.items.food);
 });
 
-test("stay date range rejects invalid dates and handles check-out correctly", () => {
+test("stay date range normalizes PostgreSQL Date objects and handles check-out correctly", () => {
+  assert.equal(normalizeDateOnly(new Date("2026-11-15T00:00:00.000Z")), "2026-11-15");
+  assert.equal(normalizeDateOnly("2026-11-15"), "2026-11-15");
+  assert.equal(normalizeDateOnly("not-a-date"), null);
   assert.deepEqual(stayDates("2026-10-24", 3), { checkIn: "2026-10-24", checkOut: "2026-10-26", nights: 2 });
   assert.equal(stayDates("2026-02-30", 3), null);
   assert.equal(stayDates("2026-10-24", 1), null);
