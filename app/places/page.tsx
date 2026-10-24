@@ -28,6 +28,18 @@ function haversine(a:GeoPoint,b:GeoPoint){
   return 2*r*Math.asin(Math.sqrt(x));
 }
 
+function estimateVisitMinutes(place:Place){
+  const name=place.name.toLowerCase();
+  const text=(place.type+" "+place.group+" "+name).toLowerCase();
+  if(/ramoji\\s*(film|film city)|ramoji film city/.test(name))return 480;
+  if(/wonderla/.test(name))return 420;
+  if(/universal studios|disneyland|disney world|imagica|adlabs/.test(name))return 480;
+  if(/water_park|water park|theme_park|amusement|zoo|aquarium/.test(text))return 240;
+  if(/museum|palace|fort|heritage|historic|temple|church|monument/.test(text))return 105;
+  if(/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(text))return 120;
+  return 90;
+}
+
 function titleCase(value:string){
   return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
 }
@@ -361,6 +373,8 @@ function PlacesContent(){
             longitude:place.lon,
             category:place.group,
             description:place.description||null,
+            openingHours:place.openingHours||null,
+            visitDurationMinutes:estimateVisitMinutes(place),
             websiteUrl:place.website||null,
             address:place.address||null,
             destinationId:activeDestinationId.startsWith("param-")?null:Number(activeDestinationId)
