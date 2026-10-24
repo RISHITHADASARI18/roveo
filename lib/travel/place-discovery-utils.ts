@@ -32,7 +32,7 @@ export function categoryForPlace(place: PlaceCategoryInput): PlaceCategory {
   if (/waterfall|falls\b|cascade/.test(value)) return "Waterfalls";
   if (/viewpoint|lookout|observation deck|panorama|scenic point|\bpeak\b/.test(value)) return "Viewpoints";
   if (/beach|coastline|seaside|shoreline/.test(value)) return "Beaches";
-  if (/temple|mandir|place of worship|hindu temple/.test(value)) return "Temples";
+  if (/temple|mandir|hindu temple|place of worship.*(?:hindu|buddhist|jain)|(?:hindu|buddhist|jain).*place of worship/.test(value)) return "Temples";
   if (/theme park|theme park|water park|amusement|wonderla|ramoji film city|disneyland|universal studios/.test(value)) return "Theme Parks";
   if (/fort|palace|historic|historical|heritage|monument|memorial|museum|archaeolog|ruins|castle/.test(value) || place.group === "History") return "History";
   if (/adventure|trek|hiking|zipline|rafting|kayak|camping|rock climbing|paragliding|skiing|safari|wildlife|zoo|aquarium|climbing|canoe/.test(value)) return "Adventure";
