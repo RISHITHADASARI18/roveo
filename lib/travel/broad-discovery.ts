@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
+import { categoryForPlace, isKeralaStateDestination, normalizePlaceName, type PlaceCategory } from "./place-discovery-utils";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -38,7 +39,7 @@ function groupFor(text: string): DiscoveredPlace["group"] {
 }
 
 function normalizeName(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return normalizePlaceName(value);
 }
 
 function insideBounds(point: Coordinates, bounds?: Bounds) {
@@ -278,7 +279,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
       const latitude = Number(element.lat ?? element.center?.lat);
       const longitude = Number(element.lon ?? element.center?.lon);
       if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-      const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.sport ?? tags.route ?? tags.place ?? "place").toLowerCase();
+      const type = [tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.sport ?? tags.route ?? tags.place ?? "place", tags.religion].filter(Boolean).join(" ").toLowerCase();
       const address = [
         tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
         tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
@@ -477,7 +478,7 @@ function isDelhiDestination(destination: string) {
 }
 
 function isKeralaDestination(destination: string) {
-  return /\bkerala\b/i.test(destination);
+  return isKeralaStateDestination(destination);
 }
 
 function isKeralaCorePlace(name: string) {
@@ -636,6 +637,22 @@ function isLowQualityWikipediaTitle(name: string) {
     /\(disambiguation\)$/i,
   ].some((pattern) => pattern.test(title));
 }
+function categorySearchTerm(category: PlaceCategory) {
+  const terms: Record<PlaceCategory, string> = {
+    "Waterfalls": "waterfall falls cascade",
+    "Viewpoints": "viewpoint lookout scenic viewpoint peak",
+    "Beaches": "beach coastline shore",
+    "Temples": "temple mandir place of worship",
+    "Nature": "nature reserve forest lake garden national park",
+    "Adventure": "adventure trekking hiking rafting climbing kayaking",
+    "Theme Parks": "theme park water park amusement park",
+    "History": "historic heritage fort monument museum",
+    "Culture": "cultural attraction arts gallery theatre",
+    "Attractions": "tourist attraction landmark",
+  };
+  return terms[category];
+}
+
 function importanceScore(place: DiscoveredPlace) {
   const type = place.type.toLowerCase();
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
@@ -676,6 +693,7 @@ async function discoverBroadPlacesUncached(
   maxResults = 200,
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
+  categoryFilter?: PlaceCategory,
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
@@ -689,14 +707,11 @@ async function discoverBroadPlacesUncached(
     // sensible search scope from the saved box instead; only geocode again
     // when no usable bounds were saved.
     if (coverage.bounds) {
-      const height = coverage.bounds.north - coverage.bounds.south;
-      const width = coverage.bounds.east - coverage.bounds.west;
-      const span = Math.max(height, width);
       coverage = {
         ...coverage,
-        // Bounding-box size alone often mislabels large cities as districts,
-        // expanding discovery far beyond the selected destination.
-        scope: span > 1.5 ? "state" : "city",
+        // A large stored box does not prove the user selected a state; large cities can have broad administrative bounds.
+        // Only an explicit state selection may widen discovery to the whole region.
+        scope: isKeralaStateDestination(destination) ? "state" : "city",
       };
     } else {
       try {
@@ -766,6 +781,7 @@ async function discoverBroadPlacesUncached(
 
   // Run nearby-stop suggestions alongside the main place providers instead of
   // waiting for all attractions to finish before starting this extra lookup.
+  const providerQuery = [desiredQuery, categoryFilter ? categorySearchTerm(categoryFilter) : ""].filter(Boolean).join(" ");
   const [cellResults, wikiResults, coreResults, googleResults, destinationResults, nearbyDestinations] = await Promise.all([
     Promise.all(cells.map(overpassCell)),
     Promise.all(cells.map(async (cell) => {
@@ -792,8 +808,8 @@ async function discoverBroadPlacesUncached(
     // Google Places is the strongest source for famous, visitor-facing attractions
     // when configured. Keep it parallel with the free sources so it adds quality
     // without making each destination wait for the others.
-    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20), desiredQuery),
-    wikipediaDestinationSearch(destination, desiredQuery),
+    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20), providerQuery),
+    wikipediaDestinationSearch(destination, providerQuery),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
@@ -813,7 +829,7 @@ async function discoverBroadPlacesUncached(
       if (measured.description === "Named destination place from Wikipedia." &&
           isLowQualityWikipediaTitle(measured.name)) continue;
       const maxDistanceKm = options.maxDistanceKm ??
-        (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35);
+        (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 100 : coverage.scope === "city" ? 35 : 22);
       if (actualDistanceKm > maxDistanceKm) continue;
       const nameKey = normalizeName(measured.name);
       if (!nameKey) continue;
@@ -974,12 +990,15 @@ async function discoverBroadPlacesUncached(
   // Free providers can be sparse or temporarily unavailable. When the merged set
   // is thin, ask Nominatim for named local places using the same destination box;
   // never replace a failed category query with unrelated generic attractions.
-  if (places.length < Math.min(6, limit)) {
-    const fallbackPlaces = await nominatimDestinationSearch(destination, desiredQuery, searchBounds, coverage.center);
+  const categoryMatches = (place: DiscoveredPlace) => !categoryFilter || categoryForPlace(place) === categoryFilter;
+  const matchingCount = () => places.filter(categoryMatches).length;
+  if (matchingCount() < Math.min(6, limit)) {
+    const fallbackPlaces = await nominatimDestinationSearch(destination, providerQuery, searchBounds, coverage.center);
     addPlaces(fallbackPlaces);
     places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
     if (desiredQuery) places = places.filter(matchesRequestedQuery);
   }
+  if (categoryFilter) places = places.filter(categoryMatches);
 
   // Do not write the live result set to PostgreSQL on the request path. The old
   // row-by-row catalog write could take long enough to make Vercel appear stuck.
@@ -990,7 +1009,7 @@ async function discoverBroadPlacesUncached(
     return scoreDiff || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name);
   });
 
-  if (!places.length) {
+  if (!places.length && !categoryFilter) {
     throw new Error("No live places were returned for " + destination + ". The destination was located, but the place providers returned no usable records.");
   }
 
@@ -1015,8 +1034,9 @@ const getCachedBroadPlaces = unstable_cache(
     maxResults: number,
     desiredQuery: string,
     storedCoverage?: DestinationCoverage,
-  ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage),
-  ["roveo-broad-place-discovery-v4"],
+    categoryFilter?: PlaceCategory,
+  ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage, categoryFilter),
+  ["roveo-broad-place-discovery-v5"],
   { revalidate: 21600 },
 );
 
@@ -1026,6 +1046,7 @@ export async function discoverBroadPlaces(
   maxResults = 200,
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
+  categoryFilter?: PlaceCategory,
 ): Promise<PlaceDiscoveryResult> {
-  return getCachedBroadPlaces(destination, maxResults, desiredQuery, storedCoverage);
+  return getCachedBroadPlaces(destination, maxResults, desiredQuery, storedCoverage, categoryFilter);
 }

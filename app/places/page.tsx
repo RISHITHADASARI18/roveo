@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { categoryForPlace } from "@/lib/travel/place-discovery-utils";
 
 
 type Place = {
@@ -42,7 +43,8 @@ function estimateVisitMinutes(place:Place){
 }
 
 function titleCase(value:string){
-  return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const readable=value.replaceAll("_"," ").replace(/\s+(hindu|buddhist|jain|christian|muslim|sikh)$/i,"");
+  return readable.replace(/\b\w/g,c=>c.toUpperCase());
 }
 
 const curatedDescriptions:Record<string,string>={
@@ -75,7 +77,26 @@ function conciseDescription(place:Place){
   const curated=curatedDescriptions[place.name.trim()];
   if(curated)return curated;
   const raw=(place.description||"").replace(/\s+/g," ").trim();
-  if(!raw || /^Popular place to visit in /i.test(raw))return "";
+  const isPlaceholder=!raw ||
+    /^Popular place to visit in /i.test(raw) ||
+    /^(Real place record from OpenStreetMap|Named destination place from Wikipedia|Major (?:Kerala )?destination|Major Delhi attraction)\.?$/i.test(raw) ||
+    Boolean(place.address && raw.toLowerCase()===place.address.trim().toLowerCase());
+  if(isPlaceholder){
+    const category=categoryForPlace(place);
+    const guidance:Record<string,string>={
+      "Waterfalls":"Waterfall location; check seasonal flow, access conditions and local safety guidance before visiting.",
+      "Viewpoints":"Scenic viewpoint; check access and visibility conditions for your visit.",
+      "Beaches":"Coastal spot; check local conditions, access and safety notices before visiting.",
+      "Temples":"Religious site; verify visiting hours and local entry customs before visiting.",
+      "Nature":"Natural area; check access, weather and any conservation rules before visiting.",
+      "Adventure":"Outdoor activity or adventure spot; verify current availability and safety requirements locally.",
+      "Theme Parks":"Entertainment attraction; confirm date-specific opening hours and ticket prices with the venue.",
+      "History":"Historic or heritage site; verify opening hours and entry rules before visiting.",
+      "Culture":"Cultural attraction; check opening hours and any event schedule before visiting.",
+      "Attractions":"Named local attraction; check current access and official visitor information before travelling."
+    };
+    return guidance[category]||guidance.Attractions;
+  }
   const first=raw.split(/(?<=[.!?])\s+/)[0];
   return first.length<=155 ? first : first.slice(0,152).replace(/\s+\S*$/,"")+"…";
 }
@@ -93,25 +114,13 @@ function classify(tags:any):Place["group"]{
   return "Activity";
 }
 
-const PLACE_CATEGORIES = ["All", "Waterfalls", "Viewpoints", "Nature", "History", "Adventure", "Theme Parks", "Culture", "Attractions"] as const;
+const PLACE_CATEGORIES = ["All", "Waterfalls", "Viewpoints", "Beaches", "Temples", "Nature", "Adventure", "Theme Parks", "History", "Culture", "Attractions"] as const;
 type PlaceCategory = typeof PLACE_CATEGORIES[number];
-
-function categoryFor(place: Place): Exclude<PlaceCategory, "All"> {
-  const value = (place.name + " " + place.type + " " + place.group + " " + (place.description || "")).toLowerCase().replaceAll("_", " ");
-  if (/waterfall|falls\b|cascade/.test(value)) return "Waterfalls";
-  if (/viewpoint|lookout|observation deck|panorama|scenic point/.test(value)) return "Viewpoints";
-  if (/theme park|theme_park|water park|water_park|amusement|wonderla|ramoji film city|disneyland|universal studios/.test(value)) return "Theme Parks";
-  if (/fort|palace|historic|historical|heritage|monument|memorial|museum|archaeolog|ruins|castle|temple|church|mosque|cathedral/.test(value) || place.group === "History") return "History";
-  if (/adventure|trek|hiking|zipline|rafting|kayak|kayaking|camping|rock climbing|paragliding|skiing|safari|wildlife|zoo|aquarium|activity/.test(value)) return "Adventure";
-  if (/forest|nature|reserve|national park|garden|lake|beach|mountain|hill|peak|cave|cliff|hot spring|backwater|island|river|dam|sanctuary/.test(value) || place.group === "Nature") return "Nature";
-  if (/culture|art gallery|arts centre|theatre|artwork|craft|cultural/.test(value) || place.group === "Culture") return "Culture";
-  return "Attractions";
-}
 
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
   const description=conciseDescription(place);
-  const category=categoryFor(place);
+  const category=categoryForPlace(place);
   return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
     <div className="explore-visual"><span>✦</span><small>{category}</small></div>
     <div className="explore-body">
@@ -250,6 +259,7 @@ function PlacesContent(){
               discoveryUrl+="&"+geoParams.toString();
             }
             if(liveQuery) discoveryUrl+="&q="+encodeURIComponent(liveQuery);
+            if(categoryFilter!=="All") discoveryUrl+="&category="+encodeURIComponent(categoryFilter);
             const res=await fetch(discoveryUrl,{cache:"no-store"});
             const data=await res.json().catch(()=>({}));
             if(!res.ok) throw new Error(data.error||"Could not discover places.");
@@ -269,7 +279,7 @@ function PlacesContent(){
               places:mapped,
               center:data.center?.latitude!=null&&data.center?.longitude!=null&&Number.isFinite(Number(data.center.latitude))&&Number.isFinite(Number(data.center.longitude))&&Number(data.center.latitude)>=-90&&Number(data.center.latitude)<=90&&Number(data.center.longitude)>=-180&&Number(data.center.longitude)<=180
                 ? {lat:Number(data.center.latitude),lon:Number(data.center.longitude)} : null,
-              message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
+              message:mapped.length ? mapped.length+" places found." : categoryFilter!=="All" ? "No verified "+categoryFilter.toLowerCase()+" places were found for "+item.name+"." : "No places were found nearby.",
               nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
                 name:String(nearby.name||"").trim(),
                 latitude:nearby.latitude==null?NaN:Number(nearby.latitude),
@@ -316,7 +326,7 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destinationParam,tripId,liveQuery,discoveryRefresh]);
+  },[destinationParam,tripId,liveQuery,discoveryRefresh,categoryFilter]);
 
   useEffect(()=>{
     if(!activeDestinationId)return;
@@ -332,7 +342,7 @@ function PlacesContent(){
   const destination=activeDestination?.name || destinationParam;
   const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
-  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()) && (categoryFilter==="All" || categoryFor(p)===categoryFilter)),[places,search,categoryFilter]);
+  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()) && (categoryFilter==="All" || categoryForPlace(p)===categoryFilter)),[places,search,categoryFilter]);
 
   const mainPlaces=useMemo(()=>{
     // Filter first, then choose highlights so a search never shows unrelated cards.
@@ -390,7 +400,7 @@ function PlacesContent(){
             name:place.name,
             latitude:place.lat,
             longitude:place.lon,
-            category:place.group,
+            category:categoryForPlace(place),
             description:place.description||null,
             openingHours:place.openingHours||null,
             visitDurationMinutes:estimateVisitMinutes(place),
@@ -426,7 +436,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Find famous must-visit attractions, landmarks and worthwhile local places for each destination.</p>
+        <p>Find famous attractions and lesser-known local places, filtered to each selected destination.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destinations.length>1?"Multiple destinations":destination}</small></div>
     </section>
@@ -513,7 +523,7 @@ function PlacesContent(){
         </>;
       })()}
 
-      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a different place name or destination.</span></div>}
+      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try another category or search term. If this destination has no verified matches for a category, clear the filter to see all nearby places.</span></div>}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>

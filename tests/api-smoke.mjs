@@ -52,13 +52,14 @@ assert.ok(persistedTrip, "created trip survives a fresh API read");
 assert.deepEqual(persistedTrip.destinations.map((d) => d.name), ["Vijayawada", "Guntur"], "saved destinations survive reload in order");
 
 const destinationId = trip.destinations[0].id;
-const firstPlace = { provider: "openstreetmap", providerPlaceId: "ci-place-1", name: "CI Attraction A", latitude: 16.510, longitude: 80.620, category: "Nature", destinationId };
+const firstPlace = { provider: "openstreetmap", providerPlaceId: "ci-place-1", name: "CI Attraction A", latitude: 16.510, longitude: 80.620, category: "Waterfalls", destinationId };
 const secondPlace = { provider: "openstreetmap", providerPlaceId: "ci-place-2", name: "CI Attraction B", latitude: 16.517, longitude: 80.630, category: "History", destinationId };
 const savedFirst = await api(`/api/trips/${trip.id}/places`, { method: "POST", body: JSON.stringify(firstPlace) });
 const savedSecond = await api(`/api/trips/${trip.id}/places`, { method: "POST", body: JSON.stringify(secondPlace) });
 assert.ok(savedFirst.place?.id && savedSecond.place?.id, "both places return saved database ids");
 let savedPlaces = await api(`/api/trips/${trip.id}/places`);
 assert.equal(savedPlaces.places.length, 2, "adding places updates the saved trip");
+assert.equal(savedPlaces.places.find((p) => p.providerPlaceId === "ci-place-1")?.category, "Waterfalls", "specific place categories persist for budget and itinerary use");
 assert.ok(savedPlaces.places.every((p) => Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude)) && Math.abs(Number(p.latitude)) <= 90 && Math.abs(Number(p.longitude)) <= 180), "saved places have valid coordinates");
 
 await api(`/api/trips/${trip.id}/places?placeId=${savedSecond.place.id}`, { method: "DELETE" });
@@ -130,6 +131,8 @@ try {
 
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
+assert.ok(estimate.placeCosts.places.some((place) => place.name === "CI Attraction A" && place.category === "Waterfalls"), "a selected place and its category flow into the budget breakdown");
+assert.ok(Number(estimate.calculation.items.activities) > 0, "selected places contribute to the activities budget allowance");
 assert.equal(estimate.pricing.accommodationStatus, "provider-listed-price-not-confirmed", "a priced listing is distinguished from a fallback estimate");
 assert.equal(estimate.liveStay.name, "CI Mock Homestay", "the returned property is an actual provider listing");
 assert.equal(estimate.liveStay.totalPrice, 4000, "the listed price is used for the matching stay dates");
@@ -178,6 +181,13 @@ assert.equal(templeResponse.status, 200, "destination-scoped category search ret
 const templeResults = await templeResponse.json();
 assert.ok(templeResults.places.length > 0, "destination-scoped temple search returns relevant local results");
 assert.ok(templeResults.places.every((place) => (place.name + " " + (place.description || "") + " " + place.type + " " + place.group).toLowerCase().includes("temple")), "category query does not leak unrelated results");
+const categoryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&category=Temples&maxResults=30");
+assert.equal(categoryResponse.status, 200, "selecting a place category returns a usable discovery response");
+const categoryData = await categoryResponse.json();
+assert.ok(Array.isArray(categoryData.places), "category discovery always returns a places array, even if no verified match exists");
+assert.ok(categoryData.places.every((place) => /temple|mandir|place[_ ]of[_ ]worship/i.test((place.name + " " + (place.description || "") + " " + place.type + " " + place.group))), "category discovery returns only matching temple or worship places");
+const invalidCategoryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&category=NotARealCategory");
+assert.equal(invalidCategoryResponse.status, 400, "unsupported place categories are rejected");
 
 const oneDayTrip = await api("/api/trips", { method: "POST", body: JSON.stringify({
   source: { name: "Hyderabad", lat: 17.385, lon: 78.486 },
