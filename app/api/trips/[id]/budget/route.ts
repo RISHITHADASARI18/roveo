@@ -42,6 +42,13 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         other,
         contingency
        FROM trip_budgets WHERE trip_id=$1`,[tripId]);
+    // Estimates are also persisted in trip_cost_estimates. If a trip has an
+    // estimate but no manually saved budget row yet, use that as the initial
+    // budget instead of returning an empty state.
+    const estimateResult = result.rows[0] ? { rows: [] as any[] } : await db.query(
+      `SELECT destination_travel AS "destinationTravel", accommodation,
+        local_transport AS "localTransport", food, activities, other, contingency
+       FROM trip_cost_estimates WHERE trip_id=$1`, [tripId]);
     const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
     const places = await db.query(
       "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
@@ -51,8 +58,13 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       places.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
       Number(trip.rows[0]?.people ?? 1),
     );
-    if(!result.rows[0])return NextResponse.json({budget:null, placeCosts});
-    return NextResponse.json({budget:buildBreakdown(result.rows[0]), placeCosts});
+    const initialBudget = result.rows[0] ?? estimateResult.rows[0] ?? null;
+    if(!initialBudget)return NextResponse.json({budget:null, placeCosts});
+    return NextResponse.json({
+      budget:buildBreakdown(initialBudget),
+      placeCosts,
+      initializedFromEstimate:!result.rows[0] && Boolean(estimateResult.rows[0]),
+    });
   } catch(error) {
     console.error("GET /api/trips/[id]/budget failed:",error);
     return NextResponse.json({error:"Could not load the trip budget."},{status:500});
