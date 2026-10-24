@@ -292,7 +292,8 @@ function BudgetContent() {
                 <li><strong>Accommodation:</strong> live provider results when available; otherwise a clearly labelled fallback estimate.</li>
                 <li><strong>Local transport:</strong> selected-place road distance from the Open Source Routing Machine (OSRM), with a detour buffer when coordinates are available; transport fares remain estimates.</li>
                 <li><strong>Tickets:</strong> published official venue price ranges where matched. Other places are marked unpriced and get only a provisional allowance in the generated budget.</li>
-                <li><strong>Food and travel to destination:</strong> planning baselines, not live quotes. Confirm current fares and meal prices before booking.</li>
+                <li><strong>Travel to destination:</strong> uses the saved origin and ordered destination coordinates with a mode-specific distance rate when possible; it is not a live airline, rail or bus quote.</li>
+                <li><strong>Food:</strong> a planning baseline based on trip length, group size and destination tier, not live restaurant prices.</li>
               </ul>
               <div className="budget-source-links">
                 <a href="https://project-osrm.org/docs/v26.6.1/index.html" target="_blank" rel="noreferrer">OSRM routing documentation ↗</a>
