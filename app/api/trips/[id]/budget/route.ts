@@ -54,15 +54,17 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
     );
+    const people = Number(trip.rows[0]?.people ?? 1);
     const placeCosts = estimatePlaceCosts(
       places.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
-      Number(trip.rows[0]?.people ?? 1),
+      people,
     );
+    const provisionalUnpricedAllowance = placeCosts.unpricedPlaceCount * 250 * people;
     const initialBudget = result.rows[0] ?? estimateResult.rows[0] ?? null;
-    if(!initialBudget)return NextResponse.json({budget:null, placeCosts});
+    if(!initialBudget)return NextResponse.json({budget:null, placeCosts: { ...placeCosts, provisionalUnpricedAllowance }});
     return NextResponse.json({
       budget:buildBreakdown(initialBudget),
-      placeCosts,
+      placeCosts: { ...placeCosts, provisionalUnpricedAllowance },
       initializedFromEstimate:!result.rows[0] && Boolean(estimateResult.rows[0]),
     });
   } catch(error) {
