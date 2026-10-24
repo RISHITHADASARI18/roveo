@@ -178,7 +178,6 @@ export async function DELETE(
     // Keep saved attractions attached to a real destination when one is removed.
     // Assign them to the nearest remaining destination before deleting the old one;
     // the itinerary references saved-place IDs, so it remains intact.
-    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
     await db.query(
       `UPDATE trip_places AS p
           SET destination_id = (
