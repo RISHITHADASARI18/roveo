@@ -81,6 +81,8 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         const confidence = String(estimateResult.rows[0]?.estimateConfidence ?? "");
         if (confidence === "provider-listed-price-not-confirmed") return "provider-listed-price-not-confirmed";
         if (confidence === "estimate-no-priced-results") return "estimate-no-priced-results";
+        if (confidence === "estimate-no-overnight-stay") return "estimate-no-overnight-stay";
+        if (confidence === "estimate-invalid-stay-dates") return "estimate-invalid-stay-dates";
         if (confidence === "estimate-unsupported-currency") return "estimate-unsupported-currency";
         if (confidence === "estimate-provider-not-configured") return "estimate-provider-not-configured";
         return "estimated";
