@@ -228,12 +228,14 @@ export function buildSmartItinerary(
 
   return clusters.map((cluster, index) => {
     const ordered = orderCluster(cluster, distanceKm);
-    let clock = timing.dayStartMinutes ?? 9 * 60;
-    let totalDistance = timing.initialTravelDistanceKm ?? 0;
+    let clock = index === 0 ? (timing.dayStartMinutes ?? 9 * 60) : 9 * 60;
+    let totalDistance = index === 0 ? (timing.initialTravelDistanceKm ?? 0) : 0;
 
     const items = ordered.map((place, placeIndex) => {
       const previous = ordered[placeIndex - 1];
-      const travelTime = previous ? travelMinutes(previous, place) : (placeIndex === 0 ? timing.initialTravelMinutes ?? 0 : 0);
+      const travelTime = previous
+        ? travelMinutes(previous, place)
+        : (index === 0 && placeIndex === 0 ? timing.initialTravelMinutes ?? 0 : 0);
       if (previous) { totalDistance += distanceKm(previous, place); clock += travelTime; }
       else if (placeIndex === 0 && travelTime > 0) { clock += travelTime; }
       const durationMinutes = categoryDuration(place);
