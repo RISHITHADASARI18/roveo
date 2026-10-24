@@ -7,14 +7,18 @@ export function normalizePlaceName(value: string) {
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-  const aliases: Record<string, string> = {
-    "alleppey": "alappuzha",
-    "alleppey beach": "alappuzha beach",
-    "trivandrum": "thiruvananthapuram",
-    "cochin": "kochi",
-    "udhagamandalam": "ooty",
-  };
-  return aliases[normalized] ?? normalized;
+  const aliases: Array<[string, string]> = [
+    ["alleppey", "alappuzha"],
+    ["trivandrum", "thiruvananthapuram"],
+    ["cochin", "kochi"],
+    ["udhagamandalam", "ooty"],
+  ];
+  for (const [alias, canonical] of aliases) {
+    if (normalized === alias || normalized.startsWith(alias + " ")) {
+      return canonical + normalized.slice(alias.length);
+    }
+  }
+  return normalized;
 }
 
 /** Only widen discovery to a whole state when the user explicitly selected that state. */
