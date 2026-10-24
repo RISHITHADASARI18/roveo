@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
-import { isKeralaStateDestination, normalizePlaceName } from "./place-discovery-utils";
+import { categoryForPlace, isKeralaStateDestination, normalizePlaceName, type PlaceCategory } from "./place-discovery-utils";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -637,6 +637,22 @@ function isLowQualityWikipediaTitle(name: string) {
     /\(disambiguation\)$/i,
   ].some((pattern) => pattern.test(title));
 }
+function categorySearchTerm(category: PlaceCategory) {
+  const terms: Record<PlaceCategory, string> = {
+    "Waterfalls": "waterfall falls cascade",
+    "Viewpoints": "viewpoint lookout scenic viewpoint peak",
+    "Beaches": "beach coastline shore",
+    "Temples": "temple mandir place of worship",
+    "Nature": "nature reserve forest lake garden national park",
+    "Adventure": "adventure trekking hiking rafting climbing kayaking",
+    "Theme Parks": "theme park water park amusement park",
+    "History": "historic heritage fort monument museum",
+    "Culture": "cultural attraction arts gallery theatre",
+    "Attractions": "tourist attraction landmark",
+  };
+  return terms[category];
+}
+
 function importanceScore(place: DiscoveredPlace) {
   const type = place.type.toLowerCase();
   const text = (place.name + " " + (place.description ?? "")).toLowerCase();
@@ -677,6 +693,7 @@ async function discoverBroadPlacesUncached(
   maxResults = 200,
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
+  categoryFilter?: PlaceCategory,
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
   const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
@@ -764,6 +781,7 @@ async function discoverBroadPlacesUncached(
 
   // Run nearby-stop suggestions alongside the main place providers instead of
   // waiting for all attractions to finish before starting this extra lookup.
+  const providerQuery = [desiredQuery, categoryFilter ? categorySearchTerm(categoryFilter) : ""].filter(Boolean).join(" ");
   const [cellResults, wikiResults, coreResults, googleResults, destinationResults, nearbyDestinations] = await Promise.all([
     Promise.all(cells.map(overpassCell)),
     Promise.all(cells.map(async (cell) => {
@@ -790,8 +808,8 @@ async function discoverBroadPlacesUncached(
     // Google Places is the strongest source for famous, visitor-facing attractions
     // when configured. Keep it parallel with the free sources so it adds quality
     // without making each destination wait for the others.
-    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20), desiredQuery),
-    wikipediaDestinationSearch(destination, desiredQuery),
+    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20), providerQuery),
+    wikipediaDestinationSearch(destination, providerQuery),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
@@ -972,12 +990,15 @@ async function discoverBroadPlacesUncached(
   // Free providers can be sparse or temporarily unavailable. When the merged set
   // is thin, ask Nominatim for named local places using the same destination box;
   // never replace a failed category query with unrelated generic attractions.
-  if (places.length < Math.min(6, limit)) {
-    const fallbackPlaces = await nominatimDestinationSearch(destination, desiredQuery, searchBounds, coverage.center);
+  const categoryMatches = (place: DiscoveredPlace) => !categoryFilter || categoryForPlace(place) === categoryFilter;
+  const matchingCount = () => places.filter(categoryMatches).length;
+  if (matchingCount() < Math.min(6, limit)) {
+    const fallbackPlaces = await nominatimDestinationSearch(destination, providerQuery, searchBounds, coverage.center);
     addPlaces(fallbackPlaces);
     places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
     if (desiredQuery) places = places.filter(matchesRequestedQuery);
   }
+  if (categoryFilter) places = places.filter(categoryMatches);
 
   // Do not write the live result set to PostgreSQL on the request path. The old
   // row-by-row catalog write could take long enough to make Vercel appear stuck.
@@ -1013,8 +1034,9 @@ const getCachedBroadPlaces = unstable_cache(
     maxResults: number,
     desiredQuery: string,
     storedCoverage?: DestinationCoverage,
-  ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage),
-  ["roveo-broad-place-discovery-v4"],
+    categoryFilter?: PlaceCategory,
+  ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage, categoryFilter),
+  ["roveo-broad-place-discovery-v5"],
   { revalidate: 21600 },
 );
 
@@ -1024,6 +1046,7 @@ export async function discoverBroadPlaces(
   maxResults = 200,
   desiredQuery = "",
   storedCoverage?: DestinationCoverage,
+  categoryFilter?: PlaceCategory,
 ): Promise<PlaceDiscoveryResult> {
-  return getCachedBroadPlaces(destination, maxResults, desiredQuery, storedCoverage);
+  return getCachedBroadPlaces(destination, maxResults, desiredQuery, storedCoverage, categoryFilter);
 }
