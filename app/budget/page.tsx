@@ -68,6 +68,8 @@ function BudgetContent() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
+  const [accommodationMessage, setAccommodationMessage] = useState("");
+  const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string}|null>(null);
   const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
 
@@ -132,8 +134,10 @@ function BudgetContent() {
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
       if (data.calculation?.items) setItems(data.calculation.items);
       if (data.placeCosts) setPlaceCosts(data.placeCosts);
+      setLiveStay(data.liveStay ?? null);
+      setAccommodationMessage(String(data.pricing?.accommodationNote || "Accommodation is a planning estimate; provider prices do not confirm availability."));
       const source = data.pricing?.accommodationSource === "stayingapi"
-        ? "Live accommodation price + Roveo planning estimates"
+        ? "Provider-listed accommodation price + Roveo planning estimates"
         : "Roveo planning estimates";
       setEstimateSource(source);
       setMessage("Estimate refreshed.");
@@ -284,6 +288,20 @@ function BudgetContent() {
               {(placeCosts.provisionalUnpricedAllowance ?? 0) > 0 && <p className="budget-place-cost-note">The generated budget includes ₹{money(placeCosts.provisionalUnpricedAllowance ?? 0)} as a provisional allowance for unpriced selected places. This is a placeholder, not a verified ticket fee.</p>}
               </section>
             )}
+
+            <section className="budget-accommodation-status" aria-live="polite">
+              <div className="budget-place-costs-heading">
+                <div><span className="eyebrow">ACCOMMODATION STATUS</span><h2>Estimate vs. a listed property</h2></div>
+                <span className="budget-status-pill">{liveStay ? "Listed price" : "Estimated cost"}</span>
+              </div>
+              {liveStay ? <div className="budget-accommodation-property">
+                <strong>{liveStay.name}</strong>
+                <span>{liveStay.platform} · {liveStay.currency} {money(liveStay.totalPrice)} for the provider's returned stay dates</span>
+                <small>Listed price only. Availability has not been confirmed and this is not a booking.</small>
+                {liveStay.url && <a href={liveStay.url} target="_blank" rel="noreferrer">Check this property ↗</a>}
+              </div> : <p>{accommodationMessage || "Roveo uses an estimated accommodation amount until a provider returns a priced property for the selected dates."}</p>}
+              <p className="budget-place-cost-source">A provider result with a price is not the same as confirmed availability. Confirm the final dates, room, occupancy, taxes and price with the provider before booking.</p>
+            </section>
 
             <section className="budget-sources-card">
               <span className="eyebrow">HOW ROVEO ESTIMATES COSTS</span>
