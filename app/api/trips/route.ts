@@ -31,6 +31,10 @@ function location(value: unknown) {
   if (!value || typeof value !== "object") return null;
   const item = value as LocationInput;
   const name = text(item.name);
+  // Reject missing/blank coordinates before Number() converts null or "" to 0.
+  if (item.lat == null || item.lon == null ||
+      (typeof item.lat === "string" && !item.lat.trim()) ||
+      (typeof item.lon === "string" && !item.lon.trim())) return null;
   const lat = Number(item.lat);
   const lon = Number(item.lon);
   const box = item.boundingBox;
@@ -38,7 +42,8 @@ function location(value: unknown) {
   const north = Number(box?.north);
   const west = Number(box?.west);
   const east = Number(box?.east);
-  if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (!name || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      !Number.isFinite(lon) || lon < -180 || lon > 180) return null;
   return {
     name,
     lat,
