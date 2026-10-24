@@ -11,7 +11,7 @@ function tripIdFromParams(params: { id: string }) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null };
+type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null; destinationId?: string | null };
 type RoutePoint = { latitude: number; longitude: number };
 
 function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
@@ -265,7 +265,7 @@ export async function POST(
     }
 
     const savedPlaces = await db.query(
-      "SELECT name, category, latitude, longitude FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
+      "SELECT name, category, latitude, longitude, destination_id AS \"destinationId\" FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
     );
     const costPlaces: CostPlace[] = savedPlaces.rows.map((place) => ({
@@ -273,6 +273,7 @@ export async function POST(
       category: place.category == null ? null : String(place.category),
       latitude: place.latitude == null ? null : Number(place.latitude),
       longitude: place.longitude == null ? null : Number(place.longitude),
+      destinationId: place.destinationId == null ? null : String(place.destinationId),
     }));
     const placeCosts = estimatePlaceCosts(costPlaces, Number(trip.people));
     // Use official ticket ranges where a trustworthy price is available. For
@@ -281,7 +282,42 @@ export async function POST(
     const provisionalUnpricedAllowance = placeCosts.unpricedPlaceCount * 250 * Number(trip.people);
     if (costPlaces.length) calculation.items.activities = placeCosts.total + provisionalUnpricedAllowance;
 
-    const routeDistance = await estimateSelectedRouteDistance(costPlaces);
+    let routeDestinationsForLocalTravel: Array<{ id: string; latitude: number; longitude: number }> = [];
+    try {
+      const destinationRows = await db.query(
+        "SELECT id, latitude, longitude FROM trip_destinations WHERE trip_id = $1 ORDER BY order_index ASC",
+        [tripId],
+      );
+      routeDestinationsForLocalTravel = destinationRows.rows
+        .filter((row) => row.latitude != null && row.longitude != null)
+        .map((row) => ({ id: String(row.id), latitude: Number(row.latitude), longitude: Number(row.longitude) }));
+    } catch {
+      routeDestinationsForLocalTravel = [];
+    }
+
+    // Keep local sightseeing mileage separate for each destination. Joining all
+    // saved pins into one route used to count inter-city transfers as local taxi
+    // travel, which double-counted distance and inflated the budget.
+    const localGroups = new Map<string, CostPlace[]>();
+    for (const place of costPlaces) {
+      let destinationId = place.destinationId ?? "";
+      if (!destinationId && routeDestinationsForLocalTravel.length && place.latitude != null && place.longitude != null) {
+        const nearest = [...routeDestinationsForLocalTravel].sort((a, b) =>
+          haversineKm({ latitude: Number(place.latitude), longitude: Number(place.longitude) }, a) -
+          haversineKm({ latitude: Number(place.latitude), longitude: Number(place.longitude) }, b)
+        )[0];
+        destinationId = nearest?.id ?? "";
+      }
+      const key = destinationId || "single-destination";
+      localGroups.set(key, [...(localGroups.get(key) ?? []), place]);
+    }
+    const groupDistances = await Promise.all([...localGroups.values()].map((group) => estimateSelectedRouteDistance(group)));
+    const routeDistance = {
+      km: Math.round(groupDistances.reduce((sum, item) => sum + item.km, 0) * 10) / 10,
+      source: groupDistances.length
+        ? [...new Set(groupDistances.map((item) => item.source))].join("; ")
+        : "not-enough-geocoded-places",
+    };
     const localTransportEstimate = estimateLocalTransportCost(
       String(trip.localTravelMethod ?? "Taxi"),
       Number(trip.days),
