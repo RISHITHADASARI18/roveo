@@ -786,7 +786,7 @@ async function discoverBroadPlacesUncached(
       // a few hundred metres apart. Merge those into one pin/card, but preserve
       // same-named places in broad regions when they are genuinely far apart.
       const sameNameKeys = keysByName.get(nameKey) ?? [];
-      const duplicateDistanceKm = coverage.scope === "city" ? 3 : coverage.scope === "district" ? 2 : 1.5;
+      const duplicateDistanceKm = coverage.scope === "state" ? 5 : coverage.scope === "district" ? 3 : coverage.scope === "city" ? 3 : 1.5;
       const duplicateKey = sameNameKeys.find((key) => {
         const existing = unique.get(key);
         return existing && haversineKm(existing, measured) <= duplicateDistanceKm;
