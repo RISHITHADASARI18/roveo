@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { Client } from "pg";
 
 const base = process.env.BASE_URL || "http://127.0.0.1:3000";
 const accommodationProvider = createServer((request, response) => {
@@ -103,6 +104,30 @@ assert.deepEqual(stayNoResults.stays, []);
 const invalidStayResponse = await fetch(base + "/api/accommodations/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-02-30", checkOut: "2026-03-02", adults: 2 }) });
 assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are rejected");
 
+// Regression test for deployments where the trip tables exist but the budget tables
+// were never created. The budget endpoint must safely initialize its own schema.
+const schemaClient = new Client({ connectionString: process.env.DATABASE_URL });
+await schemaClient.connect();
+let originalTripDestination;
+try {
+  const tripRow = await schemaClient.query("SELECT destination FROM trips WHERE id = $1", [trip.id]);
+  originalTripDestination = tripRow.rows[0].destination;
+  await schemaClient.query("UPDATE trips SET destination = '' WHERE id = $1", [trip.id]);
+  await schemaClient.query("DROP TABLE IF EXISTS trip_cost_estimates");
+  await schemaClient.query("DROP TABLE IF EXISTS trip_budgets");
+} finally {
+  await schemaClient.end();
+}
+const incompleteEstimateResponse = await fetch(`${base}/api/trips/${trip.id}/budget/estimate`, { method: "POST" });
+assert.equal(incompleteEstimateResponse.status, 422, "an incomplete trip is rejected instead of returning misleading budget totals");
+const restoreClient = new Client({ connectionString: process.env.DATABASE_URL });
+await restoreClient.connect();
+try {
+  await restoreClient.query("UPDATE trips SET destination = $1 WHERE id = $2", [originalTripDestination, trip.id]);
+} finally {
+  await restoreClient.end();
+}
+
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
 assert.equal(estimate.pricing.accommodationStatus, "provider-listed-price-not-confirmed", "a priced listing is distinguished from a fallback estimate");
@@ -123,6 +148,20 @@ for (const [key, value] of Object.entries(manualBudget)) {
   assert.equal(Number(savedItem.amount), value, `budget ${key} persists after reload`);
 }
 assert.equal(reloadedBudget.accommodationStatus, "provider-listed-price-not-confirmed", "accommodation provenance survives reload");
+const expectedManualSubtotal = manualBudget.destinationTravel + manualBudget.accommodation + manualBudget.localTransport + manualBudget.food + manualBudget.activities + manualBudget.other;
+assert.equal(Number(reloadedBudget.budget.subtotal), expectedManualSubtotal, "subtotal sums all non-contingency categories exactly once");
+assert.equal(Number(reloadedBudget.budget.total), expectedManualSubtotal + manualBudget.contingency, "total includes contingency exactly once");
+assert.equal(Number(reloadedBudget.trip.budget), 30000, "budget page receives the canonical trip budget from the database");
+assert.equal(Number(reloadedBudget.trip.people), 2, "budget page receives the canonical traveller count from the database");
+
+await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
+const budgetAfterEstimateRefresh = await api(`/api/trips/${trip.id}/budget`);
+for (const [key, value] of Object.entries(manualBudget)) {
+  const savedItem = budgetAfterEstimateRefresh.budget.items.find((item) => item.category === key);
+  assert.equal(Number(savedItem.amount), value, `manual budget ${key} is not overwritten by a regenerated estimate`);
+}
+assert.equal(Number(budgetAfterEstimateRefresh.budget.subtotal), expectedManualSubtotal, "manual subtotal remains consistent after estimate regeneration");
+assert.equal(Number(budgetAfterEstimateRefresh.budget.total), expectedManualSubtotal + manualBudget.contingency, "manual total remains consistent after estimate regeneration");
 
 const discoveryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&maxResults=50");
 assert.equal(discoveryResponse.status, 200, "live destination discovery returns a usable response");

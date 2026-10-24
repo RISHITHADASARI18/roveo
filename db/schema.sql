@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS trip_budgets (
   contingency NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (contingency >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_manual BOOLEAN NOT NULL DEFAULT FALSE,
   UNIQUE(trip_id)
 );
 
@@ -118,6 +119,7 @@ CREATE TABLE IF NOT EXISTS trip_cost_estimates (
 );
 
 ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB;
+ALTER TABLE trip_budgets ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS trip_cost_estimates_trip_id_idx
   ON trip_cost_estimates (trip_id);

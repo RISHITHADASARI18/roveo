@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureBudgetSchema } from "@/lib/budget/ensure-schema";
 import { calculateBudget } from "@/lib/budget/calculate";
 import { searchStays } from "@/lib/accommodation/staying";
 import { estimatePlaceCosts } from "@/lib/budget/place-costs";
@@ -15,18 +16,7 @@ function tripIdFromParams(params: { id: string }) {
 type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null; destinationId?: string | null };
 type RoutePoint = { latitude: number; longitude: number };
 
-let accommodationPropertyColumnReady: Promise<void> | null = null;
-async function ensureAccommodationPropertyColumn() {
-  if (!accommodationPropertyColumnReady) {
-    accommodationPropertyColumnReady = db.query(
-      "ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"
-    ).then(() => undefined).catch((error) => {
-      accommodationPropertyColumnReady = null;
-      throw error;
-    });
-  }
-  return accommodationPropertyColumnReady;
-}
+
 
 function validRoutePoint(latitude: unknown, longitude: unknown): boolean {
   const lat = Number(latitude), lon = Number(longitude);
@@ -152,7 +142,7 @@ export async function GET(
   }
 
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const result = await db.query(
       `SELECT id, trip_id AS "tripId",
         destination_travel AS "destinationTravel",
@@ -193,7 +183,7 @@ export async function POST(
   }
 
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const tripResult = await db.query(
       `SELECT days, people, budget, source, destination,
         source_lat AS "sourceLat", source_lon AS "sourceLon",
@@ -211,6 +201,18 @@ export async function POST(
     if (!trip) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
+
+    const days = Number(trip.days);
+    const people = Number(trip.people);
+    const tripBudget = Number(trip.budget);
+    if (!Number.isInteger(days) || days < 1 || !Number.isInteger(people) || people < 1 ||
+        !Number.isFinite(tripBudget) || tripBudget < 0 || !String(trip.destination ?? "").trim()) {
+      return NextResponse.json(
+        { error: "This trip is missing valid destination, duration, traveller count, or budget details. Update the trip details before generating a budget." },
+        { status: 422 },
+      );
+    }
+
 
     const calculation = calculateBudget({
       days: Number(trip.days),
@@ -451,9 +453,9 @@ export async function POST(
       ],
     );
 
-    // Initialise the editable budget table at the same time as the estimate.
-    // The Budget page reads trip_budgets, so only writing trip_cost_estimates
-    // previously made the page appear uninitialised after a refresh.
+    // Initialize or refresh only generated budgets. The is_manual predicate is
+    // evaluated at write time, so a manual save made while route/provider lookups
+    // are running is protected as well.
     await db.query(
       `INSERT INTO trip_budgets
         (trip_id, destination_travel, accommodation, local_transport, food, activities, other, contingency)
@@ -466,7 +468,9 @@ export async function POST(
         activities = EXCLUDED.activities,
         other = EXCLUDED.other,
         contingency = EXCLUDED.contingency,
-        updated_at = NOW()`,
+        updated_at = NOW(),
+        is_manual = FALSE
+       WHERE trip_budgets.is_manual = FALSE`,
       [
         tripId,
         calculation.items.destinationTravel,
