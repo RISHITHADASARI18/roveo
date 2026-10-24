@@ -12,6 +12,7 @@ function tripIdFromParams(params: { id: string }) {
 }
 
 type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null };
+type RoutePoint = { latitude: number; longitude: number };
 
 function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
   const radians = Math.PI / 180;
@@ -89,6 +90,52 @@ async function estimateSelectedRouteDistance(places: CostPlace[]) {
   }
 }
 
+async function estimateOrderedRouteDistance(points: RoutePoint[], useRoadRouting: boolean) {
+  if (points.length < 2) return { km: 0, source: "not-enough-geocoded-route-points" };
+  const straightLineKm = points.slice(1).reduce((sum, point, index) => sum + haversineKm(points[index], point), 0);
+  const fallback = () => ({
+    km: Math.round(straightLineKm * (useRoadRouting ? 1.3 : 1) * 10) / 10,
+    source: useRoadRouting ? "straight-line distance plus 30% road detour estimate" : "great-circle distance estimate for air travel",
+  });
+  if (!useRoadRouting) return fallback();
+
+  const coordinates = points.map((point) => point.longitude + "," + point.latitude).join(";");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch("https://router.project-osrm.org/table/v1/driving/" + coordinates + "?annotations=distance", {
+      headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel budget planner)" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) return fallback();
+    const data = await response.json();
+    if (data.code !== "Ok" || !Array.isArray(data.distances) || data.distances.length !== points.length) return fallback();
+    let metres = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const leg = data.distances[index]?.[index + 1];
+      if (typeof leg !== "number" || !Number.isFinite(leg)) return fallback();
+      metres += leg;
+    }
+    return { km: Math.round((metres / 1000) * 1.1 * 10) / 10, source: "OSRM road-distance matrix plus 10% routing buffer" };
+  } catch {
+    return fallback();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function estimateDestinationTravelCost(method: string, people: number, roundTripKm: number) {
+  if (!(roundTripKm > 0)) return null;
+  const mode = method.toLowerCase();
+  if (/flight|air/.test(mode)) return Math.round(Math.max(3000, roundTripKm * 2.7 + 2000) * people);
+  if (/train|rail/.test(mode)) return Math.round(Math.max(300, roundTripKm * 0.7 + 250) * people);
+  if (/bus|coach/.test(mode)) return Math.round(Math.max(250, roundTripKm * 1.05 + 200) * people);
+  if (/taxi|cab/.test(mode)) return Math.round(roundTripKm * 22 + 500);
+  if (/car|self.?drive/.test(mode)) return Math.round(roundTripKm * 12 + 300);
+  return null;
+}
+
 function estimateLocalTransportCost(method: string, days: number, people: number, routeKm: number) {
   const mode = method.toLowerCase();
   if (/taxi|cab/.test(mode) && routeKm > 0) return Math.round(routeKm * 22 + days * 200);
@@ -149,7 +196,10 @@ export async function POST(
 
   try {
     const tripResult = await db.query(
-      `SELECT days, people, budget, destination, start_date AS "startDate",
+      `SELECT days, people, budget, source, destination,
+        source_lat AS "sourceLat", source_lon AS "sourceLon",
+        destination_lat AS "destinationLat", destination_lon AS "destinationLon",
+        start_date AS "startDate",
         travel_method AS "travelMethod",
         local_travel_method AS "localTravelMethod",
         stay_preference AS "stayPreference"
@@ -172,6 +222,40 @@ export async function POST(
       destination: trip.destination,
       stayPreference: trip.stayPreference,
     });
+
+    let destinationTravelSource = "Roveo fallback estimate because source/destination coordinates are unavailable";
+    let destinationTravelDistanceKm = 0;
+    try {
+      const destinationResult = await db.query(
+        `SELECT destination_name AS name, latitude, longitude
+           FROM trip_destinations WHERE trip_id = $1 ORDER BY order_index ASC`,
+        [tripId],
+      );
+      const routeDestinations: RoutePoint[] = destinationResult.rows
+        .filter((row) => row.latitude != null && row.longitude != null)
+        .map((row) => ({ latitude: Number(row.latitude), longitude: Number(row.longitude) }));
+      const sourcePoint = trip.sourceLat != null && trip.sourceLon != null
+        ? { latitude: Number(trip.sourceLat), longitude: Number(trip.sourceLon) }
+        : null;
+      const fallbackDestination = trip.destinationLat != null && trip.destinationLon != null
+        ? { latitude: Number(trip.destinationLat), longitude: Number(trip.destinationLon) }
+        : null;
+      const orderedDestinations = routeDestinations.length ? routeDestinations : fallbackDestination ? [fallbackDestination] : [];
+      if (sourcePoint && orderedDestinations.length) {
+        const routePoints = [sourcePoint, ...orderedDestinations, sourcePoint];
+        const useRoadRouting = /car|taxi|bus|coach/i.test(String(trip.travelMethod));
+        const routeDistance = await estimateOrderedRouteDistance(routePoints, useRoadRouting);
+        destinationTravelDistanceKm = routeDistance.km;
+        const routeCost = estimateDestinationTravelCost(String(trip.travelMethod), Number(trip.people), routeDistance.km);
+        if (routeCost !== null) {
+          calculation.items.destinationTravel = routeCost;
+          destinationTravelSource = routeDistance.source + "; fare calculated from a mode-specific planning rate, not a live carrier quote";
+        }
+      }
+    } catch (error) {
+      // Older deployments may not yet have multi-destination coordinates.
+      console.warn("Could not estimate destination travel from route coordinates:", error);
+    }
 
     const savedPlaces = await db.query(
       "SELECT name, category, latitude, longitude FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
@@ -348,6 +432,8 @@ export async function POST(
           localTransportSource: routeDistance.source,
           selectedRouteDistanceKm: routeDistance.km,
           localTransportEstimateSource: "Planning estimate based on selected-place route distance and local travel mode; actual fares and traffic vary.",
+          destinationTravelSource,
+          destinationTravelDistanceKm,
           activityAllowanceSource: "Official venue ticket ranges where available; provisional ₹250 per person for each unpriced selected place.",
         },
       },
