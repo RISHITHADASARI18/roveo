@@ -224,14 +224,6 @@ export async function POST(
       );
     }
 
-    // Capture the estimate version before slower route/provider lookups. A manual
-    // edit made while generation is running must not be overwritten by this estimate.
-    // If no previous estimate exists, preserve any pre-existing editable budget.
-    const previousEstimateResult = await db.query(
-      'SELECT generated_at AS "generatedAt" FROM trip_cost_estimates WHERE trip_id = $1',
-      [tripId],
-    );
-    const previousEstimateGeneratedAt = previousEstimateResult.rows[0]?.generatedAt ?? null;
 
     const calculation = calculateBudget({
       days: Number(trip.days),
@@ -489,8 +481,7 @@ export async function POST(
         contingency = EXCLUDED.contingency,
         updated_at = NOW(),
         is_manual = FALSE
-       WHERE $9::timestamptz IS NOT NULL
-         AND trip_budgets.updated_at <= $9::timestamptz` ,
+       WHERE trip_budgets.is_manual = FALSE`,
       [
         tripId,
         calculation.items.destinationTravel,
@@ -500,7 +491,6 @@ export async function POST(
         calculation.items.activities,
         calculation.items.other,
         calculation.items.contingency,
-        previousEstimateGeneratedAt,
       ],
     );
 
