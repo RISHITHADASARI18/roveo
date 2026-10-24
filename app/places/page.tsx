@@ -278,7 +278,7 @@ function PlacesContent(){
               places:mapped,
               center:data.center?.latitude!=null&&data.center?.longitude!=null&&Number.isFinite(Number(data.center.latitude))&&Number.isFinite(Number(data.center.longitude))&&Number(data.center.latitude)>=-90&&Number(data.center.latitude)<=90&&Number(data.center.longitude)>=-180&&Number(data.center.longitude)<=180
                 ? {lat:Number(data.center.latitude),lon:Number(data.center.longitude)} : null,
-              message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
+              message:mapped.length ? mapped.length+" places found." : categoryFilter!=="All" ? "No verified "+categoryFilter.toLowerCase()+" places were found for "+item.name+"." : "No places were found nearby.",
               nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
                 name:String(nearby.name||"").trim(),
                 latitude:nearby.latitude==null?NaN:Number(nearby.latitude),
