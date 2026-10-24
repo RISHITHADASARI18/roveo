@@ -70,7 +70,7 @@ function BudgetContent() {
   const [estimateSource, setEstimateSource] = useState("");
   const [accommodationMessage, setAccommodationMessage] = useState("");
   const [accommodationStatus, setAccommodationStatus] = useState("estimated");
-  const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string}|null>(null);
+  const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string;checkIn?:string;checkOut?:string;nights?:number;adults?:number}|null>(null);
   const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
 
@@ -90,11 +90,12 @@ function BudgetContent() {
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
         if (!cancelled) setPlaceCosts(data.placeCosts ?? null);
+        if (!cancelled) setLiveStay(data.accommodationProperty ?? null);
         if (!cancelled) {
           const status = String(data.accommodationStatus || "estimated");
           setAccommodationStatus(status);
           setAccommodationMessage(status === "provider-listed-price-not-confirmed"
-            ? "A provider-listed property price was used in the saved budget. The property details are not stored here, and availability is not confirmed."
+            ? "A provider-listed property price was used in the estimate. Availability is not confirmed, and the editable budget amount may have been changed manually."
             : status === "estimate-no-priced-results"
               ? "The provider returned no priced property for these dates. The saved accommodation amount is a Roveo estimate."
               : status === "estimate-provider-not-configured"
@@ -312,7 +313,7 @@ function BudgetContent() {
               </div>
               {liveStay ? <div className="budget-accommodation-property">
                 <strong>{liveStay.name}</strong>
-                <span>{liveStay.platform} · {liveStay.currency} {money(liveStay.totalPrice)} for the provider's returned stay dates</span>
+                <span>{liveStay.platform} · {liveStay.currency} {money(liveStay.totalPrice)}{liveStay.nights!=null ? " for "+liveStay.nights+" "+(liveStay.nights===1?"night":"nights") : ""}{liveStay.checkIn&&liveStay.checkOut ? " · "+liveStay.checkIn+" to "+liveStay.checkOut : ""}</span>
                 <small>Listed price only. Availability has not been confirmed and this is not a booking.</small>
                 {liveStay.url && <a href={liveStay.url} target="_blank" rel="noreferrer">Check this property ↗</a>}
               </div> : <p>{accommodationMessage || "Roveo uses an estimated accommodation amount until a provider returns a priced property for the selected dates."}</p>}
