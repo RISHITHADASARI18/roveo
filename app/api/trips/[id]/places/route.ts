@@ -183,7 +183,12 @@ export async function POST(
       ]
     );
 
-    return NextResponse.json({ place: result.rows[0] }, { status: 201 });
+    return NextResponse.json({
+      place: {
+        ...result.rows[0],
+        ...readPlaceTimingMetadata(result.rows[0].description),
+      },
+    }, { status: 201 });
   } catch (error) {
     console.error("POST /api/trips/[id]/places failed:", error);
     return NextResponse.json(
