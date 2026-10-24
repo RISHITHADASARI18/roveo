@@ -329,10 +329,13 @@ export async function POST(
     let accommodationConfidence = "fallback";
     let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string } | null = null;
 
-    if (process.env.STAYINGAPI_KEY && trip.startDate) {
+    const accommodationNights = Math.max(0, Number(trip.days) - 1);
+    if (process.env.STAYINGAPI_KEY && trip.startDate && accommodationNights > 0) {
       const checkIn = new Date(String(trip.startDate) + "T00:00:00Z");
       const checkOut = new Date(checkIn);
-      checkOut.setUTCDate(checkOut.getUTCDate() + Number(trip.days));
+      // A trip with N calendar days normally has N-1 overnight stays.
+      // Adding N days here was charging an extra hotel night.
+      checkOut.setUTCDate(checkOut.getUTCDate() + accommodationNights);
       const iso = (date: Date) => date.toISOString().slice(0, 10);
       try {
         const stays = await searchStays({
