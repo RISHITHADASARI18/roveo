@@ -3,7 +3,7 @@ export type PlaceTimingMetadata = {
   visitDurationMinutes?: number;
 };
 
-const MARKER = /\\n?<!--ROVEO_PLACE_META:([^>]*)-->/;
+const MARKER = /<!--ROVEO_PLACE_META:([^>]*)-->/;
 
 export function attachPlaceTimingMetadata(description: string | null, metadata: PlaceTimingMetadata) {
   const cleanDescription = (description ?? "").replace(MARKER, "").trim();
