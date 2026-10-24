@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 15
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/roveo_test
+      STAYINGAPI_KEY: test-only-key
+      STAYINGAPI_BASE_URL: http://127.0.0.1:4010/v1/search
     services:
       postgres:
         image: postgres:16
