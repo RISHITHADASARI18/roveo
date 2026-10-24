@@ -45,11 +45,12 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
     // Estimates are also persisted in trip_cost_estimates. If a trip has an
     // estimate but no manually saved budget row yet, use that as the initial
     // budget instead of returning an empty state.
-    const estimateResult = result.rows[0] ? { rows: [] as any[] } : await db.query(
+        const estimateResult = await db.query(
       `SELECT destination_travel AS "destinationTravel", accommodation,
-        local_transport AS "localTransport", food, activities, other, contingency
+        local_transport AS "localTransport", food, activities, other, contingency,
+        confidence AS "estimateConfidence", source AS "estimateSource"
        FROM trip_cost_estimates WHERE trip_id=$1`, [tripId]);
-    const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
+        const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
     const places = await db.query(
       "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
@@ -66,6 +67,13 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       budget:buildBreakdown(initialBudget),
       placeCosts: { ...placeCosts, provisionalUnpricedAllowance },
       initializedFromEstimate:!result.rows[0] && Boolean(estimateResult.rows[0]),
+      accommodationStatus: (() => {
+        const confidence = String(estimateResult.rows[0]?.estimateConfidence ?? "");
+        if (confidence === "provider-listed-price-not-confirmed") return "provider-listed-price-not-confirmed";
+        if (confidence === "estimate-no-priced-results") return "estimate-no-priced-results";
+        if (confidence === "estimate-provider-not-configured") return "estimate-provider-not-configured";
+        return "estimated";
+      })(),
     });
   } catch(error) {
     console.error("GET /api/trips/[id]/budget failed:",error);
