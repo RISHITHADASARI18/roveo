@@ -9,12 +9,28 @@ type BudgetItem = {
   description: string;
 };
 
+type PlaceCostBreakdown = {
+  places: Array<{
+    name: string;
+    category: string;
+    ticketCostPerPerson: number | null;
+    people: number;
+    total: number | null;
+    label: string;
+    confidence: "planning-estimate" | "unknown";
+  }>;
+  pricedPlaceCount: number;
+  unpricedPlaceCount: number;
+  total: number;
+  source: string;
+};
+
 const CATEGORIES: BudgetItem[] = [
-  { key: "destinationTravel", label: "Travel to destination", description: "Bus, train, flight or fuel for reaching the destination." },
-  { key: "accommodation", label: "Accommodation", description: "Hotel, homestay, hostel or other stay costs." },
-  { key: "localTransport", label: "Local transport", description: "Taxi, public transport, rental, fuel or transfers." },
-  { key: "food", label: "Food", description: "Meals, drinks and everyday food expenses." },
-  { key: "activities", label: "Activities & tickets", description: "Entry fees, tours, experiences and activities." },
+  { key: "destinationTravel", label: "Travel to destination", description: "Estimated bus, train, flight or fuel cost for the full group." },
+  { key: "accommodation", label: "Accommodation / stay", description: "Estimated hotel, homestay or hostel cost for your trip nights." },
+  { key: "localTransport", label: "Travel between places", description: "Estimated taxis, public transport, rentals, fuel and transfers." },
+  { key: "food", label: "Food & drinks", description: "Estimated meals and drinks per person, per day." },
+  { key: "activities", label: "Place entry & ticket costs", description: "Estimated entry tickets for selected places, multiplied by your traveller count." },
   { key: "other", label: "Other", description: "Shopping, parking, tips and anything else." },
   { key: "contingency", label: "Emergency / contingency", description: "A reserve for unexpected expenses." },
 ];
@@ -42,6 +58,7 @@ function BudgetContent() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
+  const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
 
   useEffect(() => {
@@ -59,6 +76,7 @@ function BudgetContent() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
+        if (!cancelled) setPlaceCosts(data.placeCosts ?? null);
         if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
@@ -103,6 +121,7 @@ function BudgetContent() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
       if (data.calculation?.items) setItems(data.calculation.items);
+      if (data.placeCosts) setPlaceCosts(data.placeCosts);
       const source = data.pricing?.accommodationSource === "stayingapi"
         ? "Live accommodation price + Roveo planning estimates"
         : "Roveo planning estimates";
@@ -223,6 +242,34 @@ function BudgetContent() {
                 </label>
               ))}
             </div>
+
+            {placeCosts && placeCosts.places.length > 0 && (
+              <section className="budget-place-costs">
+                <div className="budget-place-costs-heading">
+                  <div>
+                    <span className="eyebrow">SELECTED PLACES</span>
+                    <h3>Entry-cost breakdown</h3>
+                    <p>Estimates cover {people} {people === 1 ? "traveller" : "travellers"}. Venue prices can change, so confirm them before booking.</p>
+                  </div>
+                  <strong>₹{money(placeCosts.total)}</strong>
+                </div>
+                <div className="budget-place-cost-list">
+                  {placeCosts.places.map((place, index) => (
+                    <div className="budget-place-cost-row" key={place.name + "-" + index}>
+                      <div>
+                        <strong>{place.name}</strong>
+                        <small>{place.label}</small>
+                      </div>
+                      <span>{place.total === null ? "Check price" : place.total === 0 ? "₹0 estimated" : "₹" + money(place.total)}</span>
+                    </div>
+                  ))}
+                </div>
+                {placeCosts.unpricedPlaceCount > 0 && (
+                  <p className="budget-place-cost-note">{placeCosts.unpricedPlaceCount} {placeCosts.unpricedPlaceCount === 1 ? "place has" : "places have"} no reliable ticket estimate yet. Check the official venue price before you finalise your budget.</p>
+                )}
+                <p className="budget-place-cost-source">{placeCosts.source}</p>
+              </section>
+            )}
 
             <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
 
