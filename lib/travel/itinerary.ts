@@ -180,7 +180,7 @@ export function buildSmartItinerary(
   // its own day whenever the trip has enough days. Never put it at 2 PM after
   // several short stops simply because it is geographically close to them.
   const fullDayPlaces = places.filter(isFullDayAttraction);
-  const hasLongArrivalTransfer = (timing.initialTravelMinutes ?? 0) >= 180;
+  const hasLongArrivalTransfer = (timing.initialTravelMinutes ?? 0) >= 120;
   const reserveArrivalDayForTransfer = hasLongArrivalTransfer && days > 1;
   const fullDayStartIndex = reserveArrivalDayForTransfer ? 1 : 0;
   // A long transfer consumes much of the arrival day. Move full-day experiences
@@ -223,7 +223,7 @@ export function buildSmartItinerary(
       const center = centroid(current.length ? current : [seeds[day] ?? place]);
       const centerPoint = { id: "centroid", name: "", latitude: center.latitude, longitude: center.longitude };
       const proximity = distanceKm(place, centerPoint);
-      const workload = dayWorkload(current);
+      const workload = dayWorkload(current) + (day === 0 ? (timing.initialTravelMinutes ?? 0) : 0);
       const addedTravel = current.length
         ? Math.min(...current.map((existing) => travelMinutes(place, existing)))
         : 0;
