@@ -21,6 +21,8 @@ test("places are assigned to dedicated categories before broad fallback groups",
   assert.equal(categoryForPlace({ name: "Doddabetta Peak", type: "peak" }), "Viewpoints");
   assert.equal(categoryForPlace({ name: "Varkala Beach", type: "beach" }), "Beaches");
   assert.equal(categoryForPlace({ name: "Padmanabhaswamy Temple", type: "hindu_temple", group: "Culture" }), "Temples");
+  assert.equal(categoryForPlace({ name: "Named Shrine", type: "place_of_worship hindu", group: "Culture" }), "Temples");
+  assert.notEqual(categoryForPlace({ name: "Named Church", type: "place_of_worship christian", group: "Culture" }), "Temples");
   assert.equal(categoryForPlace({ name: "Periyar National Park", type: "national_park", group: "Nature" }), "Nature");
   assert.equal(categoryForPlace({ name: "White Water Rafting", type: "rafting" }), "Adventure");
 });
