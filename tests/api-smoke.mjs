@@ -98,4 +98,20 @@ for (const [key, value] of Object.entries(manualBudget)) {
 }
 assert.equal(reloadedBudget.accommodationStatus, "estimate-provider-not-configured", "accommodation provenance survives reload");
 
-console.log("API smoke passed: trip persistence, destination order, add/remove places, itinerary/map pin consistency, route-to-stop consistency, budget persistence, and accommodation provenance.");
+const discoveryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&maxResults=50");
+assert.equal(discoveryResponse.status, 200, "live destination discovery returns a usable response");
+const discovery = await discoveryResponse.json();
+assert.ok(Array.isArray(discovery.places) && discovery.places.length > 0, "live discovery returns places for the selected destination");
+assert.ok(discovery.places.every((place) =>
+  place.name && Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude)) &&
+  Number(place.latitude) >= -90 && Number(place.latitude) <= 90 &&
+  Number(place.longitude) >= -180 && Number(place.longitude) <= 180 &&
+  Number.isFinite(Number(place.distanceKm)) && Number(place.distanceKm) <= 50
+), "live discovery returns named places with valid coordinates inside the selected city radius");
+const templeResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&q=temple&maxResults=30");
+assert.equal(templeResponse.status, 200, "destination-scoped category search returns a usable response");
+const templeResults = await templeResponse.json();
+assert.ok(templeResults.places.length > 0, "destination-scoped temple search returns relevant local results");
+assert.ok(templeResults.places.every((place) => (place.name + " " + (place.description || "") + " " + place.type + " " + place.group).toLowerCase().includes("temple")), "category query does not leak unrelated results");
+
+console.log("API smoke passed: live destination-scoped discovery, trip persistence, place add/remove, itinerary/map pin consistency, route-to-stop consistency, budget persistence, and accommodation provenance.");
