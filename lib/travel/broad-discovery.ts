@@ -478,7 +478,7 @@ function isDelhiDestination(destination: string) {
 }
 
 function isKeralaDestination(destination: string) {
-  return /\bkerala\b/i.test(destination);
+  return isKeralaStateDestination(destination);
 }
 
 function isKeralaCorePlace(name: string) {
@@ -697,7 +697,7 @@ async function discoverBroadPlacesUncached(
         ...coverage,
         // Bounding-box size alone often mislabels large cities as districts,
         // expanding discovery far beyond the selected destination.
-        // A large stored box does not prove the user selected a state; large cities can have broad administrative bounds.\n        // Only an explicit state selection may widen discovery to the whole region.\n        scope: isKeralaStateDestination(destination) ? "state" : "city",
+        // A large stored box does not prove the user selected a state; large cities can have broad administrative bounds.
       };
     } else {
       try {
