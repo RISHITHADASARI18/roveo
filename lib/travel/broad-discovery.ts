@@ -771,13 +771,25 @@ async function discoverBroadPlacesUncached(
       const nameKey = normalizeName(measured.name);
       if (!nameKey) continue;
 
+      // Generic map labels are not useful recommendations on their own.
+      // Keep named places such as "Murugan Temple", but discard records whose
+      // entire name is just a category like "Temple" or "Mosque".
+      const genericNames = new Set([
+        "temple", "mosque", "church", "park", "garden", "lake", "museum",
+        "viewpoint", "waterfall", "beach", "attraction", "monument", "shrine",
+        "fort", "palace", "market", "school", "college", "hospital", "station",
+        "bus stop", "railway station", "bridge", "cafe", "restaurant", "hotel",
+      ]);
+      if (genericNames.has(nameKey)) continue;
+
       // Different providers often return the same attraction with coordinates
       // a few hundred metres apart. Merge those into one pin/card, but preserve
       // same-named places in broad regions when they are genuinely far apart.
       const sameNameKeys = keysByName.get(nameKey) ?? [];
+      const duplicateDistanceKm = coverage.scope === "city" ? 3 : coverage.scope === "district" ? 2 : 1.5;
       const duplicateKey = sameNameKeys.find((key) => {
         const existing = unique.get(key);
-        return existing && haversineKm(existing, measured) <= 1.5;
+        return existing && haversineKm(existing, measured) <= duplicateDistanceKm;
       });
       const key = duplicateKey ??
         nameKey + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
