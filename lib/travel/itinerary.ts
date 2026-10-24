@@ -137,7 +137,19 @@ function orderCluster(items: PlannerPlace[], distanceKm: PlannerMetrics["distanc
   return ordered;
 }
 
-export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: number, metrics?: PlannerMetrics): PlannedDay[] {
+export type ItineraryTimingOptions = {
+  dayStartMinutes?: number;
+  initialTravelMinutes?: number;
+  initialTravelDistanceKm?: number;
+  transferWarning?: string;
+};
+
+export function buildSmartItinerary(
+  inputPlaces: PlannerPlace[],
+  dayCount: number,
+  metrics?: PlannerMetrics,
+  timing: ItineraryTimingOptions = {},
+): PlannedDay[] {
   const distanceKm = metrics?.distanceKm ?? haversineKm;
   const travelMinutes = metrics?.travelMinutes ?? ((a: PlannerPlace, b: PlannerPlace) => Math.max(10, Math.round(distanceKm(a, b) * 4)));
   const places = inputPlaces.filter((place, index, all) =>
@@ -209,13 +221,14 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
 
   return clusters.map((cluster, index) => {
     const ordered = orderCluster(cluster, distanceKm);
-    let clock = 9 * 60;
-    let totalDistance = 0;
+    let clock = timing.dayStartMinutes ?? 9 * 60;
+    let totalDistance = timing.initialTravelDistanceKm ?? 0;
 
     const items = ordered.map((place, placeIndex) => {
       const previous = ordered[placeIndex - 1];
-      const travelTime = previous ? travelMinutes(previous, place) : 0;
+      const travelTime = previous ? travelMinutes(previous, place) : (placeIndex === 0 ? timing.initialTravelMinutes ?? 0 : 0);
       if (previous) { totalDistance += distanceKm(previous, place); clock += travelTime; }
+      else if (placeIndex === 0 && travelTime > 0) { clock += travelTime; }
       const durationMinutes = categoryDuration(place);
       const window = openingWindow(place);
       if (window && clock < window.open) clock = window.open;
@@ -229,6 +242,15 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     const spread = maxKm > 35 ? "wide" : maxKm > 15 ? "regional" : "nearby";
     const title = index === 0 ? "Start with the " + spread + " highlights" : index === days - 1 ? "Final discoveries nearby" : "Explore one area at a time";
     const estimatedMinutes = items.reduce((sum, place) => sum + place.durationMinutes + place.travelTimeMinutes, 0);
+    const longTransfer = (timing.initialTravelMinutes ?? 0) >= 120;
+    const crossRegionConflict = ordered.some((place, placeIndex) => placeIndex > 0 && travelMinutes(ordered[placeIndex - 1], place) >= 120);
+    const lateFinish = items.some((place) => {
+      const match = place.startTime.match(/^(\\d+):(\\d{2}) (AM|PM)$/);
+      if (!match) return false;
+      let hour = Number(match[1]) % 12;
+      if (match[3] === "PM") hour += 12;
+      return hour * 60 + Number(match[2]) + place.durationMinutes > 20 * 60;
+    });
     const hasFullDay = ordered.some(isFullDayAttraction);
     const fullDayConflict = ordered.filter(isFullDayAttraction).length > 1;
     const outsideOpeningHours = items.some((place) => {
@@ -241,19 +263,23 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       ? "Multiple full-day attractions were selected for one day, but each normally needs its own day. Add trip days or move an attraction."
       : hasFullDay && ordered.length > 1
         ? "A full-day attraction is grouped with other stops because the trip has too few free days. Give it a dedicated day for a realistic schedule."
-        : hasFullDay
-          ? "Dedicated full-day attraction. Arrive near opening time and confirm the venue’s date-specific schedule before travelling."
-          : outsideOpeningHours
-          ? "At least one visit may extend beyond its listed opening hours. Check the venue's current schedule before travelling."
-          : estimatedMinutes > 600
-            ? "This is a packed day (about " + Math.round(estimatedMinutes / 60) + " hours of visits and estimated transfers). Consider moving a place to another day."
-      : ordered.length <= 1
-        ? "A light day keeps the trip flexible."
-        : spread === "nearby"
-          ? "These stops are close together, so more of the day stays available for exploring."
-          : spread === "regional"
-            ? "These places form a practical local cluster instead of mixing distant sides of the destination."
-            : "This day contains the remaining selected places; consider moving one if the area feels too spread out.";
+        : (timing.transferWarning && longTransfer)
+          ? timing.transferWarning
+          : crossRegionConflict
+            ? "This day includes stops at least two hours apart. The schedule may be impractical; add a day or move the distant stop to its own day."
+            : outsideOpeningHours
+              ? "At least one visit may extend beyond its listed opening hours. Check the venue's current schedule before travelling."
+              : lateFinish || estimatedMinutes > 600
+                ? "This day exceeds a realistic sightseeing window (about 8 PM or later). Move a place to another day; Roveo won't treat late-night arrival as a normal visit."
+                : hasFullDay
+                  ? "Dedicated full-day attraction. Arrive near opening time and confirm the venue’s date-specific schedule before travelling."
+                  : ordered.length <= 1
+                    ? "A light day keeps the trip flexible."
+                    : spread === "nearby"
+                      ? "These stops are close together, so more of the day stays available for exploring."
+                      : spread === "regional"
+                        ? "These places form a practical local cluster instead of mixing distant sides of the destination."
+                        : "This day contains the remaining selected places; consider moving one if the area feels too spread out.";
 
     return { dayNumber: index + 1, title, reason, items, straightLineKm: Math.round(totalDistance * 10) / 10 };
   });
