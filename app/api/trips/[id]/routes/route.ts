@@ -48,29 +48,37 @@ function minutes(seconds: number) {
   return Math.round(seconds / 60);
 }
 
-async function ensureRouteLegsTable() {
-  // Production databases may predate db/schema.sql's route table. Keep this
-  // migration idempotent so route reads work before the first route is saved.
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS itinerary_route_legs (
-      id BIGSERIAL PRIMARY KEY,
-      trip_id BIGINT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      day_id BIGINT NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
-      from_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
-      to_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
-      mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE')),
-      provider TEXT NOT NULL DEFAULT 'open',
-      distance_meters DOUBLE PRECISION NOT NULL CHECK (distance_meters >= 0),
-      duration_seconds DOUBLE PRECISION NOT NULL CHECK (duration_seconds >= 0),
-      encoded_polyline TEXT,
-      generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (from_item_id, to_item_id, mode)
-    );
-    CREATE INDEX IF NOT EXISTS itinerary_route_legs_trip_id_idx
-      ON itinerary_route_legs (trip_id);
-    CREATE INDEX IF NOT EXISTS itinerary_route_legs_day_id_idx
-      ON itinerary_route_legs (day_id);
-  `);
+let routeLegsTableReady: Promise<void> | null = null;
+
+function ensureRouteLegsTable(): Promise<void> {
+  // Production databases may predate db/schema.sql's route table. Run the
+  // idempotent migration once per warm server instance, not on every request.
+  if (!routeLegsTableReady) {
+    routeLegsTableReady = db.query(`
+      CREATE TABLE IF NOT EXISTS itinerary_route_legs (
+        id BIGSERIAL PRIMARY KEY,
+        trip_id BIGINT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        day_id BIGINT NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
+        from_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
+        to_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE')),
+        provider TEXT NOT NULL DEFAULT 'open',
+        distance_meters DOUBLE PRECISION NOT NULL CHECK (distance_meters >= 0),
+        duration_seconds DOUBLE PRECISION NOT NULL CHECK (duration_seconds >= 0),
+        encoded_polyline TEXT,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (from_item_id, to_item_id, mode)
+      );
+      CREATE INDEX IF NOT EXISTS itinerary_route_legs_trip_id_idx
+        ON itinerary_route_legs (trip_id);
+      CREATE INDEX IF NOT EXISTS itinerary_route_legs_day_id_idx
+        ON itinerary_route_legs (day_id);
+    `).then(() => undefined).catch((error) => {
+      routeLegsTableReady = null;
+      throw error;
+    });
+  }
+  return routeLegsTableReady;
 }
 
 async function loadTripItems(tripId: number): Promise<RouteItem[]> {
