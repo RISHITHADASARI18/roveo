@@ -122,7 +122,7 @@ for (const [key, value] of Object.entries(manualBudget)) {
   const savedItem = reloadedBudget.budget.items.find((item) => item.category === key);
   assert.equal(Number(savedItem.amount), value, `budget ${key} persists after reload`);
 }
-assert.equal(reloadedBudget.accommodationStatus, "estimate-provider-not-configured", "accommodation provenance survives reload");
+assert.equal(reloadedBudget.accommodationStatus, "provider-listed-price-not-confirmed", "accommodation provenance survives reload");
 
 const discoveryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&maxResults=50");
 assert.equal(discoveryResponse.status, 200, "live destination discovery returns a usable response");
