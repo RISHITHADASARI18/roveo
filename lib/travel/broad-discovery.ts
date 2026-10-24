@@ -214,7 +214,7 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
       headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
       body:"data="+encodeURIComponent(query),
       cache: "force-cache", next: { revalidate: 21600 },
-    },3500);
+    },2500);
     if(!response.ok) throw new Error("Nearby destination provider unavailable.");
     const data=await response.json();
     const results=new Map<string,{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>();
@@ -264,7 +264,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
       },
       body: "data=" + encodeURIComponent(query),
       cache: "force-cache", next: { revalidate: 21600 },
-    }, 4200);
+    }, 2800);
     if (!response.ok) throw new Error("Overpass mirror unavailable.");
     const data = await response.json();
     const mapped = (Array.isArray(data.elements) ? data.elements : []).map((element: any) => {
@@ -309,7 +309,7 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
     const response = await fetchWithTimeout("https://en.wikipedia.org/w/api.php?" + params, {
       headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; place discovery)" },
       cache: "force-cache", next: { revalidate: 21600 },
-    }, 5000);
+    }, 2800);
     if (!response.ok) return [] as DiscoveredPlace[];
     const data = await response.json();
     const places = Array.isArray(data.query?.geosearch) ? data.query.geosearch : [];
@@ -556,7 +556,7 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
         "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.websiteUri,places.rating,places.userRatingCount",
       },
       body: JSON.stringify(body), cache: "force-cache", next: { revalidate: 21600 },
-    }, 5000);
+    }, 3000);
     if (!response.ok) return [] as DiscoveredPlace[];
     const data = await response.json();
     return (Array.isArray(data.places) ? data.places : []).map((place: any, index: number) => {
