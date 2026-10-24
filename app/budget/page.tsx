@@ -261,7 +261,7 @@ function BudgetContent() {
                     <h3>Entry-cost breakdown</h3>
                     <p>Estimates cover {people} {people === 1 ? "traveller" : "travellers"}. Venue prices can change, so confirm them before booking.</p>
                   </div>
-                  <strong>₹{money(placeCosts.minTotal)}–₹{money(placeCosts.maxTotal)}</strong>
+                  {placeCosts.pricedPlaceCount > 0 ? <strong>₹{money(placeCosts.minTotal)}–₹{money(placeCosts.maxTotal)}</strong> : <strong>Check prices</strong>}
                 </div>
                 <div className="budget-place-cost-list">
                   {placeCosts.places.map((place, index) => (
@@ -297,7 +297,7 @@ function BudgetContent() {
               </ul>
               <div className="budget-source-links">
                 <a href="https://project-osrm.org/docs/v26.6.1/index.html" target="_blank" rel="noreferrer">OSRM routing documentation ↗</a>
-                <a href="https://www.keralatourism.org/drivecations/distance-chart" target="_blank" rel="noreferrer">Kerala Tourism distance chart ↗</a>
+                <a href="https://www.openstreetmap.org/" target="_blank" rel="noreferrer">OpenStreetMap data ↗</a>
               </div>
             </section>
                         <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
