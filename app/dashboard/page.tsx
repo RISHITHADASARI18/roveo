@@ -22,6 +22,42 @@ export default function DashboardPage() {
   const [localTravel, setLocalTravel] = useState<string[]>([]);
   const [startDate, setStartDate] = useState("");
   const [error, setError] = useState("");
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("roveo-trip-draft-v1");
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft && typeof draft === "object") {
+          if (typeof draft.stay === "string") setStay(draft.stay);
+          if (typeof draft.source === "string") setSource(draft.source);
+          if (draft.sourceLocation && typeof draft.sourceLocation === "object") setSourceLocation(draft.sourceLocation);
+          if (Array.isArray(draft.destinationLocations)) setDestinationLocations(draft.destinationLocations);
+          if (typeof draft.destination === "string") setDestination(draft.destination);
+          if (typeof draft.days === "string") setDays(draft.days);
+          if (typeof draft.people === "string") setPeople(draft.people);
+          if (typeof draft.budget === "string") setBudget(draft.budget);
+          if (typeof draft.travel === "string") setTravel(draft.travel);
+          if (Array.isArray(draft.localTravel)) setLocalTravel(draft.localTravel.filter((item: unknown): item is string => typeof item === "string"));
+          if (typeof draft.startDate === "string") setStartDate(draft.startDate);
+        }
+      }
+    } catch {
+      window.localStorage.removeItem("roveo-trip-draft-v1");
+    } finally {
+      setDraftRestored(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestored) return;
+    try {
+      window.localStorage.setItem("roveo-trip-draft-v1", JSON.stringify({ stay, source, sourceLocation, destinationLocations, destination, days, people, budget, travel, localTravel, startDate }));
+    } catch {
+      // Storage can be unavailable in private browsing; trip creation still works.
+    }
+  }, [draftRestored, stay, source, sourceLocation, destinationLocations, destination, days, people, budget, travel, localTravel, startDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +146,7 @@ export default function DashboardPage() {
         throw new Error(data.error || "Unable to save your trip.");
       }
 
+      window.localStorage.removeItem("roveo-trip-draft-v1");
       const params = new URLSearchParams({
         tripId: String(data.trip.id),
         source: sourceLocation.name,
