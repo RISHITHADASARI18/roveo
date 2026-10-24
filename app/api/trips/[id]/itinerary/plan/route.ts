@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildSmartItinerary } from "@/lib/travel/itinerary";
 import type { PlannerPlace } from "@/lib/travel/itinerary-types";
+import { readPlaceTimingMetadata } from "@/lib/travel/place-timing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,7 +125,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       latitude: row.latitude == null ? NaN : Number(row.latitude),
       longitude: row.longitude == null ? NaN : Number(row.longitude),
       category: row.category ? String(row.category) : undefined,
-      description: row.description ? String(row.description) : undefined,
+      ...readPlaceTimingMetadata(row.description == null ? null : String(row.description)),
       address: row.address ? String(row.address) : undefined,
       websiteUrl: row.websiteUrl ? String(row.websiteUrl) : undefined,
       destinationId: row.destinationId == null ? null : String(row.destinationId),
