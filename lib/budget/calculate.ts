@@ -1,4 +1,3 @@
-import { estimateLocalTransportCost } from "./route-costs";
 export type BudgetCalculationInput = { days:number; people:number; budget:number; destination?:string; travelMethod:string; localTravelMethod:string; stayPreference:string; };
 export type BudgetComponent = "destinationTravel"|"accommodation"|"localTransport"|"food"|"activities"|"other"|"contingency";
 export type BudgetCalculation = { items:{destinationTravel:number;accommodation:number;localTransport:number;food:number;activities:number;other:number;contingency:number}; subtotal:number; total:number; budget:number; remaining:number; currency:"INR"; confidence:"fallback"; source:"roveo"; };
@@ -6,7 +5,7 @@ export type BudgetComponentResult = { component:BudgetComponent; amount:number; 
 function round(v:number){return Math.round(v*100)/100;}
 export function calculateDestinationTravel(method:string,people:number){const m=method.toLowerCase();const perPerson=m.includes("flight")?6500:m.includes("train")?1600:m.includes("bus")?1200:2200;return round(perPerson*people);}
 export function calculateAccommodation(stay:string,days:number,people:number){const nights=Math.max(0,days-1),s=stay.toLowerCase();const room=s.includes("hostel")?700:s.includes("homestay")?1800:s.includes("other")?1500:2500;return round(room*Math.max(1,Math.ceil(people/2))*nights);}
-export function calculateLocalTransport(method:string,days:number,people=1){return round(estimateLocalTransportCost(method,days,people,0));}
+export function calculateLocalTransport(method:string,days:number,people=1){const modes=[...new Set(method.split(",").map(item=>item.trim().toLowerCase()).filter(Boolean))];const costs=modes.map(mode=>mode.includes("walking")?100*people:mode.includes("public")?350*people:mode.includes("bike")?600*people:mode.includes("taxi")?1200:mode.includes("car")?900:900);const daily=costs.length?costs.reduce((sum,cost)=>sum+cost,0)/costs.length:900;return round(daily*days);}
 export function calculateFood(days:number,people:number,destination="",stayPreference=""){const d=destination.toLowerCase();const stay=stayPreference.toLowerCase();const premium=/mumbai|delhi|new delhi|bengaluru|bangalore|hyderabad|goa|chennai|pune|kolkata|jaipur|udaipur/.test(d);const budget=/budget|hostel|backpack/.test(d)||/hostel|budget|backpack/.test(stay);const homestay=/homestay|guesthouse/.test(stay);const perPersonPerDay=premium?1100:budget?550:homestay?750:850;return round(perPersonPerDay*days*people);}
 export function calculateActivities(days:number,people:number){return round(500*Math.max(1,Math.min(days,5))*people);}
 export function calculateOther(){return 0;}
