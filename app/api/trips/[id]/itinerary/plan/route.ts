@@ -206,14 +206,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (dayCount >= destinations.length) {
       let dayNumber = 1;
+      const localTravelMethod = String(trip.rows[0].local_travel_method ?? "Taxi");
+      // Use the same road matrix for the destination-to-destination legs as for
+      // local stops. Starting a new city at 9 AM without accounting for the
+      // transfer was making multi-city itineraries impossible to follow.
+      const destinationMetrics = await loadRoadMetrics(destinations, localTravelMethod);
       for (let index = 0; index < destinations.length; index += 1) {
         const destination = destinations[index];
         const destinationPlaces = placesByDestination.get(destination.id) ?? [];
-        const roadMetrics = await loadRoadMetrics(destinationPlaces, String(trip.rows[0].local_travel_method ?? "Taxi"));
+        const roadMetrics = await loadRoadMetrics(destinationPlaces, localTravelMethod);
+        const previousDestination = destinations[index - 1];
+        const transferKm = previousDestination
+          ? (destinationMetrics?.distanceKm(previousDestination, destination)
+            ?? Math.round(distanceKm(previousDestination, destination) * 1.3 * 10) / 10)
+          : 0;
+        const transferMinutes = previousDestination
+          ? (destinationMetrics?.travelMinutes(previousDestination, destination)
+            ?? Math.max(30, Math.round(distanceKm(previousDestination, destination) * 2.2)))
+          : 0;
+        const transferWarning = transferMinutes >= 120
+          ? "Long transfer from " + previousDestination?.name + " to " + destination.name + " (~" + Math.round(transferMinutes / 60 * 10) / 10 + " hours). The first visit starts after this journey; consider travelling the evening before or adding a day."
+          : undefined;
         const destinationDays = buildSmartItinerary(
           destinationPlaces,
           allocations[index],
-          roadMetrics
+          roadMetrics,
+          index === 0
+            ? {}
+            : {
+                dayStartMinutes: 6 * 60,
+                initialTravelMinutes: transferMinutes,
+                initialTravelDistanceKm: transferKm,
+                transferWarning,
+              }
         );
         for (const day of destinationDays) {
           days.push({
@@ -259,8 +284,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ? "OSRM road matrix where available; geographic estimates as fallback"
           : "geographic estimate for planning; saved routes use the selected travel mode",
         message: dayCount < destinations.length
-          ? "Your destinations are kept in route order, but this trip has fewer days than destinations. Some days combine destinations and may involve long transfers; add more days for a more realistic pace. Road distances are used where the routing service supports them."
-          : "Your selected destinations are planned in route order. Places are grouped by destination and balanced by visit duration; road distances and driving times are used when the routing service supports them.",
+          ? "Your destinations are kept in route order, but this trip has fewer days than destinations. Some days combine destinations and may involve long transfers; add more days for a realistic pace."
+          : "Your destinations stay in route order. The planner now includes inter-destination transfer time before the next day's first visit, uses road distances where available, and warns when transfers or visits make a day unrealistic.",
       },
     });
   } catch (error) {
