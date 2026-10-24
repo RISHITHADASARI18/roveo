@@ -11,6 +11,94 @@ function tripIdFromParams(params: { id: string }) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null };
+
+function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const radians = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * radians;
+  const dLon = (b.longitude - a.longitude) * radians;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.latitude * radians) * Math.cos(b.latitude * radians) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(x));
+}
+
+async function estimateSelectedRouteDistance(places: CostPlace[]) {
+  const points = places.filter((place) =>
+    place.latitude != null && place.longitude != null &&
+    Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude)) &&
+    Math.abs(Number(place.latitude)) > 0.01 && Math.abs(Number(place.longitude)) > 0.01
+  ).slice(0, 50).map((place) => ({
+    latitude: Number(place.latitude),
+    longitude: Number(place.longitude),
+  }));
+  if (points.length < 2) return { km: 0, source: "not-enough-geocoded-places" };
+
+  const fallback = () => {
+    const remaining = points.slice(1);
+    let current = points[0];
+    let km = 0;
+    while (remaining.length) {
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      remaining.forEach((candidate, index) => {
+        const distance = haversineKm(current, candidate) * 1.3;
+        if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+      });
+      const next = remaining.splice(bestIndex, 1)[0];
+      km += bestDistance;
+      current = next;
+    }
+    return { km: Math.round(km * 1.2 * 10) / 10, source: "geographic route estimate with road and detour buffer" };
+  };
+
+  const coordinates = points.map((point) => point.longitude + "," + point.latitude).join(";");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch("https://router.project-osrm.org/table/v1/driving/" + coordinates + "?annotations=distance", {
+      headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel budget planner)" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) return fallback();
+    const data = await response.json();
+    if (data.code !== "Ok" || !Array.isArray(data.distances) || data.distances.length !== points.length) return fallback();
+
+    const remaining = points.map((_, index) => index).slice(1);
+    let current = 0;
+    let metres = 0;
+    while (remaining.length) {
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      remaining.forEach((candidate, index) => {
+        const distance = data.distances[current]?.[candidate];
+        if (typeof distance === "number" && Number.isFinite(distance) && distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      });
+      const next = remaining.splice(bestIndex, 1)[0];
+      if (!Number.isFinite(bestDistance)) return fallback();
+      metres += bestDistance;
+      current = next;
+    }
+    return { km: Math.round((metres / 1000) * 1.2 * 10) / 10, source: "OSRM road-distance matrix plus 20% allowance for local detours" };
+  } catch {
+    return fallback();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function estimateLocalTransportCost(method: string, days: number, people: number, routeKm: number) {
+  const mode = method.toLowerCase();
+  if (/taxi|cab/.test(mode) && routeKm > 0) return Math.round(routeKm * 22 + days * 200);
+  if (/car|self.?drive/.test(mode) && routeKm > 0) return Math.round(routeKm * 11 + days * 150);
+  if (/bike|scooter/.test(mode) && routeKm > 0) return Math.round(routeKm * 5 + days * 100);
+  if (/public|bus|metro|train/.test(mode)) return Math.round(350 * people * days);
+  if (/walk/.test(mode)) return Math.round(100 * people * days);
+  return routeKm > 0 ? Math.round(routeKm * 22 + days * 200) : 0;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -86,16 +174,30 @@ export async function POST(
     });
 
     const savedPlaces = await db.query(
-      "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
+      "SELECT name, category, latitude, longitude FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
     );
-    const placeCosts = estimatePlaceCosts(
-      savedPlaces.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
+    const costPlaces: CostPlace[] = savedPlaces.rows.map((place) => ({
+      name: String(place.name),
+      category: place.category == null ? null : String(place.category),
+      latitude: place.latitude == null ? null : Number(place.latitude),
+      longitude: place.longitude == null ? null : Number(place.longitude),
+    }));
+    const placeCosts = estimatePlaceCosts(costPlaces, Number(trip.people));
+    // Use official ticket ranges where a trustworthy price is available. For
+    // places with no published price match, retain a clearly provisional
+    // allowance rather than silently treating the visit as free.
+    const provisionalUnpricedAllowance = placeCosts.unpricedPlaceCount * 250 * Number(trip.people);
+    if (costPlaces.length) calculation.items.activities = placeCosts.total + provisionalUnpricedAllowance;
+
+    const routeDistance = await estimateSelectedRouteDistance(costPlaces);
+    const localTransportEstimate = estimateLocalTransportCost(
+      String(trip.localTravelMethod ?? "Taxi"),
+      Number(trip.days),
       Number(trip.people),
+      routeDistance.km,
     );
-    // If selected venues have estimated entry fees, use those instead of the
-    // generic per-day activity allowance so the estimate reflects this trip.
-    if (placeCosts.total > 0) calculation.items.activities = placeCosts.total;
+    if (localTransportEstimate > 0) calculation.items.localTransport = localTransportEstimate;
 
     let accommodationSource = "roveo";
     let accommodationConfidence = "fallback";
@@ -207,7 +309,20 @@ export async function POST(
     );
 
     return NextResponse.json(
-      { estimate: saved.rows[0], calculation, liveStay, placeCosts, pricing: { accommodationSource, accommodationConfidence } },
+      {
+        estimate: saved.rows[0],
+        calculation,
+        liveStay,
+        placeCosts: { ...placeCosts, provisionalUnpricedAllowance },
+        pricing: {
+          accommodationSource,
+          accommodationConfidence,
+          localTransportSource: routeDistance.source,
+          selectedRouteDistanceKm: routeDistance.km,
+          localTransportEstimateSource: "Planning estimate based on selected-place route distance and local travel mode; actual fares and traffic vary.",
+          activityAllowanceSource: "Official venue ticket ranges where available; provisional ₹250 per person for each unpriced selected place.",
+        },
+      },
       { status: 201 },
     );
   } catch (error) {
