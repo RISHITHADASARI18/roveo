@@ -205,35 +205,33 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
     'nwr["place"~"city|town|municipality"](' + bbox + ');',
     "out center tags;",
   ].join("\n");
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const response = await fetchWithTimeout(endpoint, {
-        method:"POST",
-        headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
-        body:"data="+encodeURIComponent(query),
-        cache:"no-store",
-      },4500);
-      if(!response.ok) continue;
-      const data=await response.json();
-      const results=new Map<string,{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>();
-      for(const element of Array.isArray(data?.elements)?data.elements:[]){
-        const tags=element?.tags??{};
-        const name=String(tags["name:en"]??tags.name??"").trim();
-        const latitude=Number(element.lat??element.center?.lat);
-        const longitude=Number(element.lon??element.center?.lon);
-        if(!name||!Number.isFinite(latitude)||!Number.isFinite(longitude))continue;
-        // Suggestions may live just outside a city/district/state boundary.
-        // Do not leak the current destination itself back as a suggestion.
-        if(haversineKm(coverage.center,{latitude,longitude})<10)continue;
-        const key=normalizeName(name);
-        if(!results.has(key))results.set(key,{name,latitude,longitude,distanceKm:haversineKm(coverage.center,{latitude,longitude}),type:String(tags.place??"town")});
-      }
-      return [...results.values()].sort((a,b)=>a.distanceKm-b.distanceKm).slice(0,12);
-    }catch{
-      // Try the second public Overpass endpoint.
+  // Nearby-stop suggestions are secondary UI. Try both public endpoints in
+  // parallel so an overloaded endpoint cannot add two sequential timeout windows.
+  const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+    const response = await fetchWithTimeout(endpoint, {
+      method:"POST",
+      headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
+      body:"data="+encodeURIComponent(query),
+      cache:"no-store",
+    },3500);
+    if(!response.ok) throw new Error("Nearby destination provider unavailable.");
+    const data=await response.json();
+    const results=new Map<string,{name:string;latitude:number;longitude:number;distanceKm:number;type:string}>();
+    for(const element of Array.isArray(data?.elements)?data.elements:[]){
+      const tags=element?.tags??{};
+      const name=String(tags["name:en"]??tags.name??"").trim();
+      const latitude=Number(element.lat??element.center?.lat);
+      const longitude=Number(element.lon??element.center?.lon);
+      if(!name||!Number.isFinite(latitude)||!Number.isFinite(longitude))continue;
+      if(haversineKm(coverage.center,{latitude,longitude})<10)continue;
+      const key=normalizeName(name);
+      if(!results.has(key))results.set(key,{name,latitude,longitude,distanceKm:haversineKm(coverage.center,{latitude,longitude}),type:String(tags.place??"town")});
     }
-  }
-  return [];
+    const places=[...results.values()].sort((a,b)=>a.distanceKm-b.distanceKm).slice(0,12);
+    if(!places.length) throw new Error("No nearby destinations returned.");
+    return places;
+  });
+  try { return await Promise.any(attempts); } catch { return []; }
 }
 
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
@@ -252,48 +250,49 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
     "out center tags;",
   ].join("\n");
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const response = await fetchWithTimeout(endpoint, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
-        },
-        body: "data=" + encodeURIComponent(query),
-        cache: "no-store",
-      }, 5000);
-      if (!response.ok) continue;
-      const data = await response.json();
-      return (Array.isArray(data.elements) ? data.elements : []).map((element: any) => {
-        const tags = element?.tags ?? {};
-        const name = String(tags["name:en"] ?? tags.name ?? "").trim();
-        const latitude = Number(element.lat ?? element.center?.lat);
-        const longitude = Number(element.lon ?? element.center?.lon);
-        if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-        const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.place ?? "place").toLowerCase();
-        const address = [
-          tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
-          tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
-          tags["addr:state"], tags["addr:country"],
-        ].filter(Boolean).join(", ");
-        return {
-          id: "overpass-" + element.type + "-" + element.id,
-          name, type, group: groupFor(name + " " + JSON.stringify(tags)),
-          latitude, longitude, distanceKm: 0,
-          description: String(tags["description:en"] ?? tags.description ?? "").trim() || "Real place record from OpenStreetMap.",
-          website: String(tags.website ?? tags["contact:website"] ?? "").trim() || undefined,
-          wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
-          address: address || undefined,
-          openingHours: String(tags.opening_hours ?? "").trim() || undefined
-        } as DiscoveredPlace & Record<string, unknown>;
-      }).filter(Boolean) as DiscoveredPlace[];
-    } catch {
-      // Try the next public Overpass endpoint.
-    }
-  }
-  return [];
+  // Race the public mirrors and use the first non-empty successful response.
+  // Sequential 5-second retries made each cell wait up to 10 seconds before
+  // returning, even when the backup mirror had already responded quickly.
+  const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
+      },
+      body: "data=" + encodeURIComponent(query),
+      cache: "no-store",
+    }, 4200);
+    if (!response.ok) throw new Error("Overpass mirror unavailable.");
+    const data = await response.json();
+    const mapped = (Array.isArray(data.elements) ? data.elements : []).map((element: any) => {
+      const tags = element?.tags ?? {};
+      const name = String(tags["name:en"] ?? tags.name ?? "").trim();
+      const latitude = Number(element.lat ?? element.center?.lat);
+      const longitude = Number(element.lon ?? element.center?.lon);
+      if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.place ?? "place").toLowerCase();
+      const address = [
+        tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
+        tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
+        tags["addr:state"], tags["addr:country"],
+      ].filter(Boolean).join(", ");
+      return {
+        id: "overpass-" + element.type + "-" + element.id,
+        name, type, group: groupFor(name + " " + JSON.stringify(tags)),
+        latitude, longitude, distanceKm: 0,
+        description: String(tags["description:en"] ?? tags.description ?? "").trim() || "Real place record from OpenStreetMap.",
+        website: String(tags.website ?? tags["contact:website"] ?? "").trim() || undefined,
+        wikipedia: String(tags.wikipedia ?? "").trim() || undefined,
+        address: address || undefined,
+        openingHours: String(tags.opening_hours ?? "").trim() || undefined
+      } as DiscoveredPlace & Record<string, unknown>;
+    }).filter(Boolean) as DiscoveredPlace[];
+    if (!mapped.length) throw new Error("Overpass returned no named places.");
+    return mapped;
+  });
+  try { return await Promise.any(attempts); } catch { return []; }
 }
 
 async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
