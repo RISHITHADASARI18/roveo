@@ -256,7 +256,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         distanceSource: /car|taxi/i.test(String(trip.rows[0].local_travel_method ?? "Taxi"))
           ? "OSRM road matrix where available; geographic estimates as fallback"
           : "geographic estimate for planning; saved routes use the selected travel mode",
-        message: "Your selected destinations are planned in route order. Places are grouped by destination and balanced by visit duration; road distances and driving times are used when the routing service supports them.",
+        message: dayCount < destinations.length
+          ? "Your destinations are kept in route order, but this trip has fewer days than destinations. Some days combine destinations and may involve long transfers; add more days for a more realistic pace. Road distances are used where the routing service supports them."
+          : "Your selected destinations are planned in route order. Places are grouped by destination and balanced by visit duration; road distances and driving times are used when the routing service supports them.",
       },
     });
   } catch (error) {
