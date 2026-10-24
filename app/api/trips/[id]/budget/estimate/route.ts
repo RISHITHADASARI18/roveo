@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureBudgetSchema } from "@/lib/budget/ensure-schema";
 import { calculateBudget } from "@/lib/budget/calculate";
 import { searchStays } from "@/lib/accommodation/staying";
 import { estimatePlaceCosts } from "@/lib/budget/place-costs";
@@ -15,19 +16,7 @@ function tripIdFromParams(params: { id: string }) {
 type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null; destinationId?: string | null };
 type RoutePoint = { latitude: number; longitude: number };
 
-let accommodationPropertyColumnReady: Promise<void> | null = null;
-async function ensureAccommodationPropertyColumn() {
-  if (!accommodationPropertyColumnReady) {
-    accommodationPropertyColumnReady = Promise.all([
-      db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"),
-      db.query("ALTER TABLE trip_budgets ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE"),
-    ]).then(() => undefined).catch((error) => {
-      accommodationPropertyColumnReady = null;
-      throw error;
-    });
-  }
-  return accommodationPropertyColumnReady;
-}
+
 
 function validRoutePoint(latitude: unknown, longitude: unknown): boolean {
   const lat = Number(latitude), lon = Number(longitude);
@@ -153,7 +142,7 @@ export async function GET(
   }
 
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const result = await db.query(
       `SELECT id, trip_id AS "tripId",
         destination_travel AS "destinationTravel",
@@ -194,7 +183,7 @@ export async function POST(
   }
 
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const tripResult = await db.query(
       `SELECT days, people, budget, source, destination,
         source_lat AS "sourceLat", source_lon AS "sourceLon",
