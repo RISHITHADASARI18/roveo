@@ -180,8 +180,17 @@ export function buildSmartItinerary(
   // its own day whenever the trip has enough days. Never put it at 2 PM after
   // several short stops simply because it is geographically close to them.
   const fullDayPlaces = places.filter(isFullDayAttraction);
-  const reservedFullDay = fullDayPlaces.slice(0, days);
-  reservedFullDay.forEach((place, index) => clusters[index].push(place));
+  const hasLongArrivalTransfer = (timing.initialTravelMinutes ?? 0) >= 180;
+  const reserveArrivalDayForTransfer = hasLongArrivalTransfer && days > 1;
+  const fullDayStartIndex = reserveArrivalDayForTransfer ? 1 : 0;
+  // A long transfer consumes much of the arrival day. Move full-day experiences
+  // to the next available day instead of showing a theme park or hill region as
+  // a visit that starts after lunch and runs past closing time.
+  const cannotFitFullDayAfterTransfer = hasLongArrivalTransfer && days === 1;
+  const reservedFullDay = cannotFitFullDayAfterTransfer
+    ? []
+    : fullDayPlaces.slice(0, Math.max(0, days - fullDayStartIndex));
+  reservedFullDay.forEach((place, index) => clusters[index + fullDayStartIndex].push(place));
   const fullDayIds = new Set(fullDayPlaces.map((place) => place.id));
   const regularPlaces = places.filter((place) => !fullDayIds.has(place.id));
   const freeDayIndexes = clusters.map((cluster, index) => cluster.length ? -1 : index).filter((index) => index >= 0);
@@ -189,7 +198,7 @@ export function buildSmartItinerary(
   seeds.forEach((seed, index) => clusters[freeDayIndexes[index]].push(seed));
   const seeded = new Set([...reservedFullDay.map((place) => place.id), ...seeds.map((place) => place.id)]);
   // If there are more full-day attractions than trip days, keep every selected
-  // attraction rather than silently dropping one; the day reason flags the conflict.
+  // attraction visible in the Places list, but don't force it into an impossible day.
   const remaining = places.filter((place) => !seeded.has(place.id));
   // Balance sightseeing workload as well as geographic proximity. A day with
   // several long activities should not receive the same number of stops as a
@@ -203,6 +212,7 @@ export function buildSmartItinerary(
   for (const place of remaining) {
     let bestDay = -1;
     let bestScore = Infinity;
+    if (cannotFitFullDayAfterTransfer && isFullDayAttraction(place)) continue;
     for (let day = 0; day < days; day += 1) {
       const current = clusters[day];
       // Full-day attractions never share a day with another place. If the trip
@@ -268,7 +278,9 @@ export function buildSmartItinerary(
       const start = (() => { const match = place.startTime.match(/^(\d+):(\d{2}) (AM|PM)$/); if (!match) return 0; let hour = Number(match[1]) % 12; if (match[3] === "PM") hour += 12; return hour * 60 + Number(match[2]); })();
       return start + place.durationMinutes > window.close;
     });
-    const reason = fullDayConflict
+    const reason = ordered.length === 0 && hasLongArrivalTransfer
+      ? "Arrival/transfer day: the journey from the previous destination takes a large part of the day. Full-day sightseeing is left unscheduled rather than placed after closing time; add a day or travel the evening before."
+      : fullDayConflict
       ? "Multiple full-day attractions were selected for one day, but each normally needs its own day. Add trip days or move an attraction."
       : hasFullDay && ordered.length > 1
         ? "A full-day attraction is grouped with other stops because the trip has too few free days. Give it a dedicated day for a realistic schedule."
