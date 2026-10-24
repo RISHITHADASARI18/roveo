@@ -258,6 +258,7 @@ function PlacesContent(){
               discoveryUrl+="&"+geoParams.toString();
             }
             if(liveQuery) discoveryUrl+="&q="+encodeURIComponent(liveQuery);
+            if(categoryFilter!=="All") discoveryUrl+="&category="+encodeURIComponent(categoryFilter);
             const res=await fetch(discoveryUrl,{cache:"no-store"});
             const data=await res.json().catch(()=>({}));
             if(!res.ok) throw new Error(data.error||"Could not discover places.");
@@ -324,7 +325,7 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destinationParam,tripId,liveQuery,discoveryRefresh]);
+  },[destinationParam,tripId,liveQuery,discoveryRefresh,categoryFilter]);
 
   useEffect(()=>{
     if(!activeDestinationId)return;
