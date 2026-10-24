@@ -78,9 +78,9 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       people,
     );
     const provisionalUnpricedAllowance = placeCosts.unpricedPlaceCount * 250 * people;
-    // Older versions could leave a stale/default trip_budgets row beside a newer
-    // generated estimate. Pick the record most recently updated so the page does
-    // not display zeroes or outdated values just because a budget row exists.
+    // Older versions could leave a stale/default budget row beside a newer estimate.
+    // Manual budgets always win; otherwise compare database timestamps to choose the
+    // freshest generated value.
     const savedBudget = result.rows[0] ?? null;
     const generatedEstimate = estimateResult.rows[0] ?? null;
     // Compare timestamps inside PostgreSQL. Converting timestamptz values to
@@ -133,6 +133,7 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
   const values=CATEGORIES.map(c=>number(body[c]));
   if(values.some(v=>v===null))return NextResponse.json({error:"All budget amounts must be non-negative numbers."},{status:400});
   try {
+    await ensureAccommodationPropertyColumn();
     const trip=await db.query("SELECT budget FROM trips WHERE id=$1",[tripId]);
     if(!trip.rows[0])return NextResponse.json({error:"Trip not found."},{status:404});
     const result=await db.query(
