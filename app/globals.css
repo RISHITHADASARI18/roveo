@@ -456,3 +456,14 @@ html{scroll-behavior:smooth}
 .budget-place-cost-note{margin:12px 0 0}
 .budget-place-cost-source{margin:8px 0 0}
 @media(max-width:600px){.budget-place-costs{padding:15px}.budget-place-costs-heading h3{font-size:18px}.budget-place-costs-row{gap:10px}}
+
+
+/* Full-width itinerary map placed after the day-by-day plan */
+.itinerary-map-bottom{width:100%;padding:0 6vw 80px}
+.itinerary-map-large{width:100%;padding:28px}
+.itinerary-map-large h2{margin-bottom:8px}
+.itinerary-map-large .itinerary-leaflet-map{width:100%;margin-top:18px}
+.itinerary-map-large .leaflet-map{height:620px;width:100%;border-radius:18px}
+.itinerary-map-large .map-legend{flex-wrap:wrap}
+@media(max-width:900px){.itinerary-map-bottom{padding:0 5vw 60px}.itinerary-map-large{padding:18px}.itinerary-map-large .leaflet-map{height:480px}}
+@media(max-width:600px){.itinerary-map-large .leaflet-map{height:380px}.itinerary-map-bottom{padding-bottom:40px}}
