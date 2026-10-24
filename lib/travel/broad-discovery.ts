@@ -249,7 +249,8 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
     `nwr["leisure"~"park|garden|nature_reserve|water_park|marina|playground|sports_centre|pitch|bird_hide"](${bbox});`,
     `nwr["natural"~"waterfall|peak|cave|beach|lake|cliff|hot_spring|volcano|glacier|wood|wetland|spring|reef|island"](${bbox});`,
     `nwr["man_made"~"lighthouse|pier|tower"](${bbox});`,
-    `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,\n    `nwr["sport"~"climbing|hiking|canoe|kayak|rafting|paragliding|skiing"](${bbox});`,
+    `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,
+    `nwr["sport"~"climbing|hiking|canoe|kayak|rafting|paragliding|skiing"](${bbox});`,
     // Keep this feed focused on visitable attractions, not every village or administrative area.
     ");",
     "out center tags;",
