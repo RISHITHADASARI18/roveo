@@ -47,6 +47,8 @@ function ItineraryContent(){
   const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<PlannedPlace[][]>([]);
   const [planDestinations,setPlanDestinations]=useState<string[]>([]);
+  const [planDayTitles,setPlanDayTitles]=useState<string[]>([]);
+  const [planDayReasons,setPlanDayReasons]=useState<string[]>([]);
   const [loading,setLoading]=useState(true);
   const [planning,setPlanning]=useState(false);
   const [message,setMessage]=useState("Loading your selected places…");
@@ -78,6 +80,9 @@ function ItineraryContent(){
       if(!res.ok)return false;
       const data=await res.json();
       if(!Array.isArray(data.days)||!data.days.length)return false;
+      // A saved plan for a different duration is stale even when its selected
+      // place IDs still match. Rebuild it to respect the days chosen for this trip.
+      if(data.days.length!==days)return false;
 
       // The itinerary must match the exact places currently selected in Places to Explore.
       // Rebuild if a place was added or removed there, rather than showing a stale plan.
@@ -136,6 +141,8 @@ function ItineraryContent(){
         // Also show the destination heading when restoring a saved single-city trip.
         setPlanDestinations(data.days.map(()=>String(savedDestinations[0]?.name||destination)));
       }
+      setPlanDayTitles(data.days.map((day:any)=>String(day.title||"")));
+      setPlanDayReasons(data.days.map((day:any)=>String(day.reason||"")));
       const restored=data.days.map((day:any)=>
         (day.items||[]).map((item:any)=>item.place?{
           id:String(item.tripPlaceId),
@@ -199,6 +206,8 @@ function ItineraryContent(){
       );
       setPlans(next);
       setPlanDestinations((data.days||[]).map((day:any)=>String(day.destinationName||"")));
+      setPlanDayTitles((data.days||[]).map((day:any)=>String(day.title||"")));
+      setPlanDayReasons((data.days||[]).map((day:any)=>String(day.reason||"")));
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
@@ -396,14 +405,14 @@ function ItineraryContent(){
         <div className="itinerary-days">
           {plans.map((items,day)=>{
             const total=items.length>1?items.slice(1).reduce((sum,place,index)=>sum+km(items[index],place),0):0;
-            const dayTitle=day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time";
+            const dayTitle=planDayTitles[day]||(day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time");
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
                 <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]?planDestinations[day]+" · "+dayTitle:dayTitle}</h3></div>
                 <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km straight-line between stops</span></div>
               </div>
 
-              <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
+              <p className="planning-rule">{planDayReasons[day]||"Roveo grouped this day geographically first, then ordered the stops to reduce backtracking."}</p>
 
               <div className="planned-place-list">
                 {items.map((place,index)=><div className="planned-place" key={place.id}>
