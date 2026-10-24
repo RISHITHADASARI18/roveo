@@ -336,12 +336,12 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
   }
 }
 
-async function wikipediaDestinationSearch(destination: string): Promise<DiscoveredPlace[]> {
+async function wikipediaDestinationSearch(destination: string, desiredQuery = ""): Promise<DiscoveredPlace[]> {
   try {
     const searchParams = new URLSearchParams({
       action: "query",
       list: "search",
-      srsearch: "tourist attractions places to visit " + destination,
+      srsearch: desiredQuery ? desiredQuery + " " + destination : "tourist attractions places to visit " + destination,
       srnamespace: "0",
       srlimit: "50",
       format: "json",
@@ -529,11 +529,11 @@ async function wikipediaExactPlaces(titles: string[]): Promise<DiscoveredPlace[]
   }
 }
 
-async function googleFallback(destination: string, bounds: Bounds | undefined, center: Coordinates, limit: number) {
+async function googleFallback(destination: string, bounds: Bounds | undefined, center: Coordinates, limit: number, desiredQuery = "") {
   const key = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [] as DiscoveredPlace[];
   const body: Record<string, unknown> = {
-    textQuery: "top tourist attractions and must visit places in " + destination,
+    textQuery: desiredQuery ? desiredQuery + " in " + destination : "top tourist attractions and must visit places in " + destination,
     pageSize: Math.min(limit, 20), languageCode: "en", rankPreference: "RELEVANCE",
   };
   if (bounds) {
@@ -752,8 +752,8 @@ async function discoverBroadPlacesUncached(
     // Google Places is the strongest source for famous, visitor-facing attractions
     // when configured. Keep it parallel with the free sources so it adds quality
     // without making each destination wait for the others.
-    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20)),
-    wikipediaDestinationSearch(destination),
+    googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20), desiredQuery),
+    wikipediaDestinationSearch(destination, desiredQuery),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
