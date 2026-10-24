@@ -415,7 +415,7 @@ function ItineraryContent(){
 
         <div className="itinerary-save-row">
           <button type="button" className="primary-button" onClick={buildPlan} disabled={planning||loading||!tripId||!selectedCount}>{planning?"Planning…":"↻ Rebuild smart plan"}</button>
-          <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length}>{saving?"Saving…":"Save itinerary"}</button>
+          <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length||unplanned.length>0}>{saving?"Saving…":"Save itinerary"}</button>
           {saveMessage&&<span>{saveMessage}</span>}
           {routeMessage&&<span>{routeMessage}</span>}
         </div>
