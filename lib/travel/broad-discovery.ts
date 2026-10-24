@@ -137,13 +137,17 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
     },
   ];
 
-  for (const provider of providers) {
-    try {
-      const result = await provider();
-      if (result) return result;
-    } catch {
-      // Try the next free global geocoder.
-    }
+  // Nominatim and Photon are independent geocoders. Race them so a slow
+  // primary service cannot add a full timeout before the fallback even starts.
+  const geocodingAttempts = providers.map(async (provider) => {
+    const result = await provider();
+    if (!result) throw new Error("Geocoder returned no matching destination.");
+    return result;
+  });
+  try {
+    return await Promise.any(geocodingAttempts);
+  } catch {
+    // Continue to the curated/fallback coordinates below when both fail.
   }
 
   // Last-resort free fallbacks for broad regions. These are only used when
