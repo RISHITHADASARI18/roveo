@@ -279,7 +279,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
       const latitude = Number(element.lat ?? element.center?.lat);
       const longitude = Number(element.lon ?? element.center?.lon);
       if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-      const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.sport ?? tags.route ?? tags.place ?? "place").toLowerCase();
+      const type = [tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.sport ?? tags.route ?? tags.place ?? "place", tags.religion].filter(Boolean).join(" ").toLowerCase();
       const address = [
         tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
         tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
