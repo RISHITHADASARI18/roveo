@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calculateBudget } from "@/lib/budget/calculate";
 import { searchStays } from "@/lib/accommodation/staying";
+import { estimatePlaceCosts } from "@/lib/budget/place-costs";
 
 export const runtime = "nodejs";
 
@@ -83,6 +84,18 @@ export async function POST(
       destination: trip.destination,
       stayPreference: trip.stayPreference,
     });
+
+    const savedPlaces = await db.query(
+      "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
+      [tripId],
+    );
+    const placeCosts = estimatePlaceCosts(
+      savedPlaces.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
+      Number(trip.people),
+    );
+    // If selected venues have estimated entry fees, use those instead of the
+    // generic per-day activity allowance so the estimate reflects this trip.
+    if (placeCosts.total > 0) calculation.items.activities = placeCosts.total;
 
     let accommodationSource = "roveo";
     let accommodationConfidence = "fallback";
@@ -194,7 +207,7 @@ export async function POST(
     );
 
     return NextResponse.json(
-      { estimate: saved.rows[0], calculation, liveStay, pricing: { accommodationSource, accommodationConfidence } },
+      { estimate: saved.rows[0], calculation, liveStay, placeCosts, pricing: { accommodationSource, accommodationConfidence } },
       { status: 201 },
     );
   } catch (error) {
