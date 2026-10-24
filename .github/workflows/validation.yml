@@ -1,0 +1,24 @@
+name: Roveo validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, feature/smart-daily-itinerary]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install
+      - name: Run budget and route-mode scenario tests
+        run: npm test
+      - name: Build Next.js app
+        run: npm run build
