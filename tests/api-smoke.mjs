@@ -89,6 +89,9 @@ assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are reject
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
 assert.equal(estimate.pricing.accommodationStatus, "estimate-provider-not-configured", "no provider key is reported as an estimate, not a live price");
+assert.equal(estimate.liveStay, null, "a fallback estimate is not represented as an actual property");
+const estimateAfterReload = await api(`/api/trips/${trip.id}/budget`);
+assert.equal(estimateAfterReload.accommodationProperty, null, "no property is fabricated when the provider is unavailable");
 const manualBudget = { destinationTravel: 5000, accommodation: 4321, localTransport: 900, food: 3600, activities: 1800, other: 250, contingency: 500 };
 await api(`/api/trips/${trip.id}/budget`, { method: "PUT", body: JSON.stringify(manualBudget) });
 const reloadedBudget = await api(`/api/trips/${trip.id}/budget`);
