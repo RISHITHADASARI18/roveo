@@ -321,7 +321,7 @@ function PlacesContent(){
   const destination=activeDestination?.name || destinationParam;
   const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
-  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()) && (categoryFilter==="All" || categoryFor(p)===categoryFilter)),[places,search,categoryFilter]);
+  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()) && (categoryFilter==="All" || categoryForPlace(p)===categoryFilter)),[places,search,categoryFilter]);
 
   const mainPlaces=useMemo(()=>{
     // Filter first, then choose highlights so a search never shows unrelated cards.
