@@ -55,7 +55,7 @@ jobs:
       - name: Test persisted trip, places, itinerary, routes, budget and live discovery APIs
         run: node tests/api-smoke.mjs
       - name: Install Chromium for browser tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Test landing page through trip creation in a real browser
         run: npm run test:e2e
       - name: Show app logs if integration tests fail
