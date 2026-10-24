@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { calculateBudget, calculateAccommodation, calculateDestinationTravel, calculateLocalTransport } from "../lib/budget/calculate.ts";
 import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates } from "../lib/budget/route-costs.ts";
 import { estimatePlaceCosts } from "../lib/budget/place-costs.ts";
+import { modeFromLocalTravelMethod } from "../lib/travel/route-mode.ts";
 
 test("people count updates per-person travel, food and activities; accommodation adds rooms for larger groups", () => {
   const one = calculateBudget({ days: 3, people: 1, budget: 50000, destination: "Hyderabad", travelMethod: "Train", localTravelMethod: "Public transport", stayPreference: "Hotel" });
@@ -10,6 +11,7 @@ test("people count updates per-person travel, food and activities; accommodation
   assert.ok(three.items.destinationTravel > one.items.destinationTravel);
   assert.ok(three.items.food > one.items.food);
   assert.ok(three.items.activities > one.items.activities);
+  assert.ok(three.items.localTransport > one.items.localTransport);
   assert.ok(three.items.accommodation > one.items.accommodation);
 });
 
@@ -65,4 +67,10 @@ test("official ticket ranges stay distinct from unknown prices", () => {
   assert.equal(costs.places[0].confidence, "official-range");
   assert.equal(costs.places[1].confidence, "unknown");
   assert.equal(costs.places[1].total, null);
+});
+test("route mode handles multiple local transport selections without unsupported-mode failures", () => {
+  assert.equal(modeFromLocalTravelMethod("Car, Taxi"), "DRIVE");
+  assert.equal(modeFromLocalTravelMethod("Public transport, Taxi"), "DRIVE");
+  assert.equal(modeFromLocalTravelMethod("Walking, Bike"), "WALK");
+  assert.equal(modeFromLocalTravelMethod("Public transport"), "TRANSIT");
 });
