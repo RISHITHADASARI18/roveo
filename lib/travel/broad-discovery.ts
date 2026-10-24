@@ -877,6 +877,37 @@ async function discoverBroadPlacesUncached(
     })), { allowOutsideBounds: true, maxDistanceKm: 320 });
   }
 
+
+  // Curated Hyderabad anchors protect major paid attractions from being omitted
+  // when free OSM/Overpass results are sparse or the result cap is reached.
+  // The planner assigns Ramoji Film City and Wonderla full-day time blocks by name.
+  if (/hyderabad|secunderabad/i.test(destination)) {
+    addPlaces([
+      {
+        id: "hyderabad-anchor-ramoji-film-city",
+        name: "Ramoji Film City",
+        type: "theme_park",
+        group: "Attraction",
+        latitude: 17.2543,
+        longitude: 78.6808,
+        distanceKm: haversineKm(coverage.center, { latitude: 17.2543, longitude: 78.6808 }),
+        description: "Large film-studio and entertainment complex. Plan a dedicated full day and check the official schedule for your visit date.",
+        website: "https://www.ramojifilmcity.com/",
+      },
+      {
+        id: "hyderabad-anchor-wonderla",
+        name: "Wonderla Hyderabad",
+        type: "water_park",
+        group: "Attraction",
+        latitude: 17.2135,
+        longitude: 78.6035,
+        distanceKm: haversineKm(coverage.center, { latitude: 17.2135, longitude: 78.6035 }),
+        description: "Theme and water park. Plan a dedicated day and check date-specific operating hours before visiting.",
+        website: "https://www.wonderla.com/",
+      },
+    ], { allowOutsideBounds: true, maxDistanceKm: 65 });
+  }
+
   let places = [...unique.values()].map((place) => ({
     ...place, distanceKm: haversineKm(coverage.center, place),
   }));
