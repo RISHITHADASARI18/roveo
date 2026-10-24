@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS trip_places (
   UNIQUE (trip_id, provider_place_id)
 );
 
+-- Destination assignment for saved attractions, used by multi-destination planning.
+ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT;
+
 CREATE INDEX IF NOT EXISTS trip_places_trip_id_idx
   ON trip_places (trip_id);
 
