@@ -76,7 +76,26 @@ function conciseDescription(place:Place){
   const curated=curatedDescriptions[place.name.trim()];
   if(curated)return curated;
   const raw=(place.description||"").replace(/\s+/g," ").trim();
-  if(!raw || /^Popular place to visit in /i.test(raw))return "";
+  const isPlaceholder=!raw ||
+    /^Popular place to visit in /i.test(raw) ||
+    /^(Real place record from OpenStreetMap|Named destination place from Wikipedia|Major (?:Kerala )?destination|Major Delhi attraction)\.?$/i.test(raw) ||
+    Boolean(place.address && raw.toLowerCase()===place.address.trim().toLowerCase());
+  if(isPlaceholder){
+    const category=categoryForPlace(place);
+    const guidance:Record<string,string>={
+      "Waterfalls":"Waterfall location; check seasonal flow, access conditions and local safety guidance before visiting.",
+      "Viewpoints":"Scenic viewpoint; check access and visibility conditions for your visit.",
+      "Beaches":"Coastal spot; check local conditions, access and safety notices before visiting.",
+      "Temples":"Religious site; verify visiting hours and local entry customs before visiting.",
+      "Nature":"Natural area; check access, weather and any conservation rules before visiting.",
+      "Adventure":"Outdoor activity or adventure spot; verify current availability and safety requirements locally.",
+      "Theme Parks":"Entertainment attraction; confirm date-specific opening hours and ticket prices with the venue.",
+      "History":"Historic or heritage site; verify opening hours and entry rules before visiting.",
+      "Culture":"Cultural attraction; check opening hours and any event schedule before visiting.",
+      "Attractions":"Named local attraction; check current access and official visitor information before travelling."
+    };
+    return guidance[category]||guidance.Attractions;
+  }
   const first=raw.split(/(?<=[.!?])\s+/)[0];
   return first.length<=155 ? first : first.slice(0,152).replace(/\s+\S*$/,"")+"…";
 }
