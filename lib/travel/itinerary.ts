@@ -31,9 +31,6 @@ function centroid(items: PlannerPlace[]) {
 }
 
 function categoryDuration(place: PlannerPlace) {
-  if (typeof place.visitDurationMinutes === "number" && Number.isFinite(place.visitDurationMinutes)) {
-    return Math.max(30, Math.min(720, Math.round(place.visitDurationMinutes)));
-  }
   const name = place.name.toLowerCase();
   const value = (place.category ?? "").toLowerCase() + " " + name;
   // These attractions are destination-scale experiences, not quick stops.
@@ -46,6 +43,9 @@ function categoryDuration(place: PlannerPlace) {
   // Keep this cross-region rather than Kerala-specific.
   if (/\b(munnar|wayanad|ooty|udhagamandalam|shimla|manali|darjeeling|nainital|mussoorie|coorg|kodagu|chikmagalur|kodaikanal|yercaud|araku valley|lonavala|mahabaleshwar|leh|ladakh|srinagar|gangtok|shillong|tawang|gulmarg|pahalgam|spiti|tirthan valley|kasol|auli|mount abu|mc ?leod ganj|mcleodganj|zermatt|interlaken|lucerne|banff|queenstown|hallstatt)\b/.test(name)) return 360;
   if (/hill station|mountain region|hill district|highland region|full.?day|safari|national park|wildlife sanctuary/.test(value)) return 360;
+  if (typeof place.visitDurationMinutes === "number" && Number.isFinite(place.visitDurationMinutes)) {
+    return Math.max(30, Math.min(720, Math.round(place.visitDurationMinutes)));
+  }
   if (/museum|palace|fort|heritage|historic|religious|temple|church|monument/.test(value)) return 105;
   if (/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(value)) return 120;
   if (/activity|amusement|theme|water_park|water park|zoo|aquarium/.test(value)) return 180;
