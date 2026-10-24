@@ -99,7 +99,9 @@ function BudgetContent() {
               ? "The provider returned no priced property for these dates. The saved accommodation amount is a Roveo estimate."
               : status === "estimate-provider-not-configured"
                 ? "Live accommodation search is not configured. The saved accommodation amount is a Roveo estimate."
-                : "The saved accommodation amount is an estimate; availability has not been confirmed.");
+                : status === "estimate-unsupported-currency"
+                  ? "The provider returned a price in another currency that Roveo cannot safely convert. The saved accommodation amount is a Roveo estimate."
+                  : "The saved accommodation amount is an estimate; availability has not been confirmed.");
         }
         if (!cancelled && data.budget) {
           const next = { ...items };
