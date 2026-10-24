@@ -14,15 +14,24 @@ type PlaceCostBreakdown = {
     name: string;
     category: string;
     ticketCostPerPerson: number | null;
+    minCostPerPerson: number | null;
+    maxCostPerPerson: number | null;
     people: number;
     total: number | null;
+    minTotal: number | null;
+    maxTotal: number | null;
     label: string;
-    confidence: "planning-estimate" | "unknown";
+    confidence: "official-range" | "unknown";
+    sourceUrl?: string;
+    priceNote?: string;
   }>;
   pricedPlaceCount: number;
   unpricedPlaceCount: number;
   total: number;
+  minTotal: number;
+  maxTotal: number;
   source: string;
+  pricingMethod: string;
 };
 
 const CATEGORIES: BudgetItem[] = [
@@ -251,7 +260,7 @@ function BudgetContent() {
                     <h3>Entry-cost breakdown</h3>
                     <p>Estimates cover {people} {people === 1 ? "traveller" : "travellers"}. Venue prices can change, so confirm them before booking.</p>
                   </div>
-                  <strong>₹{money(placeCosts.total)}</strong>
+                  <strong>₹{money(placeCosts.minTotal)}–₹{money(placeCosts.maxTotal)}</strong>
                 </div>
                 <div className="budget-place-cost-list">
                   {placeCosts.places.map((place, index) => (
@@ -259,8 +268,10 @@ function BudgetContent() {
                       <div>
                         <strong>{place.name}</strong>
                         <small>{place.label}</small>
+                        {place.priceNote && <small>{place.priceNote}</small>}
+                        {place.sourceUrl && <small><a href={place.sourceUrl} target="_blank" rel="noreferrer">Check official price ↗</a></small>}
                       </div>
-                      <span>{place.total === null ? "Check price" : place.total === 0 ? "₹0 estimated" : "₹" + money(place.total)}</span>
+                      <span>{place.minTotal === null || place.maxTotal === null ? "Check price" : "₹" + money(place.minTotal) + "–₹" + money(place.maxTotal)}</span>
                     </div>
                   ))}
                 </div>
@@ -268,6 +279,7 @@ function BudgetContent() {
                   <p className="budget-place-cost-note">{placeCosts.unpricedPlaceCount} {placeCosts.unpricedPlaceCount === 1 ? "place has" : "places have"} no reliable ticket estimate yet. Check the official venue price before you finalise your budget.</p>
                 )}
                 <p className="budget-place-cost-source">{placeCosts.source}</p>
+                <p className="budget-place-cost-source">{placeCosts.pricingMethod}</p>
               </section>
             )}
 
