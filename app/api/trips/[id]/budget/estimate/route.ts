@@ -456,6 +456,7 @@ export async function POST(
           accommodationSource,
           accommodationConfidence,
           accommodationAvailability: liveStay ? "not-confirmed-by-provider" : "not-available",
+          accommodationStatus: persistedAccommodationConfidence,
           accommodationNote: liveStay
             ? "A provider-listed property price was returned; this is not a booking or confirmed availability."
             : process.env.STAYINGAPI_KEY
