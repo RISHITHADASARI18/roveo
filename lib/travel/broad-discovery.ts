@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
+import { isKeralaStateDestination, normalizePlaceName } from "./place-discovery-utils";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -38,7 +39,7 @@ function groupFor(text: string): DiscoveredPlace["group"] {
 }
 
 function normalizeName(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return normalizePlaceName(value);
 }
 
 function insideBounds(point: Coordinates, bounds?: Bounds) {
@@ -696,7 +697,7 @@ async function discoverBroadPlacesUncached(
         ...coverage,
         // Bounding-box size alone often mislabels large cities as districts,
         // expanding discovery far beyond the selected destination.
-        scope: span > 1.5 ? "state" : "city",
+        // A large stored box does not prove the user selected a state; large cities can have broad administrative bounds.\n        // Only an explicit state selection may widen discovery to the whole region.\n        scope: isKeralaStateDestination(destination) ? "state" : "city",
       };
     } else {
       try {
@@ -813,7 +814,7 @@ async function discoverBroadPlacesUncached(
       if (measured.description === "Named destination place from Wikipedia." &&
           isLowQualityWikipediaTitle(measured.name)) continue;
       const maxDistanceKm = options.maxDistanceKm ??
-        (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35);
+        (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 100 : coverage.scope === "city" ? 35 : 22);
       if (actualDistanceKm > maxDistanceKm) continue;
       const nameKey = normalizeName(measured.name);
       if (!nameKey) continue;
