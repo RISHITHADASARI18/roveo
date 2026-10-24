@@ -11,8 +11,11 @@ test("landing page to persisted trip carries every selected setting into the nex
     lat: 16.5062, lon: 80.648, boundingBox: { south: 16.3, north: 16.7, west: 80.4, east: 80.9 },
     type: "city", importance: 0.9,
   };
-  await page.route("**/api/geocode/search**", async (route) => {
+  const geocodeQueries: string[] = [];
+  await page.route(/\/api\/geocode\/search/, async (route) => {
     const query = new URL(route.request().url()).searchParams.get("q")?.toLowerCase() || "";
+    geocodeQueries.push(query);
+    console.log("[e2e] mocked geocode query:", query);
     const location = query.includes("vijay") ? vijayawada : hyderabad;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ locations: [location] }) });
   });
@@ -22,9 +25,13 @@ test("landing page to persisted trip carries every selected setting into the nex
   await page.getByRole("link", { name: /Go to Dashboard/i }).click();
 
   await page.getByPlaceholder("Starting location").fill("Hyderabad");
-  await page.getByRole("button", { name: /Hyderabad/ }).click();
+  await expect(page.locator(".location-suggestions button")).toHaveCount(1, { timeout: 10000 });
+  expect(geocodeQueries).toContain("hyderabad");
+  await page.locator(".location-suggestions button").first().click();
   await page.getByPlaceholder("Add a destination").fill("Vijayawada");
-  await page.getByRole("button", { name: /Vijayawada/ }).click();
+  await expect(page.locator(".location-suggestions button")).toHaveCount(1, { timeout: 10000 });
+  expect(geocodeQueries).toContain("vijayawada");
+  await page.locator(".location-suggestions button").first().click();
 
   const numericInputs = page.locator('input[type="number"]');
   await numericInputs.nth(0).fill("3");
