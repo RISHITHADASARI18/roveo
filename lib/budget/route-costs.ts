@@ -44,6 +44,6 @@ export function estimateLocalTransportCost(method: string, days: number, people:
   const safePeople = Math.max(1, Math.floor(Number(people) || 1));
   const modes = [...new Set(method.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
   const costs = modes.map((mode) => localModeCost(mode, safeDays, safePeople, Math.max(0, routeKm))).filter((cost): cost is number => cost !== null);
-  if (!costs.length) return routeKm > 0 ? Math.round(routeKm * 22 + safeDays * 200) : 0;
+  if (!costs.length) return routeKm > 0 ? Math.round(routeKm * 22 + safeDays * 200) : Math.round(900 * safeDays);
   return Math.round(costs.reduce((sum, cost) => sum + cost, 0) / costs.length);
 }
