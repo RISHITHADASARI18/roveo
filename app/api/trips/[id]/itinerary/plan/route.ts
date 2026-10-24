@@ -28,6 +28,53 @@ function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: n
   return 6371 * 2 * Math.asin(Math.sqrt(x));
 }
 
+// Ask OSRM for actual road distance and duration before ordering a driving
+// itinerary. The public demo service is best-effort, so failures safely fall
+// back to the planner's geographic estimates instead of breaking trip planning.
+async function loadRoadMetrics(places: PlannerPlace[], localTravelMethod: string) {
+  if (places.length < 2 || places.length > 70 || !/car|taxi/i.test(localTravelMethod)) return undefined;
+
+  const coordinates = places.map((place) => place.longitude + "," + place.latitude).join(";");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch(
+      "https://router.project-osrm.org/table/v1/driving/" + coordinates + "?annotations=distance,duration",
+      {
+        headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel itinerary planner)" },
+        signal: controller.signal,
+        cache: "no-store",
+      }
+    );
+    if (!response.ok) return undefined;
+    const data = await response.json();
+    if (data.code !== "Ok" || !Array.isArray(data.distances) || !Array.isArray(data.durations)) return undefined;
+    if (data.distances.length !== places.length || data.durations.length !== places.length) return undefined;
+
+    const indexes = new Map(places.map((place, index) => [place.id, index]));
+    const fallbackKm = (a: PlannerPlace, b: PlannerPlace) => distanceKm(a, b);
+    return {
+      distanceKm: (a: PlannerPlace, b: PlannerPlace) => {
+        const from = indexes.get(a.id), to = indexes.get(b.id);
+        const meters = from == null || to == null ? null : data.distances[from]?.[to];
+        return typeof meters === "number" && Number.isFinite(meters) ? meters / 1000 : fallbackKm(a, b);
+      },
+      travelMinutes: (a: PlannerPlace, b: PlannerPlace) => {
+        const from = indexes.get(a.id), to = indexes.get(b.id);
+        const seconds = from == null || to == null ? null : data.durations[from]?.[to];
+        return typeof seconds === "number" && Number.isFinite(seconds)
+          ? Math.max(1, Math.round(seconds / 60))
+          : Math.max(10, Math.round(fallbackKm(a, b) * 4));
+      },
+      source: "osrm-road-matrix",
+    };
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function allocateDays(totalDays: number, destinationCount: number) {
   const allocations = Array.from({ length: destinationCount }, () => 0);
   if (!destinationCount || !totalDays) return allocations;
@@ -58,7 +105,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try { body = await request.json(); } catch {}
 
   try {
-    const trip = await db.query("SELECT days, destination FROM trips WHERE id = $1", [tripId]);
+    const trip = await db.query("SELECT days, destination, local_travel_method FROM trips WHERE id = $1", [tripId]);
     if (trip.rowCount === 0) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
 
@@ -114,7 +161,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (destinations.length <= 1) {
-      const days = buildSmartItinerary(places, dayCount).map((day) => ({
+      const roadMetrics = await loadRoadMetrics(places, String(trip.rows[0].local_travel_method ?? "Taxi"));
+      const days = buildSmartItinerary(places, dayCount, roadMetrics).map((day) => ({
         ...day,
         destinationName: destinations[0]?.name ?? String(trip.rows[0].destination ?? ""),
       }));
@@ -125,8 +173,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         plannedPlaceCount: days.reduce((sum, day) => sum + day.items.length, 0),
         destinations: destinations.map((item) => ({ id: item.id, name: item.name, order: item.order })),
         planner: {
-          strategy: "geographic-clusters-and-nearest-neighbour",
-          message: "Selected places are grouped by geographic proximity first, then ordered to reduce backtracking within each day.",
+          strategy: roadMetrics ? "road-distance-clusters-and-nearest-neighbour" : "geographic-clusters-and-nearest-neighbour",
+          distanceSource: roadMetrics ? "OSRM road distance and duration matrix" : "straight-line geographic estimate (road matrix unavailable or unsupported travel mode)",
+          message: roadMetrics
+            ? "Selected places are grouped and ordered using road distances and estimated driving durations, while balancing visit time across the days."
+            : "Selected places are grouped geographically and ordered to reduce backtracking; road-distance data was unavailable, so transfer times are estimates.",
         },
       });
     }
@@ -155,9 +206,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (dayCount >= destinations.length) {
       let dayNumber = 1;
       destinations.forEach((destination, index) => {
+        const destinationPlaces = placesByDestination.get(destination.id) ?? [];
+        const roadMetrics = await loadRoadMetrics(destinationPlaces, String(trip.rows[0].local_travel_method ?? "Taxi"));
         const destinationDays = buildSmartItinerary(
-          placesByDestination.get(destination.id) ?? [],
-          allocations[index]
+          destinationPlaces,
+          allocations[index],
+          roadMetrics
         );
         for (const day of destinationDays) {
           days.push({
@@ -199,7 +253,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       destinations: destinations.map((item) => ({ id: item.id, name: item.name, order: item.order })),
       planner: {
         strategy: "route-destination-groups-and-nearest-neighbour",
-        message: "Your selected destinations are planned in route order, with each destination's places grouped into its own day cluster.",
+        distanceSource: /car|taxi/i.test(String(trip.rows[0].local_travel_method ?? "Taxi"))
+          ? "OSRM road matrix where available; geographic estimates as fallback"
+          : "geographic estimate for planning; saved routes use the selected travel mode",
+        message: "Your selected destinations are planned in route order. Places are grouped by destination and balanced by visit duration; road distances and driving times are used when the routing service supports them.",
       },
     });
   } catch (error) {
