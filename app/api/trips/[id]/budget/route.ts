@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { estimatePlaceCosts } from "@/lib/budget/place-costs";
 
 export const runtime = "nodejs";
 
@@ -41,8 +42,17 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         other,
         contingency
        FROM trip_budgets WHERE trip_id=$1`,[tripId]);
-    if(!result.rows[0])return NextResponse.json({budget:null});
-    return NextResponse.json({budget:buildBreakdown(result.rows[0])});
+    const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
+    const places = await db.query(
+      "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
+      [tripId],
+    );
+    const placeCosts = estimatePlaceCosts(
+      places.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
+      Number(trip.rows[0]?.people ?? 1),
+    );
+    if(!result.rows[0])return NextResponse.json({budget:null, placeCosts});
+    return NextResponse.json({budget:buildBreakdown(result.rows[0]), placeCosts});
   } catch(error) {
     console.error("GET /api/trips/[id]/budget failed:",error);
     return NextResponse.json({error:"Could not load the trip budget."},{status:500});
