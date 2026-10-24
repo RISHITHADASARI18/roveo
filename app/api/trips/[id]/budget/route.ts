@@ -49,7 +49,8 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         food,
         activities,
         other,
-        contingency
+        contingency,
+        updated_at AS "updatedAt"
        FROM trip_budgets WHERE trip_id=$1`,[tripId]);
     // Estimates are also persisted in trip_cost_estimates. If a trip has an
     // estimate but no manually saved budget row yet, use that as the initial
@@ -57,7 +58,9 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         const estimateResult = await db.query(
       `SELECT destination_travel AS "destinationTravel", accommodation,
         local_transport AS "localTransport", food, activities, other, contingency,
-        confidence AS "estimateConfidence", source AS "estimateSource", accommodation_property AS "accommodationProperty"
+        confidence AS "estimateConfidence", source AS "estimateSource",
+        accommodation_property AS "accommodationProperty",
+        generated_at AS "generatedAt"
        FROM trip_cost_estimates WHERE trip_id=$1`, [tripId]);
         const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
     const places = await db.query(
@@ -70,7 +73,28 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       people,
     );
     const provisionalUnpricedAllowance = placeCosts.unpricedPlaceCount * 250 * people;
-    const initialBudget = result.rows[0] ?? estimateResult.rows[0] ?? null;
+    // Older versions could leave a stale/default trip_budgets row beside a newer
+    // generated estimate. Pick the record most recently updated so the page does
+    // not display zeroes or outdated values just because a budget row exists.
+    const savedBudget = result.rows[0] ?? null;
+    const generatedEstimate = estimateResult.rows[0] ?? null;
+    // Compare timestamps inside PostgreSQL. Converting timestamptz values to
+    // JavaScript Date truncates sub-millisecond precision; two writes made
+    // close together can otherwise look equal and cause an older estimate to
+    // overwrite a newer manual edit after refresh.
+    const recencyResult = savedBudget && generatedEstimate
+      ? await db.query(
+          `SELECT (b.updated_at >= e.generated_at) AS "budgetIsNewer"
+             FROM trip_budgets b
+             JOIN trip_cost_estimates e ON e.trip_id = b.trip_id
+            WHERE b.trip_id = $1`,
+          [tripId],
+        )
+      : null;
+    const budgetIsNewer = Boolean(recencyResult?.rows[0]?.budgetIsNewer);
+    const initialBudget = savedBudget && (!generatedEstimate || budgetIsNewer)
+      ? savedBudget
+      : generatedEstimate;
     if(!initialBudget)return NextResponse.json({budget:null, placeCosts: { ...placeCosts, provisionalUnpricedAllowance }});
     return NextResponse.json({
       budget:buildBreakdown(initialBudget),
