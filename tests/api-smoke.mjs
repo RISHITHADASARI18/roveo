@@ -181,6 +181,13 @@ assert.equal(templeResponse.status, 200, "destination-scoped category search ret
 const templeResults = await templeResponse.json();
 assert.ok(templeResults.places.length > 0, "destination-scoped temple search returns relevant local results");
 assert.ok(templeResults.places.every((place) => (place.name + " " + (place.description || "") + " " + place.type + " " + place.group).toLowerCase().includes("temple")), "category query does not leak unrelated results");
+const categoryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&category=Temples&maxResults=30");
+assert.equal(categoryResponse.status, 200, "selecting a place category returns a usable discovery response");
+const categoryData = await categoryResponse.json();
+assert.ok(Array.isArray(categoryData.places), "category discovery always returns a places array, even if no verified match exists");
+assert.ok(categoryData.places.every((place) => /temple|mandir|place[_ ]of[_ ]worship/i.test((place.name + " " + (place.description || "") + " " + place.type + " " + place.group))), "category discovery returns only matching temple or worship places");
+const invalidCategoryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&category=NotARealCategory");
+assert.equal(invalidCategoryResponse.status, 400, "unsupported place categories are rejected");
 
 const oneDayTrip = await api("/api/trips", { method: "POST", body: JSON.stringify({
   source: { name: "Hyderabad", lat: 17.385, lon: 78.486 },
