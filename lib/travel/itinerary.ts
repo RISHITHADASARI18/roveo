@@ -131,16 +131,31 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
   seeds.forEach((seed, index) => clusters[index].push(seed));
   const seeded = new Set(seeds.map((place) => place.id));
   const remaining = places.filter((place) => !seeded.has(place.id));
-  const target = Math.ceil(places.length / days);
+  // Balance sightseeing workload as well as geographic proximity. A day with
+  // several long activities should not receive the same number of stops as a
+  // day containing short viewpoints. Keep every selected place, but penalize
+  // days that would become impractically long.
+  const estimatedDuration = (place: PlannerPlace) => categoryDuration(place.category);
+  const dayWorkload = (items: PlannerPlace[]) => items.reduce((sum, place, index) =>
+    sum + estimatedDuration(place) + (index > 0 ? Math.max(10, Math.round(haversineKm(items[index - 1], place) * 4)) : 0), 0
+  );
 
   for (const place of remaining) {
     let bestDay = 0;
     let bestScore = Infinity;
     for (let day = 0; day < days; day += 1) {
-      if (clusters[day].length >= target && clusters.some((items) => items.length < target)) continue;
-      const center = centroid(clusters[day].length ? clusters[day] : [seeds[day] ?? place]);
+      const current = clusters[day];
+      const center = centroid(current.length ? current : [seeds[day] ?? place]);
       const centerPoint = { id: "centroid", name: "", latitude: center.latitude, longitude: center.longitude };
-      const score = haversineKm(place, centerPoint) + clusters[day].length * 0.8;
+      const proximity = haversineKm(place, centerPoint);
+      const workload = dayWorkload(current);
+      const addedTravel = current.length
+        ? Math.min(...current.map((existing) => haversineKm(place, existing))) * 4
+        : 0;
+      const projectedMinutes = workload + estimatedDuration(place) + addedTravel;
+      const overloadPenalty = Math.max(0, projectedMinutes - 480) * 0.12;
+      const countPenalty = current.length * 1.5;
+      const score = proximity + countPenalty + overloadPenalty;
       if (score < bestScore) { bestScore = score; bestDay = day; }
     }
     clusters[bestDay].push(place);
@@ -165,13 +180,16 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     const maxKm = ordered.length ? Math.max(...ordered.map((place) => haversineKm(place, ordered[0]))) : 0;
     const spread = maxKm > 35 ? "wide" : maxKm > 15 ? "regional" : "nearby";
     const title = index === 0 ? "Start with the " + spread + " highlights" : index === days - 1 ? "Final discoveries nearby" : "Explore one area at a time";
-    const reason = ordered.length <= 1
-      ? "A light day keeps the trip flexible."
-      : spread === "nearby"
-        ? "These stops are close together, so more of the day stays available for exploring."
-        : spread === "regional"
-          ? "These places form a practical local cluster instead of mixing distant sides of the destination."
-          : "This day contains the remaining selected places; consider moving one if the area feels too spread out.";
+    const estimatedMinutes = items.reduce((sum, place) => sum + place.durationMinutes + place.travelTimeMinutes, 0);
+    const reason = estimatedMinutes > 600
+      ? "This is a packed day (about " + Math.round(estimatedMinutes / 60) + " hours of visits and estimated transfers). Consider moving a place to another day."
+      : ordered.length <= 1
+        ? "A light day keeps the trip flexible."
+        : spread === "nearby"
+          ? "These stops are close together, so more of the day stays available for exploring."
+          : spread === "regional"
+            ? "These places form a practical local cluster instead of mixing distant sides of the destination."
+            : "This day contains the remaining selected places; consider moving one if the area feels too spread out.";
 
     return { dayNumber: index + 1, title, reason, items, straightLineKm: Math.round(totalDistance * 10) / 10 };
   });
