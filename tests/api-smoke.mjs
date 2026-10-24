@@ -108,11 +108,24 @@ assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are reject
 // were never created. The budget endpoint must safely initialize its own schema.
 const schemaClient = new Client({ connectionString: process.env.DATABASE_URL });
 await schemaClient.connect();
+let originalTripDestination;
 try {
+  const tripRow = await schemaClient.query("SELECT destination FROM trips WHERE id = $1", [trip.id]);
+  originalTripDestination = tripRow.rows[0].destination;
+  await schemaClient.query("UPDATE trips SET destination = '' WHERE id = $1", [trip.id]);
   await schemaClient.query("DROP TABLE IF EXISTS trip_cost_estimates");
   await schemaClient.query("DROP TABLE IF EXISTS trip_budgets");
 } finally {
   await schemaClient.end();
+}
+const incompleteEstimateResponse = await fetch(`${base}/api/trips/${trip.id}/budget/estimate`, { method: "POST" });
+assert.equal(incompleteEstimateResponse.status, 422, "an incomplete trip is rejected instead of returning misleading budget totals");
+const restoreClient = new Client({ connectionString: process.env.DATABASE_URL });
+await restoreClient.connect();
+try {
+  await restoreClient.query("UPDATE trips SET destination = $1 WHERE id = $2", [originalTripDestination, trip.id]);
+} finally {
+  await restoreClient.end();
 }
 
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
