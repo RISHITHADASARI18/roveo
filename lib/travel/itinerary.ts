@@ -212,7 +212,7 @@ export function buildSmartItinerary(
   for (const place of remaining) {
     let bestDay = -1;
     let bestScore = Infinity;
-    if (cannotFitFullDayAfterTransfer && isFullDayAttraction(place)) continue;
+    if ((cannotFitFullDayAfterTransfer || reserveArrivalDayForTransfer) && isFullDayAttraction(place)) continue;
     for (let day = 0; day < days; day += 1) {
       const current = clusters[day];
       // Full-day attractions never share a day with another place. If the trip
