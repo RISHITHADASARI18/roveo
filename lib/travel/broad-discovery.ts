@@ -62,7 +62,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
           Accept: "application/json",
           "User-Agent": "Roveo/1.0 (travel planner; destination geocoding)",
         },
-        cache: "no-store",
+        cache: "force-cache", next: { revalidate: 21600 },
       }, 5000);
       if (!response.ok) return null;
       const data = await response.json();
@@ -104,7 +104,7 @@ async function destinationCoverage(destination: string, fallback: Coordinates): 
             Accept: "application/json",
             "User-Agent": "Roveo/1.0 (travel planner; destination geocoding)",
           },
-          cache: "no-store",
+          cache: "force-cache", next: { revalidate: 21600 },
         },
         5000,
       );
@@ -212,7 +212,7 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
       method:"POST",
       headers:{Accept:"application/json","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","User-Agent":"Roveo/1.0 (travel planner; nearby destinations)"},
       body:"data="+encodeURIComponent(query),
-      cache:"no-store",
+      cache: "force-cache", next: { revalidate: 21600 },
     },3500);
     if(!response.ok) throw new Error("Nearby destination provider unavailable.");
     const data=await response.json();
@@ -262,7 +262,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
         "User-Agent": "Roveo/1.0 (travel planner; place discovery)",
       },
       body: "data=" + encodeURIComponent(query),
-      cache: "no-store",
+      cache: "force-cache", next: { revalidate: 21600 },
     }, 4200);
     if (!response.ok) throw new Error("Overpass mirror unavailable.");
     const data = await response.json();
@@ -307,7 +307,7 @@ async function wikipediaFallback(center: Coordinates, radiusMeters: number) {
     });
     const response = await fetchWithTimeout("https://en.wikipedia.org/w/api.php?" + params, {
       headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; place discovery)" },
-      cache: "no-store",
+      cache: "force-cache", next: { revalidate: 21600 },
     }, 5000);
     if (!response.ok) return [] as DiscoveredPlace[];
     const data = await response.json();
@@ -345,7 +345,7 @@ async function wikipediaDestinationSearch(destination: string): Promise<Discover
       "https://en.wikipedia.org/w/api.php?" + searchParams,
       {
         headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" },
-        cache: "no-store",
+        cache: "force-cache", next: { revalidate: 21600 },
       },
       6000,
     );
@@ -372,7 +372,7 @@ async function wikipediaDestinationSearch(destination: string): Promise<Discover
       "https://en.wikipedia.org/w/api.php?" + coordinateParams,
       {
         headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" },
-        cache: "no-store",
+        cache: "force-cache", next: { revalidate: 21600 },
       },
       6000,
     );
@@ -494,7 +494,7 @@ async function wikipediaExactPlaces(titles: string[]): Promise<DiscoveredPlace[]
     });
     const response = await fetchWithTimeout(
       "https://en.wikipedia.org/w/api.php?" + params,
-      { headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" }, cache: "no-store" },
+      { headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; destination search)" }, cache: "force-cache", next: { revalidate: 21600 } },
       6000,
     );
     if (!response.ok) return [];
@@ -554,7 +554,7 @@ async function googleFallback(destination: string, bounds: Bounds | undefined, c
         Accept: "application/json", "Content-Type": "application/json", "X-Goog-Api-Key": key,
         "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.websiteUri,places.rating,places.userRatingCount",
       },
-      body: JSON.stringify(body), cache: "no-store",
+      body: JSON.stringify(body), cache: "force-cache", next: { revalidate: 21600 },
     }, 5000);
     if (!response.ok) return [] as DiscoveredPlace[];
     const data = await response.json();
