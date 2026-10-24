@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { categoryForPlace } from "@/lib/travel/place-discovery-utils";
 
 
 type Place = {
@@ -93,25 +94,13 @@ function classify(tags:any):Place["group"]{
   return "Activity";
 }
 
-const PLACE_CATEGORIES = ["All", "Waterfalls", "Viewpoints", "Nature", "History", "Adventure", "Theme Parks", "Culture", "Attractions"] as const;
+const PLACE_CATEGORIES = ["All", "Waterfalls", "Viewpoints", "Beaches", "Temples", "Nature", "Adventure", "Theme Parks", "History", "Culture", "Attractions"] as const;
 type PlaceCategory = typeof PLACE_CATEGORIES[number];
-
-function categoryFor(place: Place): Exclude<PlaceCategory, "All"> {
-  const value = (place.name + " " + place.type + " " + place.group + " " + (place.description || "")).toLowerCase().replaceAll("_", " ");
-  if (/waterfall|falls\b|cascade/.test(value)) return "Waterfalls";
-  if (/viewpoint|lookout|observation deck|panorama|scenic point/.test(value)) return "Viewpoints";
-  if (/theme park|theme_park|water park|water_park|amusement|wonderla|ramoji film city|disneyland|universal studios/.test(value)) return "Theme Parks";
-  if (/fort|palace|historic|historical|heritage|monument|memorial|museum|archaeolog|ruins|castle|temple|church|mosque|cathedral/.test(value) || place.group === "History") return "History";
-  if (/adventure|trek|hiking|zipline|rafting|kayak|kayaking|camping|rock climbing|paragliding|skiing|safari|wildlife|zoo|aquarium|activity/.test(value)) return "Adventure";
-  if (/forest|nature|reserve|national park|garden|lake|beach|mountain|hill|peak|cave|cliff|hot spring|backwater|island|river|dam|sanctuary/.test(value) || place.group === "Nature") return "Nature";
-  if (/culture|art gallery|arts centre|theatre|artwork|craft|cultural/.test(value) || place.group === "Culture") return "Culture";
-  return "Attractions";
-}
 
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
   const description=conciseDescription(place);
-  const category=categoryFor(place);
+  const category=categoryForPlace(place);
   return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
     <div className="explore-visual"><span>✦</span><small>{category}</small></div>
     <div className="explore-body">
@@ -426,7 +415,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Find famous must-visit attractions, landmarks and worthwhile local places for each destination.</p>
+        <p>Find famous attractions and lesser-known local places, filtered to each selected destination.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destinations.length>1?"Multiple destinations":destination}</small></div>
     </section>
@@ -513,7 +502,7 @@ function PlacesContent(){
         </>;
       })()}
 
-      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a different place name or destination.</span></div>}
+      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try another category or search term. If this destination has no verified matches for a category, clear the filter to see all nearby places.</span></div>}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>
