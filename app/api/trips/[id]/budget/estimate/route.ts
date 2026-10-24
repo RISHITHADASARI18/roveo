@@ -15,6 +15,19 @@ function tripIdFromParams(params: { id: string }) {
 type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null; destinationId?: string | null };
 type RoutePoint = { latitude: number; longitude: number };
 
+let accommodationPropertyColumnReady: Promise<void> | null = null;
+async function ensureAccommodationPropertyColumn() {
+  if (!accommodationPropertyColumnReady) {
+    accommodationPropertyColumnReady = db.query(
+      "ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"
+    ).then(() => undefined).catch((error) => {
+      accommodationPropertyColumnReady = null;
+      throw error;
+    });
+  }
+  return accommodationPropertyColumnReady;
+}
+
 function validRoutePoint(latitude: unknown, longitude: unknown): boolean {
   const lat = Number(latitude), lon = Number(longitude);
   return latitude != null && longitude != null && Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
@@ -139,6 +152,7 @@ export async function GET(
   }
 
   try {
+    await ensureAccommodationPropertyColumn();
     const result = await db.query(
       `SELECT id, trip_id AS "tripId",
         destination_travel AS "destinationTravel",
@@ -152,6 +166,7 @@ export async function GET(
         currency,
         confidence,
         source,
+        accommodation_property AS "accommodationProperty",
         generated_at AS "generatedAt"
        FROM trip_cost_estimates
        WHERE trip_id = $1`,
@@ -178,6 +193,7 @@ export async function POST(
   }
 
   try {
+    await ensureAccommodationPropertyColumn();
     const tripResult = await db.query(
       `SELECT days, people, budget, source, destination,
         source_lat AS "sourceLat", source_lon AS "sourceLon",
@@ -315,7 +331,7 @@ export async function POST(
 
     let accommodationSource = "roveo";
     let accommodationConfidence = "fallback";
-    let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string } | null = null;
+    let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string; checkIn:string; checkOut:string; nights:number; adults:number } | null = null;
     let unsupportedCurrencyStay = false;
 
     const nights = accommodationNights(Number(trip.days));
@@ -334,7 +350,7 @@ export async function POST(
           const sorted = [...stays].sort((a,b)=>a.totalPrice-b.totalPrice);
           const chosen = sorted[Math.floor(sorted.length / 2)] ?? sorted[0];
           if (chosen.currency === "INR") {
-            liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url};
+            liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url,checkIn:dates.checkIn,checkOut:dates.checkOut,nights:dates.nights,adults:Number(trip.people)};
             calculation.items.accommodation = Number(chosen.totalPrice);
             accommodationSource = "stayingapi";
             accommodationConfidence = "live";
@@ -381,9 +397,10 @@ export async function POST(
         currency,
         confidence,
         source,
+        accommodation_property,
         generated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,NOW())
       ON CONFLICT (trip_id) DO UPDATE SET
         destination_travel = EXCLUDED.destination_travel,
         accommodation = EXCLUDED.accommodation,
@@ -396,6 +413,7 @@ export async function POST(
         currency = EXCLUDED.currency,
         confidence = EXCLUDED.confidence,
         source = EXCLUDED.source,
+        accommodation_property = EXCLUDED.accommodation_property,
         generated_at = NOW()
       RETURNING id,
         trip_id AS "tripId",
@@ -410,6 +428,7 @@ export async function POST(
         currency,
         confidence,
         source,
+        accommodation_property AS "accommodationProperty",
         generated_at AS "generatedAt"`,
       [
         tripId,
@@ -424,6 +443,7 @@ export async function POST(
         calculation.currency,
         persistedAccommodationConfidence,
         calculation.source,
+        liveStay ? JSON.stringify(liveStay) : null,
       ],
     );
 
