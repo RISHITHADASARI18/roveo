@@ -34,6 +34,7 @@ function estimateVisitMinutes(place:Place){
   if(/ramoji\s*(film|film city)|ramoji film city/.test(name))return 480;
   if(/wonderla/.test(name))return 420;
   if(/universal studios|disneyland|disney world|imagica|adlabs/.test(name))return 480;
+  if(/munnar|wayanad|ooty|udhagamandalam|shimla|manali|darjeeling|nainital|mussoorie|coorg|kodagu|chikmagalur|kodaikanal|yercaud|araku valley|lonavala|mahabaleshwar|leh|ladakh|srinagar|gangtok|shillong|tawang|gulmarg|pahalgam|spiti|tirthan valley|kasol|auli|mount abu|mcleod ganj|zermatt|interlaken|lucerne|banff|queenstown|hallstatt/.test(name)||/hill_station|hill station|mountain_region|mountain region|hill district/.test(text))return 360;
   if(/water_park|water park|theme_park|amusement|zoo|aquarium/.test(text))return 240;
   if(/museum|palace|fort|heritage|historic|temple|church|monument/.test(text))return 105;
   if(/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(text))return 120;
