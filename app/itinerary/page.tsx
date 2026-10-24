@@ -67,7 +67,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Real road routes loaded.":"");
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Saved route lines loaded for the selected route mode.":"");
     }catch(error){
       setRoutes([]);
       setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
@@ -339,7 +339,7 @@ function ItineraryContent(){
   async function calculateRoutes(){
     if(!tripId)return;
     try{
-      setRouteMessage("Calculating real road routes between same-day stops…");
+      setRouteMessage("Calculating route estimates between same-day stops…");
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -348,7 +348,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(data.routeCount?"Real road routes calculated and saved.":"No same-day route legs are needed yet.");
+      setRouteMessage(data.routeCount?("Saved "+(data.mode==="DRIVE"?"driving":data.mode==="WALK"?"walking":data.mode==="BICYCLE"?"cycling":"selected-mode")+" route estimates between same-day stops."):"No same-day route legs are needed yet.");
     }catch(error){
       setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
     }
@@ -483,7 +483,7 @@ function ItineraryContent(){
           <span className="eyebrow">05 · ROVEO LOGIC</span>
           <h2>Less travel. More exploring.</h2>
           <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
-          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
+          <p className="planning-rule">The Save step calculates route estimates between the actual same-day stops. These lines are not turn-by-turn navigation; public-transit routing is not supported in-app. Use each stop’s Directions link to open navigation in Google Maps.</p>
         </div>
       </aside>
     </section>
@@ -492,7 +492,7 @@ function ItineraryContent(){
       <div className="itinerary-map-card itinerary-map-large">
         <span className="eyebrow">06 · FULL ROUTE MAP</span>
         <h2>Every stop, on one larger map.</h2>
-        <p className="planning-rule">Pins show the places assigned to each day. Select a pin to see its name and day. Road lines appear when route geometry is available.</p>
+        <p className="planning-rule">Pins show the places assigned to each day. Select a pin to see its name and day. Route lines connect consecutive planned stops when route geometry is available; they are estimates, not turn-by-turn navigation.</p>
         {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
         {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
       </div>
