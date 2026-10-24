@@ -52,12 +52,12 @@ jobs:
           done
           cat /tmp/roveo-next.log
           exit 1
+      - name: Test persisted trip, places, itinerary, routes, budget and live discovery APIs
+        run: node tests/api-smoke.mjs
       - name: Install Chromium for browser tests
         run: npx playwright install --with-deps chromium
       - name: Test landing page through trip creation in a real browser
         run: npm run test:e2e
-      - name: Test persisted trip, places, itinerary, routes and budget APIs
-        run: node tests/api-smoke.mjs
       - name: Show app logs if integration tests fail
         if: failure()
         run: cat /tmp/roveo-next.log || true
