@@ -69,6 +69,7 @@ function BudgetContent() {
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
   const [accommodationMessage, setAccommodationMessage] = useState("");
+  const [accommodationStatus, setAccommodationStatus] = useState("estimated");
   const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string}|null>(null);
   const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
@@ -89,6 +90,17 @@ function BudgetContent() {
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
         if (!cancelled) setPlaceCosts(data.placeCosts ?? null);
+        if (!cancelled) {
+          const status = String(data.accommodationStatus || "estimated");
+          setAccommodationStatus(status);
+          setAccommodationMessage(status === "provider-listed-price-not-confirmed"
+            ? "A provider-listed property price was used in the saved budget. The property details are not stored here, and availability is not confirmed."
+            : status === "estimate-no-priced-results"
+              ? "The provider returned no priced property for these dates. The saved accommodation amount is a Roveo estimate."
+              : status === "estimate-provider-not-configured"
+                ? "Live accommodation search is not configured. The saved accommodation amount is a Roveo estimate."
+                : "The saved accommodation amount is an estimate; availability has not been confirmed.");
+        }
         if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
@@ -135,6 +147,8 @@ function BudgetContent() {
       if (data.calculation?.items) setItems(data.calculation.items);
       if (data.placeCosts) setPlaceCosts(data.placeCosts);
       setLiveStay(data.liveStay ?? null);
+      const status = String(data.pricing?.accommodationStatus || "estimated");
+      setAccommodationStatus(status);
       setAccommodationMessage(String(data.pricing?.accommodationNote || "Accommodation is a planning estimate; provider prices do not confirm availability."));
       const source = data.pricing?.accommodationSource === "stayingapi"
         ? "Provider-listed accommodation price + Roveo planning estimates"
@@ -292,7 +306,7 @@ function BudgetContent() {
             <section className="budget-accommodation-status" aria-live="polite">
               <div className="budget-place-costs-heading">
                 <div><span className="eyebrow">ACCOMMODATION STATUS</span><h2>Estimate vs. a listed property</h2></div>
-                <span className="budget-status-pill">{liveStay ? "Listed price" : "Estimated cost"}</span>
+                <span className="budget-status-pill">{liveStay || accommodationStatus === "provider-listed-price-not-confirmed" ? "Provider-listed price" : "Estimated cost"}</span>
               </div>
               {liveStay ? <div className="budget-accommodation-property">
                 <strong>{liveStay.name}</strong>
