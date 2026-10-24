@@ -52,11 +52,7 @@ function money(value: number) {
 function BudgetContent() {
   const params = useSearchParams();
   const tripId = params.get("tripId") || "";
-  const source = serverTrip?.source || params.get("source") || "";
-  const destination = serverTrip?.destination || params.get("destination") || "Your trip";
-  const days = Math.max(1, serverTrip?.days ?? (Number(params.get("days")) || 1));
-  const people = Math.max(1, serverTrip?.people ?? (Number(params.get("people")) || 1));
-  const totalBudget = Math.max(0, serverTrip?.budget ?? (Number(params.get("budget")) || 0));
+
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
@@ -74,6 +70,12 @@ function BudgetContent() {
   const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string;checkIn?:string;checkOut?:string;nights?:number;adults?:number}|null>(null);
   const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
+
+  const source = serverTrip?.source || params.get("source") || "";
+  const destination = serverTrip?.destination || params.get("destination") || "Your trip";
+  const days = Math.max(1, serverTrip?.days ?? (Number(params.get("days")) || 1));
+  const people = Math.max(1, serverTrip?.people ?? (Number(params.get("people")) || 1));
+  const totalBudget = Math.max(0, serverTrip?.budget ?? (Number(params.get("budget")) || 0));
 
   useEffect(() => {
     if (!tripId) {
