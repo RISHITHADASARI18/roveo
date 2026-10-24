@@ -40,7 +40,7 @@ const CATEGORIES: BudgetItem[] = [
   { key: "accommodation", label: "Accommodation / stay", description: "Estimated hotel, homestay or hostel cost for your trip nights." },
   { key: "localTransport", label: "Travel between places", description: "Estimated taxis, public transport, rentals, fuel and transfers." },
   { key: "food", label: "Food & drinks", description: "Estimated meals and drinks per person, per day." },
-  { key: "activities", label: "Place entry & ticket costs", description: "Estimated entry tickets for selected places, multiplied by your traveller count." },
+  { key: "activities", label: "Activities & entry fees", description: "Planning allowance for activities; selected-place ticket prices are shown separately when trustworthy prices are available." },
   { key: "other", label: "Other", description: "Shopping, parking, tips and anything else." },
   { key: "contingency", label: "Emergency / contingency", description: "A reserve for unexpected expenses." },
 ];
@@ -52,15 +52,16 @@ function money(value: number) {
 function BudgetContent() {
   const params = useSearchParams();
   const tripId = params.get("tripId") || "";
-  const source = params.get("source") || "";
-  const destination = params.get("destination") || "Your trip";
-  const days = Math.max(1, Number(params.get("days")) || 1);
-  const people = Math.max(1, Number(params.get("people")) || 1);
-  const totalBudget = Math.max(0, Number(params.get("budget")) || 0);
+  const source = serverTrip?.source || params.get("source") || "";
+  const destination = serverTrip?.destination || params.get("destination") || "Your trip";
+  const days = Math.max(1, serverTrip?.days ?? (Number(params.get("days")) || 1));
+  const people = Math.max(1, serverTrip?.people ?? (Number(params.get("people")) || 1));
+  const totalBudget = Math.max(0, serverTrip?.budget ?? (Number(params.get("budget")) || 0));
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
 
+  const [serverTrip, setServerTrip] = useState<{days:number;people:number;budget:number;source:string;destination:string}|null>(null);
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
   );
@@ -89,6 +90,7 @@ function BudgetContent() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
+        if (!cancelled) setServerTrip(data.trip ?? null);
         if (!cancelled) setPlaceCosts(data.placeCosts ?? null);
         if (!cancelled) setLiveStay(data.accommodationProperty ?? null);
         if (!cancelled) {
@@ -151,7 +153,19 @@ function BudgetContent() {
       const response = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget/estimate", { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
-      if (data.calculation?.items) setItems(data.calculation.items);
+      // A generated estimate may intentionally preserve a newer manual budget.
+      // Reload the persisted budget instead of replacing the editor with estimate values.
+      const persistedResponse = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget");
+      const persistedData = await persistedResponse.json().catch(() => ({}));
+      if (!persistedResponse.ok) throw new Error(persistedData.error || "Estimate was generated, but the saved budget could not be reloaded.");
+      if (persistedData.trip) setServerTrip(persistedData.trip);
+      if (persistedData.budget?.items) {
+        const persistedItems = Object.fromEntries(CATEGORIES.map((category) => [category.key, 0])) as Record<string, number>;
+        for (const item of persistedData.budget.items) persistedItems[item.category] = Number(item.amount) || 0;
+        setItems(persistedItems);
+      } else if (data.calculation?.items) {
+        setItems(data.calculation.items);
+      }
       if (data.placeCosts) setPlaceCosts(data.placeCosts);
       setLiveStay(data.liveStay ?? null);
       const status = String(data.pricing?.accommodationStatus || "estimated");
