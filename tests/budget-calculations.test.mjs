@@ -4,6 +4,7 @@ import { calculateBudget, calculateAccommodation, calculateDestinationTravel, ca
 import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates } from "../lib/budget/route-costs.ts";
 import { estimatePlaceCosts } from "../lib/budget/place-costs.ts";
 import { modeFromLocalTravelMethod } from "../lib/travel/route-mode.ts";
+import { searchStays } from "../lib/accommodation/staying.ts";
 
 test("people count updates per-person travel, food and activities; accommodation adds rooms for larger groups", () => {
   const one = calculateBudget({ days: 3, people: 1, budget: 50000, destination: "Hyderabad", travelMethod: "Train", localTravelMethod: "Public transport", stayPreference: "Hotel" });
@@ -73,4 +74,31 @@ test("route mode handles multiple local transport selections without unsupported
   assert.equal(modeFromLocalTravelMethod("Public transport, Taxi"), "DRIVE");
   assert.equal(modeFromLocalTravelMethod("Walking, Bike"), "WALK");
   assert.equal(modeFromLocalTravelMethod("Public transport"), "TRANSIT");
+});
+
+test("accommodation provider handles missing configuration, no results, priced listings and provider errors", async () => {
+  const previousKey = process.env.STAYINGAPI_KEY;
+  const previousFetch = globalThis.fetch;
+  const input = { location: "Vijayawada", checkIn: "2026-11-15", checkOut: "2026-11-17", adults: 2, stayPreference: "Hotel" };
+  try {
+    delete process.env.STAYINGAPI_KEY;
+    assert.deepEqual(await searchStays(input), []);
+
+    process.env.STAYINGAPI_KEY = "test-only-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    assert.deepEqual(await searchStays(input), []);
+
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ name: "Demo Stay", platform: "demo", price: { nightlyPrice: 2000, totalPrice: 4000, currency: "INR" }, url: "https://example.test/stay" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    const stays = await searchStays(input);
+    assert.equal(stays.length, 1);
+    assert.equal(stays[0].totalPrice, 4000);
+    assert.equal(stays[0].currency, "INR");
+
+    globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });
+    await assert.rejects(searchStays(input), /returned 503/);
+  } finally {
+    if (previousKey === undefined) delete process.env.STAYINGAPI_KEY;
+    else process.env.STAYINGAPI_KEY = previousKey;
+    globalThis.fetch = previousFetch;
+  }
 });
