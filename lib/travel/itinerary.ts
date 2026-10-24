@@ -245,7 +245,7 @@ export function buildSmartItinerary(
     const longTransfer = (timing.initialTravelMinutes ?? 0) >= 120;
     const crossRegionConflict = ordered.some((place, placeIndex) => placeIndex > 0 && travelMinutes(ordered[placeIndex - 1], place) >= 120);
     const lateFinish = items.some((place) => {
-      const match = place.startTime.match(/^(\\d+):(\\d{2}) (AM|PM)$/);
+      const match = place.startTime.match(/^(\d+):(\d{2}) (AM|PM)$/);
       if (!match) return false;
       let hour = Number(match[1]) % 12;
       if (match[3] === "PM") hour += 12;
