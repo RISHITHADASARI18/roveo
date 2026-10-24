@@ -18,9 +18,10 @@ type RoutePoint = { latitude: number; longitude: number };
 let accommodationPropertyColumnReady: Promise<void> | null = null;
 async function ensureAccommodationPropertyColumn() {
   if (!accommodationPropertyColumnReady) {
-    accommodationPropertyColumnReady = db.query(
-      "ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"
-    ).then(() => undefined).catch((error) => {
+    accommodationPropertyColumnReady = Promise.all([
+      db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"),
+      db.query("ALTER TABLE trip_budgets ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]).then(() => undefined).catch((error) => {
       accommodationPropertyColumnReady = null;
       throw error;
     });
@@ -486,7 +487,8 @@ export async function POST(
         activities = EXCLUDED.activities,
         other = EXCLUDED.other,
         contingency = EXCLUDED.contingency,
-        updated_at = NOW()
+        updated_at = NOW(),
+        is_manual = FALSE
        WHERE $9::timestamptz IS NOT NULL
          AND trip_budgets.updated_at <= $9::timestamptz` ,
       [
