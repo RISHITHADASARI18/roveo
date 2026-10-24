@@ -8,4 +8,6 @@ export type PlannerPlace = {
   address?: string;
   websiteUrl?: string;
   destinationId?: string | null;
+  openingHours?: string;
+  visitDurationMinutes?: number;
 };
