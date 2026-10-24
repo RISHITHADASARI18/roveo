@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getTravelProvider } from "@/lib/travel";
 import type { TravelMode } from "@/lib/travel/types";
+import { modeFromLocalTravelMethod } from "@/lib/travel/route-mode";
 
 export const runtime = "nodejs";
 
@@ -21,21 +22,6 @@ function tripIdFromParams(params: { id: string }) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function modeFromLocalTravelMethod(value: string): TravelMode | null {
-  switch (value.trim().toLowerCase()) {
-    case "car":
-    case "taxi":
-      return "DRIVE";
-    case "walking":
-      return "WALK";
-    case "bike":
-      return "BICYCLE";
-    case "public transport":
-      return "TRANSIT";
-    default:
-      return null;
-  }
-}
 
 function requestedMode(value: unknown, fallback: TravelMode): TravelMode | null {
   if (value === undefined || value === null || value === "") return fallback;
@@ -148,9 +134,9 @@ export async function GET(
         encoded_polyline AS "encodedPolyline",
         generated_at AS "generatedAt"
        FROM itinerary_route_legs
-       WHERE trip_id = $1
+       WHERE trip_id = $1 AND mode = $2
        ORDER BY day_id ASC, from_item_id ASC`,
-      [tripId]
+      [tripId, modeFromLocalTravelMethod(String(trip.rows[0].localTravelMethod ?? ""))]
     );
 
     return NextResponse.json({
