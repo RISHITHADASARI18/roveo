@@ -11,6 +11,7 @@ test("state-wide discovery is enabled only for an explicit Kerala destination", 
 
 test("common destination aliases normalize to the same deduplication key", () => {
   assert.equal(normalizePlaceName("Alleppey"), normalizePlaceName("Alappuzha"));
+  assert.equal(normalizePlaceName("Alleppey Beach"), normalizePlaceName("Alappuzha Beach"));
   assert.equal(normalizePlaceName("Trivandrum"), normalizePlaceName("Thiruvananthapuram"));
   assert.equal(normalizePlaceName("Cochin"), normalizePlaceName("Kochi"));
 });
