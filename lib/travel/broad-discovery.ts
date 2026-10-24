@@ -891,7 +891,8 @@ async function discoverBroadPlacesUncached(
         latitude: 17.2543,
         longitude: 78.6808,
         distanceKm: haversineKm(coverage.center, { latitude: 17.2543, longitude: 78.6808 }),
-        description: "Large film-studio and entertainment complex. Plan a dedicated full day and check the official schedule for your visit date.",
+        description: "Large film-studio and entertainment complex. Plan a dedicated full day. Regular hours are 09:00–17:30, but seasonal events may extend the schedule; verify the official calendar for your date.",
+        openingHours: "Mo-Su 09:00-17:30",
         website: "https://www.ramojifilmcity.com/",
       },
       {
@@ -902,7 +903,8 @@ async function discoverBroadPlacesUncached(
         latitude: 17.2135,
         longitude: 78.6035,
         distanceKm: haversineKm(coverage.center, { latitude: 17.2135, longitude: 78.6035 }),
-        description: "Theme and water park. Plan a dedicated day and check date-specific operating hours before visiting.",
+        description: "Theme and water park. Plan a dedicated day; weekdays generally run 11:00–18:00 and weekends/holidays 11:00–19:00. Confirm date-specific hours before visiting.",
+        openingHours: "Mo-Fr 11:00-18:00; Sa-Su 11:00-19:00",
         website: "https://www.wonderla.com/",
       },
     ], { allowOutsideBounds: true, maxDistanceKm: 65 });
