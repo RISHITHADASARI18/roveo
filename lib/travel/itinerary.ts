@@ -30,12 +30,38 @@ function centroid(items: PlannerPlace[]) {
   };
 }
 
-function categoryDuration(category = "") {
-  const value = category.toLowerCase();
+function categoryDuration(place: PlannerPlace) {
+  if (typeof place.visitDurationMinutes === "number" && Number.isFinite(place.visitDurationMinutes)) {
+    return Math.max(30, Math.min(720, Math.round(place.visitDurationMinutes)));
+  }
+  const name = place.name.toLowerCase();
+  const value = (place.category ?? "").toLowerCase() + " " + name;
+  // These attractions are destination-scale experiences, not quick stops.
+  // Keep their time blocks large enough that the planner reserves a day for them.
+  if (/ramoji\s*(film|film city)|ramoji film city/.test(name)) return 480;
+  if (/wonderla/.test(name)) return 420;
+  if (/universal studios|disneyland|disney world|imagica|adlabs/.test(name)) return 480;
+  if (/full.?day|safari|national park|wildlife sanctuary/.test(value)) return 360;
   if (/museum|palace|fort|heritage|historic|religious|temple|church|monument/.test(value)) return 105;
   if (/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(value)) return 120;
-  if (/activity|amusement|theme|water_park|zoo|aquarium/.test(value)) return 150;
+  if (/activity|amusement|theme|water_park|water park|zoo|aquarium/.test(value)) return 180;
   return 90;
+}
+
+function isFullDayAttraction(place: PlannerPlace) {
+  return categoryDuration(place) >= 360;
+}
+
+function openingWindow(place: PlannerPlace) {
+  const hours = place.openingHours ?? "";
+  // Supports common OSM/Google display strings such as "Mo-Su 10:00-19:00".
+  // If a provider returns a more complex weekly schedule, keep the safe default.
+  const match = hours.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const open = Number(match[1]) * 60 + Number(match[2]);
+  const close = Number(match[3]) * 60 + Number(match[4]);
+  if (open < 0 || close <= open || close > 24 * 60) return null;
+  return { open, close };
 }
 
 function timeLabel(minutes: number) {
@@ -134,15 +160,26 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     }));
   }
 
-  const seeds = chooseSeeds(places, days, distanceKm);
-  seeds.forEach((seed, index) => clusters[index].push(seed));
-  const seeded = new Set(seeds.map((place) => place.id));
+  // A full-day attraction (for example Ramoji Film City or Wonderla) reserves
+  // its own day whenever the trip has enough days. Never put it at 2 PM after
+  // several short stops simply because it is geographically close to them.
+  const fullDayPlaces = places.filter(isFullDayAttraction);
+  const reservedFullDay = fullDayPlaces.slice(0, days);
+  reservedFullDay.forEach((place, index) => clusters[index].push(place));
+  const fullDayIds = new Set(fullDayPlaces.map((place) => place.id));
+  const regularPlaces = places.filter((place) => !fullDayIds.has(place.id));
+  const freeDayIndexes = clusters.map((cluster, index) => cluster.length ? -1 : index).filter((index) => index >= 0);
+  const seeds = chooseSeeds(regularPlaces, freeDayIndexes.length, distanceKm);
+  seeds.forEach((seed, index) => clusters[freeDayIndexes[index]].push(seed));
+  const seeded = new Set([...reservedFullDay.map((place) => place.id), ...seeds.map((place) => place.id)]);
+  // If there are more full-day attractions than trip days, keep every selected
+  // attraction rather than silently dropping one; the day reason flags the conflict.
   const remaining = places.filter((place) => !seeded.has(place.id));
   // Balance sightseeing workload as well as geographic proximity. A day with
   // several long activities should not receive the same number of stops as a
   // day containing short viewpoints. Keep every selected place, but penalize
   // days that would become impractically long.
-  const estimatedDuration = (place: PlannerPlace) => categoryDuration(place.category);
+  const estimatedDuration = (place: PlannerPlace) => categoryDuration(place);
   const dayWorkload = (items: PlannerPlace[]) => items.reduce((sum, place, index) =>
     sum + estimatedDuration(place) + (index > 0 ? travelMinutes(items[index - 1], place) : 0), 0
   );
@@ -152,6 +189,8 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     let bestScore = Infinity;
     for (let day = 0; day < days; day += 1) {
       const current = clusters[day];
+      // Avoid assigning ordinary stops to a day already reserved for a full-day attraction.
+      if (current.some(isFullDayAttraction) && !isFullDayAttraction(place)) continue;
       const center = centroid(current.length ? current : [seeds[day] ?? place]);
       const centerPoint = { id: "centroid", name: "", latitude: center.latitude, longitude: center.longitude };
       const proximity = distanceKm(place, centerPoint);
@@ -177,8 +216,10 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       const previous = ordered[placeIndex - 1];
       const travelTime = previous ? travelMinutes(previous, place) : 0;
       if (previous) { totalDistance += distanceKm(previous, place); clock += travelTime; }
+      const durationMinutes = categoryDuration(place);
+      const window = openingWindow(place);
+      if (window && clock < window.open) clock = window.open;
       const startTime = timeLabel(clock);
-      const durationMinutes = categoryDuration(place.category);
       clock += durationMinutes;
       if (placeIndex === 1 && ordered.length >= 3) clock += 45;
       return { ...place, startTime, durationMinutes, travelTimeMinutes: travelTime };
@@ -188,8 +229,22 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     const spread = maxKm > 35 ? "wide" : maxKm > 15 ? "regional" : "nearby";
     const title = index === 0 ? "Start with the " + spread + " highlights" : index === days - 1 ? "Final discoveries nearby" : "Explore one area at a time";
     const estimatedMinutes = items.reduce((sum, place) => sum + place.durationMinutes + place.travelTimeMinutes, 0);
-    const reason = estimatedMinutes > 600
-      ? "This is a packed day (about " + Math.round(estimatedMinutes / 60) + " hours of visits and estimated transfers). Consider moving a place to another day."
+    const hasFullDay = ordered.some(isFullDayAttraction);
+    const fullDayConflict = ordered.filter(isFullDayAttraction).length > 1;
+    const outsideOpeningHours = items.some((place) => {
+      const window = openingWindow(place);
+      if (!window) return false;
+      const start = (() => { const match = place.startTime.match(/^(\d+):(\d{2}) (AM|PM)$/); if (!match) return 0; let hour = Number(match[1]) % 12; if (match[3] === "PM") hour += 12; return hour * 60 + Number(match[2]); })();
+      return start + place.durationMinutes > window.close;
+    });
+    const reason = fullDayConflict
+      ? "Multiple full-day attractions were selected for one day, but each normally needs its own day. Add trip days or move an attraction."
+      : hasFullDay && ordered.length > 1
+        ? "A full-day attraction is grouped with other stops because the trip has too few free days. Give it a dedicated day for a realistic schedule."
+        : outsideOpeningHours
+          ? "At least one visit may extend beyond its listed opening hours. Check the venue's current schedule before travelling."
+          : estimatedMinutes > 600
+            ? "This is a packed day (about " + Math.round(estimatedMinutes / 60) + " hours of visits and estimated transfers). Consider moving a place to another day."
       : ordered.length <= 1
         ? "A light day keeps the trip flexible."
         : spread === "nearby"
