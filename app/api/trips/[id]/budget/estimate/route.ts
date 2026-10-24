@@ -212,6 +212,26 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
+    const days = Number(trip.days);
+    const people = Number(trip.people);
+    const tripBudget = Number(trip.budget);
+    if (!Number.isInteger(days) || days < 1 || !Number.isInteger(people) || people < 1 ||
+        !Number.isFinite(tripBudget) || tripBudget < 0 || !String(trip.destination ?? "").trim()) {
+      return NextResponse.json(
+        { error: "This trip is missing valid destination, duration, traveller count, or budget details. Update the trip details before generating a budget." },
+        { status: 422 },
+      );
+    }
+
+    // Capture the estimate version before slower route/provider lookups. A manual
+    // edit made while generation is running must not be overwritten by this estimate.
+    // If no previous estimate exists, preserve any pre-existing editable budget.
+    const previousEstimateResult = await db.query(
+      'SELECT generated_at AS "generatedAt" FROM trip_cost_estimates WHERE trip_id = $1',
+      [tripId],
+    );
+    const previousEstimateGeneratedAt = previousEstimateResult.rows[0]?.generatedAt ?? null;
+
     const calculation = calculateBudget({
       days: Number(trip.days),
       people: Number(trip.people),
@@ -451,9 +471,9 @@ export async function POST(
       ],
     );
 
-    // Initialise the editable budget table at the same time as the estimate.
-    // The Budget page reads trip_budgets, so only writing trip_cost_estimates
-    // previously made the page appear uninitialised after a refresh.
+    // Initialize or refresh the editable budget only if it has not been manually
+    // changed since the estimate version captured above. The timestamp predicate
+    // also protects edits made while route/provider lookups were still running.
     await db.query(
       `INSERT INTO trip_budgets
         (trip_id, destination_travel, accommodation, local_transport, food, activities, other, contingency)
@@ -466,7 +486,9 @@ export async function POST(
         activities = EXCLUDED.activities,
         other = EXCLUDED.other,
         contingency = EXCLUDED.contingency,
-        updated_at = NOW()`,
+        updated_at = NOW()
+       WHERE $9::timestamptz IS NOT NULL
+         AND trip_budgets.updated_at <= $9::timestamptz` ,
       [
         tripId,
         calculation.items.destinationTravel,
@@ -476,6 +498,7 @@ export async function POST(
         calculation.items.activities,
         calculation.items.other,
         calculation.items.contingency,
+        previousEstimateGeneratedAt,
       ],
     );
 
