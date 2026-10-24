@@ -31,7 +31,7 @@ function haversine(a:GeoPoint,b:GeoPoint){
 function estimateVisitMinutes(place:Place){
   const name=place.name.toLowerCase();
   const text=(place.type+" "+place.group+" "+name).toLowerCase();
-  if(/ramoji\\s*(film|film city)|ramoji film city/.test(name))return 480;
+  if(/ramoji\s*(film|film city)|ramoji film city/.test(name))return 480;
   if(/wonderla/.test(name))return 420;
   if(/universal studios|disneyland|disney world|imagica|adlabs/.test(name))return 480;
   if(/water_park|water park|theme_park|amusement|zoo|aquarium/.test(text))return 240;
