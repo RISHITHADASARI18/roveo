@@ -92,7 +92,7 @@ function ItineraryContent(){
         const name=String(item.place?.name||"").toLowerCase();
         const duration=Number(item.durationMinutes)||0;
         const start=String(item.startTime||"");
-        if(/ramoji\\s*film city|ramoji film city/.test(name)){
+        if(/ramoji\s*film city|ramoji film city/.test(name)){
           return duration<360 || !/^0?9:|^9:/.test(start);
         }
         if(/wonderla/.test(name)){
