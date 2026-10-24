@@ -529,6 +529,46 @@ async function wikipediaExactPlaces(titles: string[]): Promise<DiscoveredPlace[]
   }
 }
 
+async function nominatimDestinationSearch(destination: string, desiredQuery: string, bounds: Bounds | undefined, center: Coordinates): Promise<DiscoveredPlace[]> {
+  const params = new URLSearchParams({
+    q: desiredQuery ? desiredQuery + " " + destination : "tourist attractions " + destination,
+    format: "jsonv2",
+    limit: "20",
+    addressdetails: "1",
+    "accept-language": "en",
+  });
+  if (bounds) {
+    params.set("viewbox", [bounds.west, bounds.north, bounds.east, bounds.south].join(","));
+    params.set("bounded", "1");
+  }
+  try {
+    const response = await fetchWithTimeout(
+      NOMINATIM_URL + "?" + params.toString(),
+      { headers: { Accept: "application/json", "User-Agent": "Roveo/1.0 (travel planner; local attraction fallback)" }, cache: "no-store" },
+      3500,
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (Array.isArray(data) ? data : []).map((item: any) => {
+      const latitude = Number(item.lat), longitude = Number(item.lon);
+      const name = String(item.name || item.display_name?.split(",")[0] || "").trim();
+      if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+      const address = String(item.display_name ?? "").trim();
+      const type = String(item.type ?? item.class ?? "place").toLowerCase();
+      return {
+        id: "nominatim-destination-" + String(item.osm_type ?? "place") + "-" + String(item.osm_id ?? item.place_id ?? name),
+        name, type, group: groupFor(name + " " + type + " " + address), latitude, longitude,
+        distanceKm: haversineKm(center, { latitude, longitude }),
+        description: address || "Nearby named place from OpenStreetMap search.",
+        address: address || undefined,
+        website: item.extratags?.website || item.extratags?.contact_website || undefined,
+      } as DiscoveredPlace;
+    }).filter((place): place is DiscoveredPlace => Boolean(place) && insideBounds(place!, bounds));
+  } catch (error) {
+    console.warn("Nominatim destination fallback failed.", error);
+    return [];
+  }
+}
 async function googleFallback(destination: string, bounds: Bounds | undefined, center: Coordinates, limit: number, desiredQuery = "") {
   const key = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [] as DiscoveredPlace[];
@@ -927,9 +967,18 @@ async function discoverBroadPlacesUncached(
     mergedCount: places.length,
   });
 
-  if (desiredQuery) {
-    const query = desiredQuery.toLowerCase();
-    places = places.filter((place) => (place.name + " " + (place.description ?? "") + " " + place.type + " " + place.group).toLowerCase().includes(query));
+  const matchesRequestedQuery = (place: DiscoveredPlace) => !desiredQuery ||
+    (place.name + " " + (place.description ?? "") + " " + place.type + " " + place.group).toLowerCase().includes(desiredQuery.toLowerCase());
+  if (desiredQuery) places = places.filter(matchesRequestedQuery);
+
+  // Free providers can be sparse or temporarily unavailable. When the merged set
+  // is thin, ask Nominatim for named local places using the same destination box;
+  // never replace a failed category query with unrelated generic attractions.
+  if (places.length < Math.min(6, limit)) {
+    const fallbackPlaces = await nominatimDestinationSearch(destination, desiredQuery, searchBounds, coverage.center);
+    addPlaces(fallbackPlaces);
+    places = [...unique.values()].map((place) => ({ ...place, distanceKm: haversineKm(coverage.center, place) }));
+    if (desiredQuery) places = places.filter(matchesRequestedQuery);
   }
 
   // Do not write the live result set to PostgreSQL on the request path. The old
