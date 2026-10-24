@@ -420,7 +420,7 @@ function ItineraryContent(){
           {routeMessage&&<span>{routeMessage}</span>}
         </div>
 
-        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
+        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place does":"places do"} not fit safely into the chosen number of days.</strong> Roveo has left these stops unscheduled rather than squeezing them after a full-day attraction or into an unrealistic late-night timeline. Add trip days or move the distant stop to a separate day, then rebuild.</div>}
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
