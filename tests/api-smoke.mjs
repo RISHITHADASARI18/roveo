@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { Client } from "pg";
 
 const base = process.env.BASE_URL || "http://127.0.0.1:3000";
 const accommodationProvider = createServer((request, response) => {
@@ -102,6 +103,17 @@ assert.equal(stayNoResults.availabilityConfirmed, false);
 assert.deepEqual(stayNoResults.stays, []);
 const invalidStayResponse = await fetch(base + "/api/accommodations/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-02-30", checkOut: "2026-03-02", adults: 2 }) });
 assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are rejected");
+
+// Regression test for deployments where the trip tables exist but the budget tables
+// were never created. The budget endpoint must safely initialize its own schema.
+const schemaClient = new Client({ connectionString: process.env.DATABASE_URL });
+await schemaClient.connect();
+try {
+  await schemaClient.query("DROP TABLE IF EXISTS trip_cost_estimates");
+  await schemaClient.query("DROP TABLE IF EXISTS trip_budgets");
+} finally {
+  await schemaClient.end();
+}
 
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
