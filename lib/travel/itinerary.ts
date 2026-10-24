@@ -53,7 +53,7 @@ function isFullDayAttraction(place: PlannerPlace) {
 }
 
 function openingWindow(place: PlannerPlace) {
-  const hours = place.openingHours ?? "";
+  const hours = place.openingHours ?? (/ramoji\\s*(film|film city)|ramoji film city/i.test(place.name) ? "Mo-Su 09:00-17:30" : /wonderla/i.test(place.name) ? "Mo-Fr 11:00-18:00; Sa-Su 11:00-19:00" : "");
   // Supports common OSM/Google display strings such as "Mo-Su 10:00-19:00".
   // If a provider returns a more complex weekly schedule, keep the safe default.
   const match = hours.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
@@ -241,7 +241,9 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       ? "Multiple full-day attractions were selected for one day, but each normally needs its own day. Add trip days or move an attraction."
       : hasFullDay && ordered.length > 1
         ? "A full-day attraction is grouped with other stops because the trip has too few free days. Give it a dedicated day for a realistic schedule."
-        : outsideOpeningHours
+        : hasFullDay
+          ? "Dedicated full-day attraction. Arrive near opening time and confirm the venue’s date-specific schedule before travelling."
+          : outsideOpeningHours
           ? "At least one visit may extend beyond its listed opening hours. Check the venue's current schedule before travelling."
           : estimatedMinutes > 600
             ? "This is a packed day (about " + Math.round(estimatedMinutes / 60) + " hours of visits and estimated transfers). Consider moving a place to another day."
