@@ -259,7 +259,7 @@ function BudgetContent() {
             <div className="budget-stat-grid">
               <div><span>Total budget</span><strong>₹{money(totalBudget)}</strong></div>
               <div><span>Planned</span><strong>₹{money(planned)}</strong></div>
-              <div><span>Remaining</span><strong className={remaining < 0 ? "budget-danger-text" : ""}>₹{money(Math.abs(remaining))}</strong></div>
+              <div><span>{remaining < 0 ? "Over budget by" : "Remaining"}</span><strong className={remaining < 0 ? "budget-danger-text" : ""}>₹{money(Math.abs(remaining))}</strong></div>
               <div><span>Per person</span><strong>₹{money(perPerson)}</strong></div>
               <div><span>Per day</span><strong>₹{money(perDay)}</strong></div>
             </div>
