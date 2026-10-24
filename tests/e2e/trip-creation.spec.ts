@@ -23,6 +23,9 @@ test("landing page to persisted trip carries every selected setting into the nex
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Make the trip/i })).toBeVisible();
   await page.getByRole("link", { name: /Go to Dashboard/i }).click();
+  // Wait for the dashboard React effects to restore/persist the trip draft before
+  // typing. A visible input alone can appear before hydration attaches its handlers.
+  await page.waitForFunction(() => window.localStorage.getItem("roveo-trip-draft-v1") !== null);
 
   await page.getByPlaceholder("Starting location").fill("Hyderabad");
   await expect(page.locator(".location-suggestions button")).toHaveCount(1, { timeout: 10000 });
