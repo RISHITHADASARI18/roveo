@@ -78,6 +78,14 @@ assert.ok(generatedRoutes.routes.every((route) => route.mode === generatedRoutes
 const reloadedRoutes = await api(`/api/trips/${trip.id}/routes`);
 assert.ok(reloadedRoutes.routes.every((route) => route.mode === reloadedRoutes.mode), "reloaded map routes do not mix travel modes");
 
+const stayFallback = await api("/api/accommodations/search", { method: "POST", body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-11-15", checkOut: "2026-11-17", adults: 2, stayPreference: "Hotel" }) });
+assert.equal(stayFallback.providerStatus, "not_configured", "missing provider configuration is explicit");
+assert.equal(stayFallback.live, false);
+assert.equal(stayFallback.availabilityConfirmed, false);
+assert.deepEqual(stayFallback.stays, []);
+const invalidStayResponse = await fetch(base + "/api/accommodations/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-02-30", checkOut: "2026-03-02", adults: 2 }) });
+assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are rejected");
+
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
 assert.equal(estimate.pricing.accommodationStatus, "estimate-provider-not-configured", "no provider key is reported as an estimate, not a live price");
