@@ -5,6 +5,14 @@ import { estimatePlaceCosts } from "@/lib/budget/place-costs";
 export const runtime = "nodejs";
 
 const CATEGORIES = ["destinationTravel","accommodation","localTransport","food","activities","other","contingency"] as const;
+
+let accommodationPropertyColumnReady: Promise<void> | null = null;
+async function ensureAccommodationPropertyColumn() {
+  if (!accommodationPropertyColumnReady) {
+    accommodationPropertyColumnReady = db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB").then(() => undefined).catch((error) => { accommodationPropertyColumnReady = null; throw error; });
+  }
+  return accommodationPropertyColumnReady;
+}
 type Category = typeof CATEGORIES[number];
 
 function tripIdFromParams(params: { id: string }) {
@@ -32,6 +40,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
   const tripId=tripIdFromParams(await params);
   if(!tripId)return NextResponse.json({error:"Invalid trip id."},{status:400});
   try {
+    await ensureAccommodationPropertyColumn();
     const result=await db.query(
       `SELECT
         destination_travel AS "destinationTravel",
@@ -48,7 +57,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         const estimateResult = await db.query(
       `SELECT destination_travel AS "destinationTravel", accommodation,
         local_transport AS "localTransport", food, activities, other, contingency,
-        confidence AS "estimateConfidence", source AS "estimateSource"
+        confidence AS "estimateConfidence", source AS "estimateSource", accommodation_property AS "accommodationProperty"
        FROM trip_cost_estimates WHERE trip_id=$1`, [tripId]);
         const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
     const places = await db.query(
@@ -66,6 +75,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
     return NextResponse.json({
       budget:buildBreakdown(initialBudget),
       placeCosts: { ...placeCosts, provisionalUnpricedAllowance },
+      accommodationProperty: estimateResult.rows[0]?.accommodationProperty ?? null,
       initializedFromEstimate:!result.rows[0] && Boolean(estimateResult.rows[0]),
       accommodationStatus: (() => {
         const confidence = String(estimateResult.rows[0]?.estimateConfidence ?? "");
