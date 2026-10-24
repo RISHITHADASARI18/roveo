@@ -25,7 +25,6 @@ function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: 
 async function estimateSelectedRouteDistance(places: CostPlace[]) {
   const points = places.filter((place) =>
     place.latitude != null && place.longitude != null &&
-    Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude)) &&
     Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude))
   ).slice(0, 50).map((place) => ({
     latitude: Number(place.latitude),
