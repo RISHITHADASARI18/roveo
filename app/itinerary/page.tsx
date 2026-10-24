@@ -24,6 +24,7 @@ type PlannedPlace = {
   startTime?:string;
   durationMinutes?:number;
   travelTimeMinutes?:number;
+  openingHours?:string;
   address?:string;
   description?:string;
   websiteUrl?:string;
@@ -47,6 +48,8 @@ function ItineraryContent(){
   const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<PlannedPlace[][]>([]);
   const [planDestinations,setPlanDestinations]=useState<string[]>([]);
+  const [planDayTitles,setPlanDayTitles]=useState<string[]>([]);
+  const [planDayReasons,setPlanDayReasons]=useState<string[]>([]);
   const [loading,setLoading]=useState(true);
   const [planning,setPlanning]=useState(false);
   const [message,setMessage]=useState("Loading your selected places…");
@@ -64,7 +67,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Real road routes loaded.":"");
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Saved route lines loaded for the selected route mode.":"");
     }catch(error){
       setRoutes([]);
       setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
@@ -78,6 +81,26 @@ function ItineraryContent(){
       if(!res.ok)return false;
       const data=await res.json();
       if(!Array.isArray(data.days)||!data.days.length)return false;
+      // A saved plan for a different duration is stale even when its selected
+      // place IDs still match. Rebuild it to respect the days chosen for this trip.
+      if(data.days.length!==days)return false;
+
+      // Rebuild legacy plans that treated destination-scale attractions as short stops.
+      // Otherwise an old saved 2 PM Ramoji slot would survive refresh even after the
+      // planner knows it needs a dedicated day and a full-day duration.
+      const hasUnrealisticLegacyTiming = data.days.some((day:any)=>(day.items||[]).some((item:any)=>{
+        const name=String(item.place?.name||"").toLowerCase();
+        const duration=Number(item.durationMinutes)||0;
+        const start=String(item.startTime||"");
+        if(/ramoji\s*film city|ramoji film city/.test(name)){
+          return duration<360 || !/^0?9:|^9:/.test(start);
+        }
+        if(/wonderla/.test(name)){
+          return duration<360 || !/^11:/.test(start);
+        }
+        return false;
+      }));
+      if(hasUnrealisticLegacyTiming)return false;
 
       // The itinerary must match the exact places currently selected in Places to Explore.
       // Rebuild if a place was added or removed there, rather than showing a stale plan.
@@ -136,6 +159,8 @@ function ItineraryContent(){
         // Also show the destination heading when restoring a saved single-city trip.
         setPlanDestinations(data.days.map(()=>String(savedDestinations[0]?.name||destination)));
       }
+      setPlanDayTitles(data.days.map((day:any)=>String(day.title||"")));
+      setPlanDayReasons(data.days.map((day:any)=>String(day.reason||"")));
       const restored=data.days.map((day:any)=>
         (day.items||[]).map((item:any)=>item.place?{
           id:String(item.tripPlaceId),
@@ -147,6 +172,7 @@ function ItineraryContent(){
           startTime:item.startTime||"",
           durationMinutes:Number(item.durationMinutes)||0,
           travelTimeMinutes:Number(item.travelTimeMinutes)||0,
+          openingHours:item.place.openingHours||"",
           address:item.place.address||"",
           description:item.place.description||"",
           websiteUrl:item.place.websiteUrl||""
@@ -192,6 +218,7 @@ function ItineraryContent(){
           startTime:place.startTime,
           durationMinutes:Number(place.durationMinutes)||0,
           travelTimeMinutes:Number(place.travelTimeMinutes)||0,
+          openingHours:place.openingHours||"",
           address:place.address||"",
           description:place.description||"",
           websiteUrl:place.websiteUrl||""
@@ -199,6 +226,8 @@ function ItineraryContent(){
       );
       setPlans(next);
       setPlanDestinations((data.days||[]).map((day:any)=>String(day.destinationName||"")));
+      setPlanDayTitles((data.days||[]).map((day:any)=>String(day.title||"")));
+      setPlanDayReasons((data.days||[]).map((day:any)=>String(day.reason||"")));
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
@@ -310,7 +339,7 @@ function ItineraryContent(){
   async function calculateRoutes(){
     if(!tripId)return;
     try{
-      setRouteMessage("Calculating real road routes between same-day stops…");
+      setRouteMessage("Calculating route estimates between same-day stops…");
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -319,7 +348,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(data.routeCount?"Real road routes calculated and saved.":"No same-day route legs are needed yet.");
+      setRouteMessage(data.routeCount?("Saved "+(data.mode==="DRIVE"?"driving":data.mode==="WALK"?"walking":data.mode==="BICYCLE"?"cycling":"selected-mode")+" route estimates between same-day stops."):"No same-day route legs are needed yet.");
     }catch(error){
       setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
     }
@@ -386,24 +415,24 @@ function ItineraryContent(){
 
         <div className="itinerary-save-row">
           <button type="button" className="primary-button" onClick={buildPlan} disabled={planning||loading||!tripId||!selectedCount}>{planning?"Planning…":"↻ Rebuild smart plan"}</button>
-          <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length}>{saving?"Saving…":"Save itinerary"}</button>
+          <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length||unplanned.length>0}>{saving?"Saving…":"Save itinerary"}</button>
           {saveMessage&&<span>{saveMessage}</span>}
           {routeMessage&&<span>{routeMessage}</span>}
         </div>
 
-        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
+        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place does":"places do"} not fit safely into the chosen number of days.</strong> Roveo has left these stops unscheduled rather than squeezing them after a full-day attraction or into an unrealistic late-night timeline. Add trip days or move the distant stop to a separate day, then rebuild.</div>}
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
             const total=items.length>1?items.slice(1).reduce((sum,place,index)=>sum+km(items[index],place),0):0;
-            const dayTitle=day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time";
+            const dayTitle=planDayTitles[day]||(day===0?"Arrival & nearby highlights":day===days-1?"Final discoveries & return":"Explore one area at a time");
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
                 <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]?planDestinations[day]+" · "+dayTitle:dayTitle}</h3></div>
                 <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km straight-line between stops</span></div>
               </div>
 
-              <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
+              <p className="planning-rule">{planDayReasons[day]||"Roveo grouped this day geographically first, then ordered the stops to reduce backtracking."}</p>
 
               <div className="planned-place-list">
                 {items.map((place,index)=><div className="planned-place" key={place.id}>
@@ -412,9 +441,10 @@ function ItineraryContent(){
                     <strong>{place.name}</strong>
                     <small>{place.startTime||"Suggested time"} · Visit for about {place.durationMinutes||90} min</small>
                     <small>{String(place.type||"place").replaceAll("_"," ")}</small>
+                    {place.openingHours&&<small>Opening hours: {place.openingHours}</small>}
                     {place.address&&<small>{place.address}</small>}
                     {place.description&&<small>{place.description}</small>}
-                    {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
+                    {place.travelTimeMinutes? <small>{index===0?"Transfer from previous destination":"Travel from previous stop"}: ~{place.travelTimeMinutes} min</small>:null}
                     <div className="planned-place-links">
                       <a href={"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(place.lat+","+place.lon)} target="_blank" rel="noreferrer">Directions ↗</a>
                       {place.websiteUrl&&<a href={place.websiteUrl} target="_blank" rel="noreferrer">Official website ↗</a>}
@@ -439,12 +469,6 @@ function ItineraryContent(){
       </div>
 
       <aside className="itinerary-side">
-        <div className="itinerary-map-card">
-          <span className="eyebrow">03 · ROUTE MAP</span><h2>See the plan spatially.</h2>
-          {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
-          {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
-        </div>
-
         <div className="budget-breakdown">
           <span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2>
           <div><span>Starting point</span><strong>{source||"—"}</strong></div>
@@ -459,9 +483,19 @@ function ItineraryContent(){
           <span className="eyebrow">05 · ROVEO LOGIC</span>
           <h2>Less travel. More exploring.</h2>
           <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
-          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
+          <p className="planning-rule">The Save step calculates route estimates between the actual same-day stops. These lines are not turn-by-turn navigation; public-transit routing is not supported in-app. Use each stop’s Directions link to open navigation in Google Maps.</p>
         </div>
       </aside>
+    </section>
+
+    <section className="itinerary-map-bottom">
+      <div className="itinerary-map-card itinerary-map-large">
+        <span className="eyebrow">06 · FULL ROUTE MAP</span>
+        <h2>Every stop, on one larger map.</h2>
+        <p className="planning-rule">Pins show the places assigned to each day. Select a pin to see its name and day. Route lines connect consecutive planned stops when route geometry is available; they are estimates, not turn-by-turn navigation.</p>
+        {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
+        {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
+      </div>
     </section>
   </main>;
 }

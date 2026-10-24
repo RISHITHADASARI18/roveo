@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readPlaceTimingMetadata } from "@/lib/travel/place-timing";
 
 export const runtime = "nodejs";
 
@@ -113,7 +114,7 @@ export async function GET(
                 latitude: row.latitude,
                 longitude: row.longitude,
                 category: row.category,
-                description: row.description,
+                ...readPlaceTimingMetadata(row.description == null ? null : String(row.description)),
                 photoUrl: row.photoUrl,
                 websiteUrl: row.websiteUrl,
                 address: row.address,

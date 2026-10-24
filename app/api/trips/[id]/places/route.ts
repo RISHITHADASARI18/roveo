@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { attachPlaceTimingMetadata, readPlaceTimingMetadata } from "@/lib/travel/place-timing";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,8 @@ type PlaceInput = {
   websiteUrl?: unknown;
   address?: unknown;
   destinationId?: unknown;
+  openingHours?: unknown;
+  visitDurationMinutes?: unknown;
 };
 
 function text(value: unknown) {
@@ -22,6 +25,7 @@ function text(value: unknown) {
 }
 
 function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -72,7 +76,10 @@ export async function GET(
       [tripId]
     );
 
-    return NextResponse.json({ places: result.rows });
+    return NextResponse.json({ places: result.rows.map((row: any) => ({
+      ...row,
+      ...readPlaceTimingMetadata(row.description),
+    })) });
   } catch (error) {
     console.error("GET /api/trips/[id]/places failed:", error);
     return NextResponse.json(
@@ -104,7 +111,11 @@ export async function POST(
   const latitude = finiteNumber(body.latitude);
   const longitude = finiteNumber(body.longitude);
   const category = text(body.category) || null;
-  const description = text(body.description) || null;
+  const baseDescription = text(body.description) || null;
+  const description = attachPlaceTimingMetadata(baseDescription, {
+    openingHours: text(body.openingHours) || undefined,
+    visitDurationMinutes: finiteNumber(body.visitDurationMinutes) ?? undefined,
+  });
   const photoUrl = text(body.photoUrl) || null;
   const websiteUrl = text(body.websiteUrl) || null;
   const address = text(body.address) || null;
@@ -173,7 +184,12 @@ export async function POST(
       ]
     );
 
-    return NextResponse.json({ place: result.rows[0] }, { status: 201 });
+    return NextResponse.json({
+      place: {
+        ...result.rows[0],
+        ...readPlaceTimingMetadata(result.rows[0].description),
+      },
+    }, { status: 201 });
   } catch (error) {
     console.error("POST /api/trips/[id]/places failed:", error);
     return NextResponse.json(

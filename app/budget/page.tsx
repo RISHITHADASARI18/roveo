@@ -9,12 +9,38 @@ type BudgetItem = {
   description: string;
 };
 
+type PlaceCostBreakdown = {
+  places: Array<{
+    name: string;
+    category: string;
+    ticketCostPerPerson: number | null;
+    minCostPerPerson: number | null;
+    maxCostPerPerson: number | null;
+    people: number;
+    total: number | null;
+    minTotal: number | null;
+    maxTotal: number | null;
+    label: string;
+    confidence: "official-range" | "unknown";
+    sourceUrl?: string;
+    priceNote?: string;
+  }>;
+  pricedPlaceCount: number;
+  unpricedPlaceCount: number;
+  total: number;
+  minTotal: number;
+  maxTotal: number;
+  source: string;
+  pricingMethod: string;
+  provisionalUnpricedAllowance?: number;
+};
+
 const CATEGORIES: BudgetItem[] = [
-  { key: "destinationTravel", label: "Travel to destination", description: "Bus, train, flight or fuel for reaching the destination." },
-  { key: "accommodation", label: "Accommodation", description: "Hotel, homestay, hostel or other stay costs." },
-  { key: "localTransport", label: "Local transport", description: "Taxi, public transport, rental, fuel or transfers." },
-  { key: "food", label: "Food", description: "Meals, drinks and everyday food expenses." },
-  { key: "activities", label: "Activities & tickets", description: "Entry fees, tours, experiences and activities." },
+  { key: "destinationTravel", label: "Travel to destination", description: "Estimated bus, train, flight or fuel cost for the full group." },
+  { key: "accommodation", label: "Accommodation / stay", description: "Estimated hotel, homestay or hostel cost for your trip nights." },
+  { key: "localTransport", label: "Travel between places", description: "Estimated taxis, public transport, rentals, fuel and transfers." },
+  { key: "food", label: "Food & drinks", description: "Estimated meals and drinks per person, per day." },
+  { key: "activities", label: "Activities & entry fees", description: "Planning allowance for activities; selected-place ticket prices are shown separately when trustworthy prices are available." },
   { key: "other", label: "Other", description: "Shopping, parking, tips and anything else." },
   { key: "contingency", label: "Emergency / contingency", description: "A reserve for unexpected expenses." },
 ];
@@ -26,15 +52,12 @@ function money(value: number) {
 function BudgetContent() {
   const params = useSearchParams();
   const tripId = params.get("tripId") || "";
-  const source = params.get("source") || "";
-  const destination = params.get("destination") || "Your trip";
-  const days = Math.max(1, Number(params.get("days")) || 1);
-  const people = Math.max(1, Number(params.get("people")) || 1);
-  const totalBudget = Math.max(0, Number(params.get("budget")) || 0);
+
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
 
+  const [serverTrip, setServerTrip] = useState<{days:number;people:number;budget:number;source:string;destination:string}|null>(null);
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
   );
@@ -42,7 +65,17 @@ function BudgetContent() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
+  const [accommodationMessage, setAccommodationMessage] = useState("");
+  const [accommodationStatus, setAccommodationStatus] = useState("estimated");
+  const [liveStay, setLiveStay] = useState<{name:string;totalPrice:number;currency:string;platform:string;url?:string;checkIn?:string;checkOut?:string;nights?:number;adults?:number}|null>(null);
+  const [placeCosts, setPlaceCosts] = useState<PlaceCostBreakdown | null>(null);
   const [estimating, setEstimating] = useState(false);
+
+  const source = serverTrip?.source || params.get("source") || "";
+  const destination = serverTrip?.destination || params.get("destination") || "Your trip";
+  const days = Math.max(1, serverTrip?.days ?? (Number(params.get("days")) || 1));
+  const people = Math.max(1, serverTrip?.people ?? (Number(params.get("people")) || 1));
+  const totalBudget = Math.max(0, serverTrip?.budget ?? (Number(params.get("budget")) || 0));
 
   useEffect(() => {
     if (!tripId) {
@@ -59,6 +92,26 @@ function BudgetContent() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
 
+        if (!cancelled) setServerTrip(data.trip ?? null);
+        if (!cancelled) setPlaceCosts(data.placeCosts ?? null);
+        if (!cancelled) setLiveStay(data.accommodationProperty ?? null);
+        if (!cancelled) {
+          const status = String(data.accommodationStatus || "estimated");
+          setAccommodationStatus(status);
+          setAccommodationMessage(status === "provider-listed-price-not-confirmed"
+            ? "A provider-listed property price was used in the estimate. Availability is not confirmed, and the editable budget amount may have been changed manually."
+            : status === "estimate-no-priced-results"
+              ? "The provider returned no priced property for these dates. The saved accommodation amount is a Roveo estimate."
+              : status === "estimate-provider-not-configured"
+                ? "Live accommodation search is not configured. The saved accommodation amount is a Roveo estimate."
+                : status === "estimate-no-overnight-stay"
+                  ? "This trip has no overnight stays, so accommodation is estimated at zero."
+                  : status === "estimate-invalid-stay-dates"
+                    ? "The saved trip date or stay length is invalid, so accommodation remains a Roveo estimate."
+                    : status === "estimate-unsupported-currency"
+                      ? "The provider returned a price in another currency that Roveo cannot safely convert. The saved accommodation amount is a Roveo estimate."
+                  : "The saved accommodation amount is an estimate; availability has not been confirmed.");
+        }
         if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
@@ -102,9 +155,26 @@ function BudgetContent() {
       const response = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget/estimate", { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
-      if (data.calculation?.items) setItems(data.calculation.items);
+      // A generated estimate may intentionally preserve a newer manual budget.
+      // Reload the persisted budget instead of replacing the editor with estimate values.
+      const persistedResponse = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget");
+      const persistedData = await persistedResponse.json().catch(() => ({}));
+      if (!persistedResponse.ok) throw new Error(persistedData.error || "Estimate was generated, but the saved budget could not be reloaded.");
+      if (persistedData.trip) setServerTrip(persistedData.trip);
+      if (persistedData.budget?.items) {
+        const persistedItems = Object.fromEntries(CATEGORIES.map((category) => [category.key, 0])) as Record<string, number>;
+        for (const item of persistedData.budget.items) persistedItems[item.category] = Number(item.amount) || 0;
+        setItems(persistedItems);
+      } else if (data.calculation?.items) {
+        setItems(data.calculation.items);
+      }
+      if (data.placeCosts) setPlaceCosts(data.placeCosts);
+      setLiveStay(data.liveStay ?? null);
+      const status = String(data.pricing?.accommodationStatus || "estimated");
+      setAccommodationStatus(status);
+      setAccommodationMessage(String(data.pricing?.accommodationNote || "Accommodation is a planning estimate; provider prices do not confirm availability."));
       const source = data.pricing?.accommodationSource === "stayingapi"
-        ? "Live accommodation price + Roveo planning estimates"
+        ? "Provider-listed accommodation price + Roveo planning estimates"
         : "Roveo planning estimates";
       setEstimateSource(source);
       setMessage("Estimate refreshed.");
@@ -189,7 +259,7 @@ function BudgetContent() {
             <div className="budget-stat-grid">
               <div><span>Total budget</span><strong>₹{money(totalBudget)}</strong></div>
               <div><span>Planned</span><strong>₹{money(planned)}</strong></div>
-              <div><span>Remaining</span><strong className={remaining < 0 ? "budget-danger-text" : ""}>₹{money(Math.abs(remaining))}</strong></div>
+              <div><span>{remaining < 0 ? "Over budget by" : "Remaining"}</span><strong className={remaining < 0 ? "budget-danger-text" : ""}>₹{money(Math.abs(remaining))}</strong></div>
               <div><span>Per person</span><strong>₹{money(perPerson)}</strong></div>
               <div><span>Per day</span><strong>₹{money(perDay)}</strong></div>
             </div>
@@ -224,7 +294,68 @@ function BudgetContent() {
               ))}
             </div>
 
-            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            {placeCosts && placeCosts.places.length > 0 && (
+              <section className="budget-place-costs">
+                <div className="budget-place-costs-heading">
+                  <div>
+                    <span className="eyebrow">SELECTED PLACES</span>
+                    <h3>Entry-cost breakdown</h3>
+                    <p>Estimates cover {people} {people === 1 ? "traveller" : "travellers"}. Venue prices can change, so confirm them before booking.</p>
+                  </div>
+                  {placeCosts.pricedPlaceCount > 0 ? <strong>₹{money(placeCosts.minTotal)}–₹{money(placeCosts.maxTotal)}</strong> : <strong>Check prices</strong>}
+                </div>
+                <div className="budget-place-cost-list">
+                  {placeCosts.places.map((place, index) => (
+                    <div className="budget-place-cost-row" key={place.name + "-" + index}>
+                      <div>
+                        <strong>{place.name}</strong>
+                        <small>{place.label}</small>
+                        {place.priceNote && <small>{place.priceNote}</small>}
+                        {place.sourceUrl && <small><a href={place.sourceUrl} target="_blank" rel="noreferrer">Check official price ↗</a></small>}
+                      </div>
+                      <span>{place.minTotal === null || place.maxTotal === null ? "Check price" : "₹" + money(place.minTotal) + "–₹" + money(place.maxTotal)}</span>
+                    </div>
+                  ))}
+                </div>
+                {placeCosts.unpricedPlaceCount > 0 && (
+                  <p className="budget-place-cost-note">{placeCosts.unpricedPlaceCount} {placeCosts.unpricedPlaceCount === 1 ? "place has" : "places have"} no reliable ticket estimate yet. Check the official venue price before you finalise your budget.</p>
+                )}
+                <p className="budget-place-cost-source">{placeCosts.source}</p>
+                <p className="budget-place-cost-source">{placeCosts.pricingMethod}</p>
+              {(placeCosts.provisionalUnpricedAllowance ?? 0) > 0 && <p className="budget-place-cost-note">The generated budget includes ₹{money(placeCosts.provisionalUnpricedAllowance ?? 0)} as a provisional allowance for unpriced selected places. This is a placeholder, not a verified ticket fee.</p>}
+              </section>
+            )}
+
+            <section className="budget-accommodation-status" aria-live="polite">
+              <div className="budget-place-costs-heading">
+                <div><span className="eyebrow">ACCOMMODATION STATUS</span><h2>Estimate vs. a listed property</h2></div>
+                <span className="budget-status-pill">{liveStay || accommodationStatus === "provider-listed-price-not-confirmed" ? "Provider-listed price" : "Estimated cost"}</span>
+              </div>
+              {liveStay ? <div className="budget-accommodation-property">
+                <strong>{liveStay.name}</strong>
+                <span>{liveStay.platform} · {liveStay.currency} {money(liveStay.totalPrice)}{liveStay.nights!=null ? " for "+liveStay.nights+" "+(liveStay.nights===1?"night":"nights") : ""}{liveStay.checkIn&&liveStay.checkOut ? " · "+liveStay.checkIn+" to "+liveStay.checkOut : ""}</span>
+                <small>Listed price only. Availability has not been confirmed and this is not a booking.</small>
+                {liveStay.url && <a href={liveStay.url} target="_blank" rel="noreferrer">Check this property ↗</a>}
+              </div> : <p>{accommodationMessage || "Roveo uses an estimated accommodation amount until a provider returns a priced property for the selected dates."}</p>}
+              <p className="budget-place-cost-source">A provider result with a price is not the same as confirmed availability. Confirm the final dates, room, occupancy, taxes and price with the provider before booking.</p>
+            </section>
+
+            <section className="budget-sources-card">
+              <span className="eyebrow">HOW ROVEO ESTIMATES COSTS</span>
+              <h3>Sources & confidence</h3>
+              <ul>
+                <li><strong>Accommodation:</strong> live provider results when available; otherwise a clearly labelled fallback estimate.</li>
+                <li><strong>Local transport:</strong> selected-place road distance from the Open Source Routing Machine (OSRM), with a detour buffer when coordinates are available; transport fares remain estimates.</li>
+                <li><strong>Tickets:</strong> published official venue price ranges where matched. Other places are marked unpriced and get only a provisional allowance in the generated budget.</li>
+                <li><strong>Travel to destination:</strong> uses the saved origin and ordered destination coordinates with a mode-specific distance rate when possible; it is not a live airline, rail or bus quote.</li>
+                <li><strong>Food:</strong> a planning baseline based on trip length, group size and destination tier, not live restaurant prices.</li>
+              </ul>
+              <div className="budget-source-links">
+                <a href="https://project-osrm.org/docs/v26.6.1/index.html" target="_blank" rel="noreferrer">OSRM routing documentation ↗</a>
+                <a href="https://www.openstreetmap.org/" target="_blank" rel="noreferrer">OpenStreetMap data ↗</a>
+              </div>
+            </section>
+                        <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
 
             <div className="budget-editor-footer">
               <div>

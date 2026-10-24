@@ -1,6 +1,6 @@
 export type StaySearchInput={location:string;checkIn:string;checkOut:string;adults:number;stayPreference:string;};
 export type StaySearchResult={name:string;platform:string;nightlyPrice:number;totalPrice:number;currency:string;url?:string;rating?:number;ratingScale?:number;};
-const BASE="https://api.stayingapi.com/v1/search";
+const BASE=process.env.STAYINGAPI_BASE_URL||"https://api.stayingapi.com/v1/search";
 export async function searchStays(input:StaySearchInput):Promise<StaySearchResult[]>{
  const key=process.env.STAYINGAPI_KEY;
  if(!key) return [];

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { categoryForPlace } from "@/lib/travel/place-discovery-utils";
 
 
 type Place = {
@@ -28,8 +29,22 @@ function haversine(a:GeoPoint,b:GeoPoint){
   return 2*r*Math.asin(Math.sqrt(x));
 }
 
+function estimateVisitMinutes(place:Place){
+  const name=place.name.toLowerCase();
+  const text=(place.type+" "+place.group+" "+name).toLowerCase();
+  if(/ramoji\s*(film|film city)|ramoji film city/.test(name))return 480;
+  if(/wonderla/.test(name))return 420;
+  if(/universal studios|disneyland|disney world|imagica|adlabs/.test(name))return 480;
+  if(/munnar|wayanad|ooty|udhagamandalam|shimla|manali|darjeeling|nainital|mussoorie|coorg|kodagu|chikmagalur|kodaikanal|yercaud|araku valley|lonavala|mahabaleshwar|leh|ladakh|srinagar|gangtok|shillong|tawang|gulmarg|pahalgam|spiti|tirthan valley|kasol|auli|mount abu|mcleod ganj|zermatt|interlaken|lucerne|banff|queenstown|hallstatt/.test(name)||/hill_station|hill station|mountain_region|mountain region|hill district/.test(text))return 360;
+  if(/water_park|water park|theme_park|amusement|zoo|aquarium/.test(text))return 240;
+  if(/museum|palace|fort|heritage|historic|temple|church|monument/.test(text))return 105;
+  if(/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(text))return 120;
+  return 90;
+}
+
 function titleCase(value:string){
-  return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const readable=value.replaceAll("_"," ").replace(/\s+(hindu|buddhist|jain|christian|muslim|sikh)$/i,"");
+  return readable.replace(/\b\w/g,c=>c.toUpperCase());
 }
 
 const curatedDescriptions:Record<string,string>={
@@ -62,7 +77,26 @@ function conciseDescription(place:Place){
   const curated=curatedDescriptions[place.name.trim()];
   if(curated)return curated;
   const raw=(place.description||"").replace(/\s+/g," ").trim();
-  if(!raw || /^Popular place to visit in /i.test(raw))return "";
+  const isPlaceholder=!raw ||
+    /^Popular place to visit in /i.test(raw) ||
+    /^(Real place record from OpenStreetMap|Named destination place from Wikipedia|Major (?:Kerala )?destination|Major Delhi attraction)\.?$/i.test(raw) ||
+    Boolean(place.address && raw.toLowerCase()===place.address.trim().toLowerCase());
+  if(isPlaceholder){
+    const category=categoryForPlace(place);
+    const guidance:Record<string,string>={
+      "Waterfalls":"Waterfall location; check seasonal flow, access conditions and local safety guidance before visiting.",
+      "Viewpoints":"Scenic viewpoint; check access and visibility conditions for your visit.",
+      "Beaches":"Coastal spot; check local conditions, access and safety notices before visiting.",
+      "Temples":"Religious site; verify visiting hours and local entry customs before visiting.",
+      "Nature":"Natural area; check access, weather and any conservation rules before visiting.",
+      "Adventure":"Outdoor activity or adventure spot; verify current availability and safety requirements locally.",
+      "Theme Parks":"Entertainment attraction; confirm date-specific opening hours and ticket prices with the venue.",
+      "History":"Historic or heritage site; verify opening hours and entry rules before visiting.",
+      "Culture":"Cultural attraction; check opening hours and any event schedule before visiting.",
+      "Attractions":"Named local attraction; check current access and official visitor information before travelling."
+    };
+    return guidance[category]||guidance.Attractions;
+  }
   const first=raw.split(/(?<=[.!?])\s+/)[0];
   return first.length<=155 ? first : first.slice(0,152).replace(/\s+\S*$/,"")+"…";
 }
@@ -80,11 +114,15 @@ function classify(tags:any):Place["group"]{
   return "Activity";
 }
 
+const PLACE_CATEGORIES = ["All", "Waterfalls", "Viewpoints", "Beaches", "Temples", "Nature", "Adventure", "Theme Parks", "History", "Culture", "Attractions"] as const;
+type PlaceCategory = typeof PLACE_CATEGORIES[number];
+
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 function PlaceCard({place,destination,added,savingId,toggleAdd}:{place:Place;destination:string;added:string[];savingId:string|null;toggleAdd:(id:string)=>void}){
   const description=conciseDescription(place);
+  const category=categoryForPlace(place);
   return <article className={"explore-card"+(added.includes(place.id)?" selected":"")}>
-    <div className="explore-visual"><span>✦</span><small>{place.group}</small></div>
+    <div className="explore-visual"><span>✦</span><small>{category}</small></div>
     <div className="explore-body">
       <div className="explore-meta"><span>{titleCase(place.type)}</span><strong>{place.distance.toFixed(1)} km away</strong></div>
       <h3>{place.name}</h3>
@@ -115,6 +153,7 @@ function PlacesContent(){
   const [places,setPlaces]=useState<Place[]>([]);
   const [center,setCenter]=useState<GeoPoint|null>(null);
   const [search,setSearch]=useState("");
+  const [categoryFilter,setCategoryFilter]=useState<PlaceCategory>("All");
   const [liveQuery,setLiveQuery]=useState("");
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Finding places around your destination…");
@@ -220,6 +259,7 @@ function PlacesContent(){
               discoveryUrl+="&"+geoParams.toString();
             }
             if(liveQuery) discoveryUrl+="&q="+encodeURIComponent(liveQuery);
+            if(categoryFilter!=="All") discoveryUrl+="&category="+encodeURIComponent(categoryFilter);
             const res=await fetch(discoveryUrl,{cache:"no-store"});
             const data=await res.json().catch(()=>({}));
             if(!res.ok) throw new Error(data.error||"Could not discover places.");
@@ -239,7 +279,7 @@ function PlacesContent(){
               places:mapped,
               center:data.center?.latitude!=null&&data.center?.longitude!=null&&Number.isFinite(Number(data.center.latitude))&&Number.isFinite(Number(data.center.longitude))&&Number(data.center.latitude)>=-90&&Number(data.center.latitude)<=90&&Number(data.center.longitude)>=-180&&Number(data.center.longitude)<=180
                 ? {lat:Number(data.center.latitude),lon:Number(data.center.longitude)} : null,
-              message:mapped.length ? mapped.length+" places found." : "No places were found nearby.",
+              message:mapped.length ? mapped.length+" places found." : categoryFilter!=="All" ? "No verified "+categoryFilter.toLowerCase()+" places were found for "+item.name+"." : "No places were found nearby.",
               nearbyDestinations:Array.isArray(data.nearbyDestinations)?data.nearbyDestinations.map((nearby:any)=>({
                 name:String(nearby.name||"").trim(),
                 latitude:nearby.latitude==null?NaN:Number(nearby.latitude),
@@ -286,7 +326,7 @@ function PlacesContent(){
     }
     load();
     return()=>{cancelled=true};
-  },[destinationParam,tripId,liveQuery,discoveryRefresh]);
+  },[destinationParam,tripId,liveQuery,discoveryRefresh,categoryFilter]);
 
   useEffect(()=>{
     if(!activeDestinationId)return;
@@ -302,18 +342,19 @@ function PlacesContent(){
   const destination=activeDestination?.name || destinationParam;
   const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
-  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),[places,search]);
+  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()) && (categoryFilter==="All" || categoryForPlace(p)===categoryFilter)),[places,search,categoryFilter]);
 
   const mainPlaces=useMemo(()=>{
+    // Filter first, then choose highlights so a search never shows unrelated cards.
     // The discovery API ranks real tourist attractions before secondary POIs.
     // Use that relevance order for every destination instead of a Kerala-only
     // name list that left other cities with an empty "Main places" section.
-    const preferred=places.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
-    const ranked=preferred.length>=6?preferred:places;
+    const preferred=visible.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
+    const ranked=preferred.length>=6?preferred:visible;
     const daysForDestination=Number(activeDestination?.days)||days;
     const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
     return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
-  },[places,activeDestination?.days,days]);
+  },[visible,activeDestination?.days,days]);
 
   async function addNearbyDestination(nearby:NearbyDestination){
     if(!tripId)return;
@@ -359,8 +400,10 @@ function PlacesContent(){
             name:place.name,
             latitude:place.lat,
             longitude:place.lon,
-            category:place.group,
+            category:categoryForPlace(place),
             description:place.description||null,
+            openingHours:place.openingHours||null,
+            visitDurationMinutes:estimateVisitMinutes(place),
             websiteUrl:place.website||null,
             address:place.address||null,
             destinationId:activeDestinationId.startsWith("param-")?null:Number(activeDestinationId)
@@ -393,7 +436,7 @@ function PlacesContent(){
       <div>
         <span className="eyebrow">ROVEO · DISCOVER</span>
         <h1>Places to <span>Explore.</span></h1>
-        <p>Find famous must-visit attractions, landmarks and worthwhile local places for each destination.</p>
+        <p>Find famous attractions and lesser-known local places, filtered to each selected destination.</p>
       </div>
       <div className="explore-summary"><strong>{days} days</strong><span>{people} travellers</span><small>{source?source+" → ":""}{destinations.length>1?"Multiple destinations":destination}</small></div>
     </section>
@@ -401,6 +444,9 @@ function PlacesContent(){
     <section className="places-content">
       <div className="places-toolbar">
         <div className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the complete collection…" aria-label="Filter the places Roveo found"/><button type="button" onClick={()=>setLiveQuery(search.trim())}>Find something specific</button></div>
+      </div>
+      <div className="category-filter" role="group" aria-label="Filter places by category">
+        {PLACE_CATEGORIES.map(category=><button key={category} type="button" className={categoryFilter===category?"selected":""} aria-pressed={categoryFilter===category} onClick={()=>setCategoryFilter(category)}>{category}</button>)}
       </div>
       <nav className="places-jump-nav" aria-label="Jump to a section">
         <span>Jump to</span>
@@ -477,7 +523,7 @@ function PlacesContent(){
         </>;
       })()}
 
-      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try a different place name or destination.</span></div>}
+      {!loading&&!visible.length&&<div className="empty-result"><strong>No places match these filters.</strong><span>Try another category or search term. If this destination has no verified matches for a category, clear the filter to see all nearby places.</span></div>}
 
       <section className="explore-next">
         <div><span className="eyebrow">NEXT STEP</span><h2>Turn your picks into a better day plan.</h2><p>Your selected places can be used by the itinerary engine when we build the next planning layer.</p></div>

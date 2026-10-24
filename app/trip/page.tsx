@@ -63,33 +63,57 @@ function TripContent(){
     let cancelled=false;
     async function load(){
       try{
-        setLoading(true); setStatus("Locating your destination…");
-        const geoRes=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
-        if(!geoRes.ok) throw new Error("Could not locate destination.");
-        const geoResults=await geoRes.json();
-        if(!geoResults[0]) throw new Error("Destination was not found. Try a city or landmark.");
-        const located={lat:Number(geoResults[0].lat),lon:Number(geoResults[0].lon),display_name:geoResults[0].display_name};
-        if(cancelled)return; setGeo(located); setStatus("Finding famous places and attractions nearby…");
+        setLoading(true);
+        setStatus("Loading your saved trip destination…");
+        const tripId=params.get("tripId");
+        let located:Geo|null=null;
 
-        const query='[out:json][timeout:25];(nwr["tourism"~"attraction|museum|viewpoint|gallery|zoo|theme_park"](around:30000,'+located.lat+','+located.lon+');nwr["historic"~"monument|castle|ruins|archaeological_site"](around:30000,'+located.lat+','+located.lon+');nwr["leisure"~"park|nature_reserve"](around:30000,'+located.lat+','+located.lon+'););out center tags;';
-        const placesRes=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(query));
-        if(!placesRes.ok) throw new Error("Places service is temporarily unavailable.");
-        const data=await placesRes.json();
-        const mapped:Place[]=(data.elements||[])
-          .map((item:any)=>({id:String(item.id),name:item.tags?.name||item.tags?.["name:en"]||"",type:item.tags?.tourism||item.tags?.historic||item.tags?.leisure||"place",lat:Number(item.lat??item.center?.lat),lon:Number(item.lon??item.center?.lon)}))
-          .filter((p:Place)=>p.name&&Number.isFinite(p.lat)&&Number.isFinite(p.lon))
-          .filter((p:Place,i:number,a:Place[])=>a.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase())===i)
-          .slice(0,80);
+        if(tripId){
+          // Use the destination selected and saved during trip creation. Do not
+          // geocode the name again or run a second, narrower Overpass search here:
+          // that duplicate path could pick a different place or omit destinations.
+          const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/destinations",{cache:"no-store"});
+          const data=await res.json().catch(()=>({}));
+          if(!res.ok)throw new Error(data.error||"Could not load your saved destinations.");
+          const first=(Array.isArray(data.destinations)?data.destinations:[]).find((item:any)=>
+            item && item.name && item.lat!=null && item.lon!=null &&
+            Number.isFinite(Number(item.lat)) && Number(item.lat)>=-90 && Number(item.lat)<=90 &&
+            Number.isFinite(Number(item.lon)) && Number(item.lon)>=-180 && Number(item.lon)<=180
+          );
+          if(!first)throw new Error("This trip has no destination with valid coordinates.");
+          located={lat:Number(first.lat),lon:Number(first.lon),display_name:String(first.name)};
+        }else if(destination){
+          // Legacy destination-only links use Roveo's shared geocoding endpoint.
+          const res=await fetch("/api/geocode/search?q="+encodeURIComponent(destination),{cache:"no-store"});
+          const data=await res.json().catch(()=>({}));
+          const first=Array.isArray(data.locations)?data.locations[0]:null;
+          if(!res.ok||!first||first.lat==null||first.lon==null||
+            !Number.isFinite(Number(first.lat))||!Number.isFinite(Number(first.lon))||
+            Number(first.lat)<-90||Number(first.lat)>90||Number(first.lon)<-180||Number(first.lon)>180){
+            throw new Error("Destination was not found. Try choosing it from the dashboard suggestions.");
+          }
+          located={lat:Number(first.lat),lon:Number(first.lon),display_name:String(first.displayName||first.name||destination)};
+        }else{
+          throw new Error("No destination was provided.");
+        }
+
         if(cancelled)return;
-        setPlaces(mapped);
-        setDayPlans(makePlans(mapped,days));
-        setStatus(mapped.length ? "Plan ready — nearby places are grouped together to reduce unnecessary travel." : "No mapped attractions were found nearby.");
-      }catch(e){if(!cancelled)setStatus(e instanceof Error?e.message:"Something went wrong.");}
-      finally{if(!cancelled)setLoading(false);}
+        setGeo(located);
+        setPlaces([]);
+        setDayPlans(makePlans([],days));
+        setStatus("Map centered on your saved route. Use Places to explore for destination-aware discovery.");
+      }catch(error){
+        if(!cancelled){
+          setGeo(null);
+          setStatus(error instanceof Error?error.message:"Could not load the saved destination.");
+        }
+      }finally{
+        if(!cancelled)setLoading(false);
+      }
     }
-    if(destination)load(); else {setLoading(false);setStatus("No destination was provided.");}
+    load();
     return()=>{cancelled=true};
-  },[destination,days]);
+  },[destination,days,params]);
 
   function makePlans(list:Place[],count:number){
     if(!list.length)return Array.from({length:count},()=>({places:[]}));

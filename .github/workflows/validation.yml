@@ -1,0 +1,67 @@
+name: Roveo validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, feature/smart-daily-itinerary]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/roveo_test
+      STAYINGAPI_KEY: test-only-key
+      STAYINGAPI_BASE_URL: http://127.0.0.1:4010/v1/search
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: roveo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d roveo_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install
+      - name: Run budget and route-mode scenario tests
+        run: npm test
+      - name: Initialize isolated PostgreSQL test database
+        run: node tests/setup-db.mjs
+      - name: Start app against the isolated test database
+        run: |
+          npm run dev -- --hostname 127.0.0.1 > /tmp/roveo-next.log 2>&1 &
+          echo $! > /tmp/roveo-next.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/trips >/dev/null; then
+              echo "Roveo API is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/roveo-next.log
+          exit 1
+      - name: Test persisted trip, places, itinerary, routes, budget and live discovery APIs
+        run: node tests/api-smoke.mjs
+      - name: Install Chromium for browser tests
+        run: npx playwright install chromium
+      - name: Test landing page through trip creation in a real browser
+        run: npm run test:e2e
+      - name: Show app logs if integration tests fail
+        if: failure()
+        run: cat /tmp/roveo-next.log || true
+      - name: Build Next.js app
+        run: npm run build
