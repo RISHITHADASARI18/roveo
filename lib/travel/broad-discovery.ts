@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type { Coordinates, DiscoveredPlace, PlaceDiscoveryResult } from "./types";
 
 // Vercel rebuild trigger: keep the corrected Overpass query syntax on main; every dynamic bbox is a template-literal interpolation.
@@ -624,7 +625,7 @@ function importanceScore(place: DiscoveredPlace) {
   return score;
 }
 
-export async function discoverBroadPlaces(
+async function discoverBroadPlacesUncached(
   destination: string,
   _legacyRadiusMeters = 0,
   maxResults = 200,
@@ -899,4 +900,31 @@ export async function discoverBroadPlaces(
     source: "openstreetmap",
     fetchedAt: new Date().toISOString(),
   };
+}
+
+
+/**
+ * Cache the complete merged discovery result, not just individual provider
+ * responses. Place catalogs change slowly, and this avoids repeating several
+ * external lookups whenever someone returns to the same destination.
+ */
+const getCachedBroadPlaces = unstable_cache(
+  async (
+    destination: string,
+    maxResults: number,
+    desiredQuery: string,
+    storedCoverage?: DestinationCoverage,
+  ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage),
+  ["roveo-broad-place-discovery-v1"],
+  { revalidate: 21600 },
+);
+
+export async function discoverBroadPlaces(
+  destination: string,
+  _legacyRadiusMeters = 0,
+  maxResults = 200,
+  desiredQuery = "",
+  storedCoverage?: DestinationCoverage,
+): Promise<PlaceDiscoveryResult> {
+  return getCachedBroadPlaces(destination, maxResults, desiredQuery, storedCoverage);
 }
