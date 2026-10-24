@@ -41,7 +41,11 @@ function categoryDuration(place: PlannerPlace) {
   if (/ramoji\s*(film|film city)|ramoji film city/.test(name)) return 480;
   if (/wonderla/.test(name)) return 420;
   if (/universal studios|disneyland|disney world|imagica|adlabs/.test(name)) return 480;
-  if (/full.?day|safari|national park|wildlife sanctuary/.test(value)) return 360;
+  // Destination-scale hill regions and mountain towns need exploration time
+  // across viewpoints, winding roads, meals and weather-dependent stops.
+  // Keep this cross-region rather than Kerala-specific.
+  if (/\\b(munnar|wayanad|ooty|udhagamandalam|shimla|manali|darjeeling|nainital|mussoorie|coorg|kodagu|chikmagalur|kodaikanal|yercaud|araku valley|lonavala|mahabaleshwar|leh|ladakh|srinagar|gangtok|shillong|tawang|gulmarg|pahalgam|spiti|tirthan valley|kasol|auli|mount abu|mc ?leod ganj|mcleodganj|zermatt|interlaken|lucerne|banff|queenstown|hallstatt)\\b/.test(name)) return 360;
+  if (/hill station|mountain region|hill district|highland region|full.?day|safari|national park|wildlife sanctuary/.test(value)) return 360;
   if (/museum|palace|fort|heritage|historic|religious|temple|church|monument/.test(value)) return 105;
   if (/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(value)) return 120;
   if (/activity|amusement|theme|water_park|water park|zoo|aquarium/.test(value)) return 180;
@@ -197,12 +201,15 @@ export function buildSmartItinerary(
   );
 
   for (const place of remaining) {
-    let bestDay = 0;
+    let bestDay = -1;
     let bestScore = Infinity;
     for (let day = 0; day < days; day += 1) {
       const current = clusters[day];
-      // Avoid assigning ordinary stops to a day already reserved for a full-day attraction.
-      if (current.some(isFullDayAttraction) && !isFullDayAttraction(place)) continue;
+      // Full-day attractions never share a day with another place. If the trip
+      // has too few days, leave overflow stops unscheduled instead of inventing
+      // an impossible late-night timeline.
+      if (current.some(isFullDayAttraction)) continue;
+      if (isFullDayAttraction(place) && current.length > 0) continue;
       const center = centroid(current.length ? current : [seeds[day] ?? place]);
       const centerPoint = { id: "centroid", name: "", latitude: center.latitude, longitude: center.longitude };
       const proximity = distanceKm(place, centerPoint);
@@ -216,7 +223,7 @@ export function buildSmartItinerary(
       const score = proximity + countPenalty + overloadPenalty;
       if (score < bestScore) { bestScore = score; bestDay = day; }
     }
-    clusters[bestDay].push(place);
+    if (bestDay >= 0) clusters[bestDay].push(place);
   }
 
   return clusters.map((cluster, index) => {
