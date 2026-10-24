@@ -157,7 +157,7 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       const proximity = distanceKm(place, centerPoint);
       const workload = dayWorkload(current);
       const addedTravel = current.length
-        ? Math.min(...current.map((existing) => distanceKm(place, existing))) * 4
+        ? Math.min(...current.map((existing) => travelMinutes(place, existing)))
         : 0;
       const projectedMinutes = workload + estimatedDuration(place) + addedTravel;
       const overloadPenalty = Math.max(0, projectedMinutes - 480) * 0.12;
