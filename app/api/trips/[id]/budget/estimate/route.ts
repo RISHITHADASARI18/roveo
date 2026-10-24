@@ -303,6 +303,34 @@ export async function POST(
       ],
     );
 
+    // Initialise the editable budget table at the same time as the estimate.
+    // The Budget page reads trip_budgets, so only writing trip_cost_estimates
+    // previously made the page appear uninitialised after a refresh.
+    await db.query(
+      `INSERT INTO trip_budgets
+        (trip_id, destination_travel, accommodation, local_transport, food, activities, other, contingency)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (trip_id) DO UPDATE SET
+        destination_travel = EXCLUDED.destination_travel,
+        accommodation = EXCLUDED.accommodation,
+        local_transport = EXCLUDED.local_transport,
+        food = EXCLUDED.food,
+        activities = EXCLUDED.activities,
+        other = EXCLUDED.other,
+        contingency = EXCLUDED.contingency,
+        updated_at = NOW()`,
+      [
+        tripId,
+        calculation.items.destinationTravel,
+        calculation.items.accommodation,
+        calculation.items.localTransport,
+        calculation.items.food,
+        calculation.items.activities,
+        calculation.items.other,
+        calculation.items.contingency,
+      ],
+    );
+
     await db.query(
       "UPDATE trips SET updated_at = NOW() WHERE id = $1",
       [tripId],
