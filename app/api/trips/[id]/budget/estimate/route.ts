@@ -316,6 +316,7 @@ export async function POST(
     let accommodationSource = "roveo";
     let accommodationConfidence = "fallback";
     let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string } | null = null;
+    let unsupportedCurrencyStay = false;
 
     const nights = accommodationNights(Number(trip.days));
     if (process.env.STAYINGAPI_KEY && trip.startDate && nights > 0) {
@@ -332,11 +333,13 @@ export async function POST(
         if (stays.length) {
           const sorted = [...stays].sort((a,b)=>a.totalPrice-b.totalPrice);
           const chosen = sorted[Math.floor(sorted.length / 2)] ?? sorted[0];
-          liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url};
           if (chosen.currency === "INR") {
+            liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url};
             calculation.items.accommodation = Number(chosen.totalPrice);
             accommodationSource = "stayingapi";
             accommodationConfidence = "live";
+          } else {
+            unsupportedCurrencyStay = true;
           }
         }
       } catch (error) {
@@ -358,9 +361,11 @@ export async function POST(
 
     const persistedAccommodationConfidence = liveStay
       ? "provider-listed-price-not-confirmed"
-      : process.env.STAYINGAPI_KEY
-        ? "estimate-no-priced-results"
-        : "estimate-provider-not-configured";
+      : unsupportedCurrencyStay
+        ? "estimate-unsupported-currency"
+        : process.env.STAYINGAPI_KEY
+          ? "estimate-no-priced-results"
+          : "estimate-provider-not-configured";
 
     const saved = await db.query(
       `INSERT INTO trip_cost_estimates (
@@ -468,9 +473,11 @@ export async function POST(
           accommodationStatus: persistedAccommodationConfidence,
           accommodationNote: liveStay
             ? "A provider-listed property price was returned; this is not a booking or confirmed availability."
-            : process.env.STAYINGAPI_KEY
-              ? "No priced property was returned for these dates; the accommodation amount remains a Roveo estimate."
-              : "Live accommodation provider is not configured; the accommodation amount is a Roveo estimate.",
+            : unsupportedCurrencyStay
+              ? "The provider returned a price in a currency Roveo cannot safely convert, so the accommodation amount remains a Roveo estimate."
+              : process.env.STAYINGAPI_KEY
+                ? "No priced property was returned for these dates; the accommodation amount remains a Roveo estimate."
+                : "Live accommodation provider is not configured; the accommodation amount is a Roveo estimate.",
           localTransportSource: routeDistance.source,
           selectedRouteDistanceKm: routeDistance.km,
           localTransportEstimateSource: "Planning estimate based on selected-place route distance and local travel mode; actual fares and traffic vary.",
