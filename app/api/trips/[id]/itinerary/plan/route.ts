@@ -205,7 +205,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (dayCount >= destinations.length) {
       let dayNumber = 1;
-      destinations.forEach((destination, index) => {
+      for (let index = 0; index < destinations.length; index += 1) {
+        const destination = destinations[index];
         const destinationPlaces = placesByDestination.get(destination.id) ?? [];
         const roadMetrics = await loadRoadMetrics(destinationPlaces, String(trip.rows[0].local_travel_method ?? "Taxi"));
         const destinationDays = buildSmartItinerary(
@@ -221,7 +222,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             destinationName: destination.name,
           });
         }
-      });
+      }
     } else {
       // When the user chooses fewer days than destinations, retain every stop
       // by grouping consecutive route destinations into each available day.
