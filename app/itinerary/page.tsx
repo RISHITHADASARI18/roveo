@@ -85,6 +85,23 @@ function ItineraryContent(){
       // place IDs still match. Rebuild it to respect the days chosen for this trip.
       if(data.days.length!==days)return false;
 
+      // Rebuild legacy plans that treated destination-scale attractions as short stops.
+      // Otherwise an old saved 2 PM Ramoji slot would survive refresh even after the
+      // planner knows it needs a dedicated day and a full-day duration.
+      const hasUnrealisticLegacyTiming = data.days.some((day:any)=>(day.items||[]).some((item:any)=>{
+        const name=String(item.place?.name||"").toLowerCase();
+        const duration=Number(item.durationMinutes)||0;
+        const start=String(item.startTime||"");
+        if(/ramoji\\s*film city|ramoji film city/.test(name)){
+          return duration<360 || !/^0?9:|^9:/.test(start);
+        }
+        if(/wonderla/.test(name)){
+          return duration<360 || !/^11:/.test(start);
+        }
+        return false;
+      }));
+      if(hasUnrealisticLegacyTiming)return false;
+
       // The itinerary must match the exact places currently selected in Places to Explore.
       // Rebuild if a place was added or removed there, rather than showing a stale plan.
       const selectedIds=new Set(currentPlaces.map((place:any)=>String(place.id)));
