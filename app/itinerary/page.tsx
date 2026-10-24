@@ -444,7 +444,7 @@ function ItineraryContent(){
                     {place.openingHours&&<small>Opening hours: {place.openingHours}</small>}
                     {place.address&&<small>{place.address}</small>}
                     {place.description&&<small>{place.description}</small>}
-                    {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
+                    {place.travelTimeMinutes? <small>{index===0?"Transfer from previous destination":"Travel from previous stop"}: ~{place.travelTimeMinutes} min</small>:null}
                     <div className="planned-place-links">
                       <a href={"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(place.lat+","+place.lon)} target="_blank" rel="noreferrer">Directions ↗</a>
                       {place.websiteUrl&&<a href={place.websiteUrl} target="_blank" rel="noreferrer">Official website ↗</a>}
@@ -469,12 +469,6 @@ function ItineraryContent(){
       </div>
 
       <aside className="itinerary-side">
-        <div className="itinerary-map-card">
-          <span className="eyebrow">03 · ROUTE MAP</span><h2>See the plan spatially.</h2>
-          {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
-          {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
-        </div>
-
         <div className="budget-breakdown">
           <span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2>
           <div><span>Starting point</span><strong>{source||"—"}</strong></div>
@@ -492,6 +486,16 @@ function ItineraryContent(){
           <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
         </div>
       </aside>
+    </section>
+
+    <section className="itinerary-map-bottom">
+      <div className="itinerary-map-card itinerary-map-large">
+        <span className="eyebrow">06 · FULL ROUTE MAP</span>
+        <h2>Every stop, on one larger map.</h2>
+        <p className="planning-rule">Pins show the places assigned to each day. Select a pin to see its name and day. Road lines appear when route geometry is available.</p>
+        {center?<ItineraryMap center={center} places={mapPlaces} routes={routes}/>:<div className="map-loading">Locating destination…</div>}
+        {center&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+center.lat+"&mlon="+center.lon+"#map=12/"+center.lat+"/"+center.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}
+      </div>
     </section>
   </main>;
 }
