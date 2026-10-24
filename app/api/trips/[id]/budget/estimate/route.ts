@@ -347,6 +347,12 @@ export async function POST(
     calculation.total = Math.round((subtotal + calculation.items.contingency) * 100) / 100;
     calculation.remaining = Math.round((calculation.budget - calculation.total) * 100) / 100;
 
+    const persistedAccommodationConfidence = liveStay
+      ? "provider-listed-price-not-confirmed"
+      : process.env.STAYINGAPI_KEY
+        ? "estimate-no-priced-results"
+        : "estimate-provider-not-configured";
+
     const saved = await db.query(
       `INSERT INTO trip_cost_estimates (
         trip_id,
@@ -402,7 +408,7 @@ export async function POST(
         calculation.items.contingency,
         calculation.total,
         calculation.currency,
-        calculation.confidence,
+        persistedAccommodationConfidence,
         calculation.source,
       ],
     );
