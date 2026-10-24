@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 
 const base = process.env.BASE_URL || "http://127.0.0.1:3000";
+const accommodationProvider = createServer((request, response) => {
+  const url = new URL(request.url || "/", "http://127.0.0.1:4010");
+  const noResults = (url.searchParams.get("location") || "").toLowerCase().includes("noresults");
+  response.writeHead(200, { "Content-Type": "application/json" });
+  response.end(JSON.stringify({
+    data: noResults ? [] : [{
+      name: "CI Mock Homestay",
+      platform: "CI Mock Provider",
+      price: { nightlyPrice: 2000, totalPrice: 4000, currency: "INR" },
+      url: "https://example.test/ci-mock-homestay",
+    }],
+  }));
+});
+accommodationProvider.listen(4010, "127.0.0.1");
+await new Promise((resolve) => accommodationProvider.once("listening", resolve));
+accommodationProvider.unref();
 async function api(path, options = {}) {
   const response = await fetch(base + path, {
     ...options,
@@ -78,20 +95,26 @@ assert.ok(generatedRoutes.routes.every((route) => route.mode === generatedRoutes
 const reloadedRoutes = await api(`/api/trips/${trip.id}/routes`);
 assert.ok(reloadedRoutes.routes.every((route) => route.mode === reloadedRoutes.mode), "reloaded map routes do not mix travel modes");
 
-const stayFallback = await api("/api/accommodations/search", { method: "POST", body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-11-15", checkOut: "2026-11-17", adults: 2, stayPreference: "Hotel" }) });
-assert.equal(stayFallback.providerStatus, "not_configured", "missing provider configuration is explicit");
-assert.equal(stayFallback.live, false);
-assert.equal(stayFallback.availabilityConfirmed, false);
-assert.deepEqual(stayFallback.stays, []);
+const stayNoResults = await api("/api/accommodations/search", { method: "POST", body: JSON.stringify({ location: "NoResults", checkIn: "2026-11-15", checkOut: "2026-11-17", adults: 2, stayPreference: "Hotel" }) });
+assert.equal(stayNoResults.providerStatus, "no_results", "a configured provider returning no results is distinguished from an estimated fallback");
+assert.equal(stayNoResults.live, true);
+assert.equal(stayNoResults.availabilityConfirmed, false);
+assert.deepEqual(stayNoResults.stays, []);
 const invalidStayResponse = await fetch(base + "/api/accommodations/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: "Vijayawada", checkIn: "2026-02-30", checkOut: "2026-03-02", adults: 2 }) });
 assert.equal(invalidStayResponse.status, 400, "invalid calendar dates are rejected");
 
 const estimate = await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
 assert.ok(Number(estimate.calculation.total) >= Number(estimate.calculation.subtotal), "generated budget total includes contingency");
-assert.equal(estimate.pricing.accommodationStatus, "estimate-provider-not-configured", "no provider key is reported as an estimate, not a live price");
-assert.equal(estimate.liveStay, null, "a fallback estimate is not represented as an actual property");
-const estimateAfterReload = await api(`/api/trips/${trip.id}/budget`);
-assert.equal(estimateAfterReload.accommodationProperty, null, "no property is fabricated when the provider is unavailable");
+assert.equal(estimate.pricing.accommodationStatus, "provider-listed-price-not-confirmed", "a priced listing is distinguished from a fallback estimate");
+assert.equal(estimate.liveStay.name, "CI Mock Homestay", "the returned property is an actual provider listing");
+assert.equal(estimate.liveStay.totalPrice, 4000, "the listed price is used for the matching stay dates");
+assert.equal(estimate.liveStay.nights, 2, "the provider search uses days minus one nights");
+assert.equal(estimate.liveStay.checkIn, "2026-11-15");
+assert.equal(estimate.liveStay.checkOut, "2026-11-17");
+const estimateAfterReload = await api("/api/trips/" + trip.id + "/budget");
+assert.equal(estimateAfterReload.accommodationProperty.name, "CI Mock Homestay", "provider property details persist after reloading the budget");
+assert.equal(Number(estimateAfterReload.accommodationProperty.totalPrice), 4000);
+assert.equal(estimateAfterReload.accommodationProperty.nights, 2);
 const manualBudget = { destinationTravel: 5000, accommodation: 4321, localTransport: 900, food: 3600, activities: 1800, other: 250, contingency: 500 };
 await api(`/api/trips/${trip.id}/budget`, { method: "PUT", body: JSON.stringify(manualBudget) });
 const reloadedBudget = await api(`/api/trips/${trip.id}/budget`);
@@ -117,4 +140,5 @@ const templeResults = await templeResponse.json();
 assert.ok(templeResults.places.length > 0, "destination-scoped temple search returns relevant local results");
 assert.ok(templeResults.places.every((place) => (place.name + " " + (place.description || "") + " " + place.type + " " + place.group).toLowerCase().includes("temple")), "category query does not leak unrelated results");
 
-console.log("API smoke passed: live destination-scoped discovery, trip persistence, place add/remove, itinerary/map pin consistency, route-to-stop consistency, budget persistence, and accommodation provenance.");
+console.log("API smoke passed: live destination-scoped discovery, trip persistence, place add/remove, itinerary/map pin consistency, route-to-stop consistency, budget persistence, no-result accommodation fallback, and provider listing persistence.");
+await new Promise((resolve, reject) => accommodationProvider.close((error) => error ? reject(error) : resolve()));
