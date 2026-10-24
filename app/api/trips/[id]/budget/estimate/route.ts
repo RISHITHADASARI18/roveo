@@ -464,9 +464,9 @@ export async function POST(
       ],
     );
 
-    // Initialize or refresh the editable budget only if it has not been manually
-    // changed since the estimate version captured above. The timestamp predicate
-    // also protects edits made while route/provider lookups were still running.
+    // Initialize or refresh only generated budgets. The is_manual predicate is
+    // evaluated at write time, so a manual save made while route/provider lookups
+    // are running is protected as well.
     await db.query(
       `INSERT INTO trip_budgets
         (trip_id, destination_travel, accommodation, local_transport, food, activities, other, contingency)
