@@ -26,7 +26,7 @@ async function estimateSelectedRouteDistance(places: CostPlace[]) {
   const points = places.filter((place) =>
     place.latitude != null && place.longitude != null &&
     Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude)) &&
-    Math.abs(Number(place.latitude)) > 0.01 && Math.abs(Number(place.longitude)) > 0.01
+    Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude))
   ).slice(0, 50).map((place) => ({
     latitude: Number(place.latitude),
     longitude: Number(place.longitude),
@@ -245,11 +245,17 @@ export async function POST(
         const routePoints = [sourcePoint, ...orderedDestinations, sourcePoint];
         const useRoadRouting = /car|taxi|bus|coach/i.test(String(trip.travelMethod));
         const routeDistance = await estimateOrderedRouteDistance(routePoints, useRoadRouting);
-        destinationTravelDistanceKm = routeDistance.km;
-        const routeCost = estimateDestinationTravelCost(String(trip.travelMethod), Number(trip.people), routeDistance.km);
+        const method = String(trip.travelMethod).toLowerCase();
+        // There is no rail-routing provider configured. Approximate rail distance
+        // from the ordered city-to-city route instead of treating it as a car route.
+        const modeDistanceKm = /train|rail/.test(method)
+          ? Math.round(routeDistance.km * 1.3 * 10) / 10
+          : routeDistance.km;
+        destinationTravelDistanceKm = modeDistanceKm;
+        const routeCost = estimateDestinationTravelCost(String(trip.travelMethod), Number(trip.people), modeDistanceKm);
         if (routeCost !== null) {
           calculation.items.destinationTravel = routeCost;
-          destinationTravelSource = routeDistance.source + "; fare calculated from a mode-specific planning rate, not a live carrier quote";
+          destinationTravelSource = (/train|rail/.test(method) ? "Approximate rail distance based on 1.3x ordered city-to-city distance" : routeDistance.source) + "; fare calculated from a mode-specific planning rate, not a live carrier quote";
         }
       }
     } catch (error) {
