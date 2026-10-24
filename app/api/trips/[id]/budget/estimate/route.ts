@@ -131,6 +131,7 @@ function estimateDestinationTravelCost(method: string, people: number, roundTrip
   if (/flight|air/.test(mode)) return Math.round(Math.max(3000, roundTripKm * 2.7 + 2000) * people);
   if (/train|rail/.test(mode)) return Math.round(Math.max(300, roundTripKm * 0.7 + 250) * people);
   if (/bus|coach/.test(mode)) return Math.round(Math.max(250, roundTripKm * 1.05 + 200) * people);
+  if (/public transport|public transit/.test(mode)) return Math.round(Math.max(250, roundTripKm * 0.8 + 200) * people);
   if (/taxi|cab/.test(mode)) return Math.round(roundTripKm * 22 + 500);
   if (/car|self.?drive/.test(mode)) return Math.round(roundTripKm * 12 + 300);
   return null;
@@ -248,14 +249,14 @@ export async function POST(
         const method = String(trip.travelMethod).toLowerCase();
         // There is no rail-routing provider configured. Approximate rail distance
         // from the ordered city-to-city route instead of treating it as a car route.
-        const modeDistanceKm = /train|rail/.test(method)
+        const modeDistanceKm = /train|rail|public transport|public transit/.test(method)
           ? Math.round(routeDistance.km * 1.3 * 10) / 10
           : routeDistance.km;
         destinationTravelDistanceKm = modeDistanceKm;
         const routeCost = estimateDestinationTravelCost(String(trip.travelMethod), Number(trip.people), modeDistanceKm);
         if (routeCost !== null) {
           calculation.items.destinationTravel = routeCost;
-          destinationTravelSource = (/train|rail/.test(method) ? "Approximate rail distance based on 1.3x ordered city-to-city distance" : routeDistance.source) + "; fare calculated from a mode-specific planning rate, not a live carrier quote";
+          destinationTravelSource = (/train|rail/.test(method) ? "Approximate rail distance based on 1.3x ordered city-to-city distance" : /public transport|public transit/.test(method) ? "Approximate transit distance based on 1.3x ordered city-to-city distance" : routeDistance.source) + "; fare calculated from a mode-specific planning rate, not a live carrier quote";
         }
       }
     } catch (error) {
