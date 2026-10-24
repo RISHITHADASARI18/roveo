@@ -140,5 +140,17 @@ const templeResults = await templeResponse.json();
 assert.ok(templeResults.places.length > 0, "destination-scoped temple search returns relevant local results");
 assert.ok(templeResults.places.every((place) => (place.name + " " + (place.description || "") + " " + place.type + " " + place.group).toLowerCase().includes("temple")), "category query does not leak unrelated results");
 
+const oneDayTrip = await api("/api/trips", { method: "POST", body: JSON.stringify({
+  source: { name: "Hyderabad", lat: 17.385, lon: 78.486 },
+  destinations: [{ name: "Vijayawada", lat: 16.5062, lon: 80.648 }],
+  days: 1, people: 1, budget: 10000, travel: "Train",
+  localTravel: "Walking", stay: "Hotel", startDate: "2026-11-15",
+}) });
+const oneDayEstimate = await api("/api/trips/" + oneDayTrip.trip.id + "/budget/estimate", { method: "POST", body: JSON.stringify({}) });
+assert.equal(Number(oneDayEstimate.calculation.items.accommodation), 0, "a one-day trip has zero accommodation nights");
+assert.equal(oneDayEstimate.pricing.accommodationStatus, "estimate-no-overnight-stay");
+const oneDayReload = await api("/api/trips/" + oneDayTrip.trip.id + "/budget");
+assert.equal(oneDayReload.accommodationStatus, "estimate-no-overnight-stay", "the no-overnight status survives reload");
+
 console.log("API smoke passed: live destination-scoped discovery, trip persistence, place add/remove, itinerary/map pin consistency, route-to-stop consistency, budget persistence, no-result accommodation fallback, and provider listing persistence.");
 await new Promise((resolve, reject) => accommodationProvider.close((error) => error ? reject(error) : resolve()));
