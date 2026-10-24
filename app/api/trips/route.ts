@@ -186,70 +186,80 @@ export async function POST(request: Request) {
     `);
     await ensureTripDestinationsTable();
 
-    const result = await db.query(
-      `INSERT INTO trips (
-        source, destination, days, people, budget,
-        travel_method, local_travel_method, stay_preference, start_date,
-        source_lat, source_lon, destination_lat, destination_lon,
-        destination_south, destination_north, destination_west, destination_east
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-      RETURNING
-        id, source, destination, days, people, budget,
-        travel_method AS "travel",
-        local_travel_method AS "localTravel",
-        stay_preference AS "stay",
-        start_date AS "startDate",
-        source_lat AS "sourceLat",
-        source_lon AS "sourceLon",
-        destination_lat AS "destinationLat",
-        destination_lon AS "destinationLon",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"`,
-      [
-        sourceLocation.name, firstDestination.name, days, people, budget, travel, localTravel, stay, startDate,
-        sourceLocation.lat, sourceLocation.lon,
-        firstDestination.lat, firstDestination.lon,
-        firstDestination.south, firstDestination.north,
-        firstDestination.west, firstDestination.east
-      ]
-    );
-
-    const trip = result.rows[0];
-
-    for (let index = 0; index < destinations.length; index += 1) {
-      const item = destinations[index];
-      await db.query(
-        `INSERT INTO trip_destinations (
-          trip_id, destination_name, latitude, longitude,
-          bounding_south, bounding_north, bounding_west, bounding_east,
-          order_index, days
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `INSERT INTO trips (
+          source, destination, days, people, budget,
+          travel_method, local_travel_method, stay_preference, start_date,
+          source_lat, source_lon, destination_lat, destination_lon,
+          destination_south, destination_north, destination_west, destination_east
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        RETURNING
+          id, source, destination, days, people, budget,
+          travel_method AS "travel",
+          local_travel_method AS "localTravel",
+          stay_preference AS "stay",
+          start_date AS "startDate",
+          source_lat AS "sourceLat",
+          source_lon AS "sourceLon",
+          destination_lat AS "destinationLat",
+          destination_lon AS "destinationLon",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"`,
         [
-          trip.id, item.name, item.lat, item.lon,
-          item.south, item.north, item.west, item.east,
-          index + 1
+          sourceLocation.name, firstDestination.name, days, people, budget, travel, localTravel, stay, startDate,
+          sourceLocation.lat, sourceLocation.lon,
+          firstDestination.lat, firstDestination.lon,
+          firstDestination.south, firstDestination.north,
+          firstDestination.west, firstDestination.east
         ]
       );
+  
+      const trip = result.rows[0];
+  
+      for (let index = 0; index < destinations.length; index += 1) {
+        const item = destinations[index];
+        await client.query(
+          `INSERT INTO trip_destinations (
+            trip_id, destination_name, latitude, longitude,
+            bounding_south, bounding_north, bounding_west, bounding_east,
+            order_index, days
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)`,
+          [
+            trip.id, item.name, item.lat, item.lon,
+            item.south, item.north, item.west, item.east,
+            index + 1
+          ]
+        );
+      }
+  
+      const savedDestinations = await client.query(
+        `SELECT
+          id, destination_name AS name, latitude AS lat, longitude AS lon,
+          bounding_south AS south, bounding_north AS north,
+          bounding_west AS west, bounding_east AS east,
+          order_index AS "order", days
+         FROM trip_destinations
+         WHERE trip_id = $1
+         ORDER BY order_index`,
+        [trip.id]
+      );
+  
+      await client.query("COMMIT");
+      return NextResponse.json(
+        { trip: { ...trip, destinations: savedDestinations.rows } },
+        { status: 201 }
+      );
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const savedDestinations = await db.query(
-      `SELECT
-        id, destination_name AS name, latitude AS lat, longitude AS lon,
-        bounding_south AS south, bounding_north AS north,
-        bounding_west AS west, bounding_east AS east,
-        order_index AS "order", days
-       FROM trip_destinations
-       WHERE trip_id = $1
-       ORDER BY order_index`,
-      [trip.id]
-    );
-
-    return NextResponse.json(
-      { trip: { ...trip, destinations: savedDestinations.rows } },
-      { status: 201 }
-    );
   } catch (error) {
     console.error("POST /api/trips failed:", error);
     return NextResponse.json(
