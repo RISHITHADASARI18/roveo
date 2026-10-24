@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { attachPlaceTimingMetadata, readPlaceTimingMetadata } from "@/lib/travel/place-timing";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,8 @@ type PlaceInput = {
   websiteUrl?: unknown;
   address?: unknown;
   destinationId?: unknown;
+  openingHours?: unknown;
+  visitDurationMinutes?: unknown;
 };
 
 function text(value: unknown) {
@@ -72,7 +75,10 @@ export async function GET(
       [tripId]
     );
 
-    return NextResponse.json({ places: result.rows });
+    return NextResponse.json({ places: result.rows.map((row: any) => ({
+      ...row,
+      ...readPlaceTimingMetadata(row.description),
+    })) });
   } catch (error) {
     console.error("GET /api/trips/[id]/places failed:", error);
     return NextResponse.json(
@@ -104,7 +110,11 @@ export async function POST(
   const latitude = finiteNumber(body.latitude);
   const longitude = finiteNumber(body.longitude);
   const category = text(body.category) || null;
-  const description = text(body.description) || null;
+  const baseDescription = text(body.description) || null;
+  const description = attachPlaceTimingMetadata(baseDescription, {
+    openingHours: text(body.openingHours) || undefined,
+    visitDurationMinutes: finiteNumber(body.visitDurationMinutes) ?? undefined,
+  });
   const photoUrl = text(body.photoUrl) || null;
   const websiteUrl = text(body.websiteUrl) || null;
   const address = text(body.address) || null;
