@@ -78,6 +78,11 @@ export async function GET(
   if (!tripId) return NextResponse.json({ error: "Invalid trip id." }, { status: 400 });
 
   try {
+    const trip = await db.query("SELECT 1 FROM trips WHERE id = $1", [tripId]);
+    if (trip.rowCount === 0) {
+      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    }
+
     const result = await db.query(
       `SELECT
         id, destination_name AS name, latitude AS lat, longitude AS lon,
