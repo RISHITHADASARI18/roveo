@@ -750,6 +750,7 @@ export async function discoverBroadPlaces(
   ]);
 
   const unique = new Map<string, DiscoveredPlace>();
+  const keysByName = new Map<string, string[]>();
   const addPlaces = (
     items: DiscoveredPlace[],
     options: { allowOutsideBounds?: boolean; maxDistanceKm?: number } = {},
@@ -766,10 +767,42 @@ export async function discoverBroadPlaces(
       const maxDistanceKm = options.maxDistanceKm ??
         (coverage.scope === "state" ? 320 : coverage.scope === "district" ? 140 : coverage.scope === "city" ? 50 : 35);
       if (actualDistanceKm > maxDistanceKm) continue;
-      const key = normalizeName(measured.name) + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
-      if (!key) continue;
+      const nameKey = normalizeName(measured.name);
+      if (!nameKey) continue;
+
+      // Different providers often return the same attraction with coordinates
+      // a few hundred metres apart. Merge those into one pin/card, but preserve
+      // same-named places in broad regions when they are genuinely far apart.
+      const sameNameKeys = keysByName.get(nameKey) ?? [];
+      const duplicateKey = sameNameKeys.find((key) => {
+        const existing = unique.get(key);
+        return existing && haversineKm(existing, measured) <= 1.5;
+      });
+      const key = duplicateKey ??
+        nameKey + ":" + Math.round(measured.latitude * 10000) + ":" + Math.round(measured.longitude * 10000);
       const existing = unique.get(key);
-      if (!existing || JSON.stringify(measured).length > JSON.stringify(existing).length) unique.set(key, measured);
+      if (!existing) {
+        unique.set(key, measured);
+        keysByName.set(nameKey, [...sameNameKeys, key]);
+        continue;
+      }
+
+      // Prefer the more informative/high-confidence record while retaining
+      // useful metadata that only the other provider supplied.
+      const preferred = importanceScore(measured) > importanceScore(existing) ? measured : existing;
+      const secondary = preferred === measured ? existing : measured;
+      unique.set(key, {
+        ...secondary,
+        ...preferred,
+        description: preferred.description && preferred.description !== "Real place record from OpenStreetMap."
+          ? preferred.description : secondary.description,
+        website: preferred.website ?? secondary.website,
+        wikipedia: preferred.wikipedia ?? secondary.wikipedia,
+        address: preferred.address ?? secondary.address,
+        openingHours: preferred.openingHours ?? secondary.openingHours,
+        rating: preferred.rating ?? secondary.rating,
+        userRatingCount: preferred.userRatingCount ?? secondary.userRatingCount,
+      });
     }
   };
 
