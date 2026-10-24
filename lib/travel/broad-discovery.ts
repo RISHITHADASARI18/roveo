@@ -927,7 +927,7 @@ const getCachedBroadPlaces = unstable_cache(
     desiredQuery: string,
     storedCoverage?: DestinationCoverage,
   ) => discoverBroadPlacesUncached(destination, 0, maxResults, desiredQuery, storedCoverage),
-  ["roveo-broad-place-discovery-v1"],
+  ["roveo-broad-place-discovery-v2"],
   { revalidate: 21600 },
 );
 
