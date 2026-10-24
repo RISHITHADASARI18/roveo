@@ -5,7 +5,7 @@ export function normalizeDateOnly(value: unknown): string | null {
     return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null;
   }
   if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\\d{4}-\\d{2}-\\d{2})(?:T.*)?$/);
+  const match = value.trim().match(/^([0-9]{4}-[0-9]{2}-[0-9]{2})(?:T.*)?$/);
   return match ? match[1] : null;
 }
 
