@@ -123,6 +123,20 @@ for (const [key, value] of Object.entries(manualBudget)) {
   assert.equal(Number(savedItem.amount), value, `budget ${key} persists after reload`);
 }
 assert.equal(reloadedBudget.accommodationStatus, "provider-listed-price-not-confirmed", "accommodation provenance survives reload");
+const expectedManualSubtotal = manualBudget.destinationTravel + manualBudget.accommodation + manualBudget.localTransport + manualBudget.food + manualBudget.activities + manualBudget.other;
+assert.equal(Number(reloadedBudget.budget.subtotal), expectedManualSubtotal, "subtotal sums all non-contingency categories exactly once");
+assert.equal(Number(reloadedBudget.budget.total), expectedManualSubtotal + manualBudget.contingency, "total includes contingency exactly once");
+assert.equal(Number(reloadedBudget.trip.budget), 30000, "budget page receives the canonical trip budget from the database");
+assert.equal(Number(reloadedBudget.trip.people), 2, "budget page receives the canonical traveller count from the database");
+
+await api(`/api/trips/${trip.id}/budget/estimate`, { method: "POST", body: JSON.stringify({}) });
+const budgetAfterEstimateRefresh = await api(`/api/trips/${trip.id}/budget`);
+for (const [key, value] of Object.entries(manualBudget)) {
+  const savedItem = budgetAfterEstimateRefresh.budget.items.find((item) => item.category === key);
+  assert.equal(Number(savedItem.amount), value, `manual budget ${key} is not overwritten by a regenerated estimate`);
+}
+assert.equal(Number(budgetAfterEstimateRefresh.budget.subtotal), expectedManualSubtotal, "manual subtotal remains consistent after estimate regeneration");
+assert.equal(Number(budgetAfterEstimateRefresh.budget.total), expectedManualSubtotal + manualBudget.contingency, "manual total remains consistent after estimate regeneration");
 
 const discoveryResponse = await fetch(base + "/api/places/discover?destination=" + encodeURIComponent("Vijayawada, Andhra Pradesh, India") + "&maxResults=50");
 assert.equal(discoveryResponse.status, 200, "live destination discovery returns a usable response");
