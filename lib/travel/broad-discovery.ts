@@ -690,14 +690,11 @@ async function discoverBroadPlacesUncached(
     // sensible search scope from the saved box instead; only geocode again
     // when no usable bounds were saved.
     if (coverage.bounds) {
-      const height = coverage.bounds.north - coverage.bounds.south;
-      const width = coverage.bounds.east - coverage.bounds.west;
-      const span = Math.max(height, width);
       coverage = {
         ...coverage,
-        // Bounding-box size alone often mislabels large cities as districts,
-        // expanding discovery far beyond the selected destination.
         // A large stored box does not prove the user selected a state; large cities can have broad administrative bounds.
+        // Only an explicit state selection may widen discovery to the whole region.
+        scope: isKeralaStateDestination(destination) ? "state" : "city",
       };
     } else {
       try {
