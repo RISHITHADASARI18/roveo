@@ -25,6 +25,7 @@ function text(value: unknown) {
 }
 
 function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
 }
