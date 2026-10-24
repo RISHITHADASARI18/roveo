@@ -50,7 +50,6 @@ export async function GET(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
 
     const result = await db.query(
       `SELECT
@@ -130,7 +129,6 @@ export async function POST(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS destination_id BIGINT");
     if (destinationId !== null) {
       const destination = await db.query("SELECT 1 FROM trip_destinations WHERE id = $1 AND trip_id = $2", [destinationId, tripId]);
       if (destination.rowCount === 0) return NextResponse.json({ error: "Destination does not belong to this trip." }, { status: 400 });
