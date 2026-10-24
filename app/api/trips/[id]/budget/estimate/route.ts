@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { calculateBudget } from "@/lib/budget/calculate";
 import { searchStays } from "@/lib/accommodation/staying";
 import { estimatePlaceCosts } from "@/lib/budget/place-costs";
+import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates } from "@/lib/budget/route-costs";
 
 export const runtime = "nodejs";
 
@@ -122,28 +123,6 @@ async function estimateOrderedRouteDistance(points: RoutePoint[], useRoadRouting
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function estimateDestinationTravelCost(method: string, people: number, roundTripKm: number) {
-  if (!(roundTripKm > 0)) return null;
-  const mode = method.toLowerCase();
-  if (/flight|air/.test(mode)) return Math.round(Math.max(3000, roundTripKm * 2.7 + 2000) * people);
-  if (/train|rail/.test(mode)) return Math.round(Math.max(300, roundTripKm * 0.7 + 250) * people);
-  if (/bus|coach/.test(mode)) return Math.round(Math.max(250, roundTripKm * 1.05 + 200) * people);
-  if (/public transport|public transit/.test(mode)) return Math.round(Math.max(250, roundTripKm * 0.8 + 200) * people);
-  if (/taxi|cab/.test(mode)) return Math.round(roundTripKm * 22 + 500);
-  if (/car|self.?drive/.test(mode)) return Math.round(roundTripKm * 12 + 300);
-  return null;
-}
-
-function estimateLocalTransportCost(method: string, days: number, people: number, routeKm: number) {
-  const mode = method.toLowerCase();
-  if (/taxi|cab/.test(mode) && routeKm > 0) return Math.round(routeKm * 22 + days * 200);
-  if (/car|self.?drive/.test(mode) && routeKm > 0) return Math.round(routeKm * 11 + days * 150);
-  if (/bike|scooter/.test(mode) && routeKm > 0) return Math.round(routeKm * 5 + days * 100);
-  if (/public|bus|metro|train/.test(mode)) return Math.round(350 * people * days);
-  if (/walk/.test(mode)) return Math.round(100 * people * days);
-  return routeKm > 0 ? Math.round(routeKm * 22 + days * 200) : 0;
 }
 
 export async function GET(
@@ -329,19 +308,15 @@ export async function POST(
     let accommodationConfidence = "fallback";
     let liveStay: { name:string; totalPrice:number; currency:string; platform:string; url?:string } | null = null;
 
-    const accommodationNights = Math.max(0, Number(trip.days) - 1);
-    if (process.env.STAYINGAPI_KEY && trip.startDate && accommodationNights > 0) {
-      const checkIn = new Date(String(trip.startDate) + "T00:00:00Z");
-      const checkOut = new Date(checkIn);
-      // A trip with N calendar days normally has N-1 overnight stays.
-      // Adding N days here was charging an extra hotel night.
-      checkOut.setUTCDate(checkOut.getUTCDate() + accommodationNights);
-      const iso = (date: Date) => date.toISOString().slice(0, 10);
+    const nights = accommodationNights(Number(trip.days));
+    if (process.env.STAYINGAPI_KEY && trip.startDate && nights > 0) {
+      const dates = stayDates(String(trip.startDate).slice(0, 10), Number(trip.days));
       try {
+        if (!dates) throw new Error("Invalid trip start date or stay length.");
         const stays = await searchStays({
           location: trip.destination,
-          checkIn: iso(checkIn),
-          checkOut: iso(checkOut),
+          checkIn: dates.checkIn,
+          checkOut: dates.checkOut,
           adults: Number(trip.people),
           stayPreference: trip.stayPreference,
         });
@@ -474,6 +449,12 @@ export async function POST(
         pricing: {
           accommodationSource,
           accommodationConfidence,
+          accommodationAvailability: liveStay ? "not-confirmed-by-provider" : "not-available",
+          accommodationNote: liveStay
+            ? "A provider-listed property price was returned; this is not a booking or confirmed availability."
+            : process.env.STAYINGAPI_KEY
+              ? "No priced property was returned for these dates; the accommodation amount remains a Roveo estimate."
+              : "Live accommodation provider is not configured; the accommodation amount is a Roveo estimate.",
           localTransportSource: routeDistance.source,
           selectedRouteDistanceKm: routeDistance.km,
           localTransportEstimateSource: "Planning estimate based on selected-place route distance and local travel mode; actual fares and traffic vary.",
