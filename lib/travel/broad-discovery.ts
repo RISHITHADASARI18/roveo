@@ -33,7 +33,7 @@ function groupFor(text: string): DiscoveredPlace["group"] {
   if (/museum|gallery|temple|church|mosque|worship|theatre|cultural|art/.test(value)) return "Culture";
   if (/fort|palace|monument|historic|heritage|memorial|ruin|castle|archaeological/.test(value)) return "History";
   if (/park|garden|beach|waterfall|lake|hill|mountain|nature|wildlife|viewpoint|forest|backwater/.test(value)) return "Nature";
-  if (/amusement|theme|water park|zoo|aquarium|activity|attraction/.test(value)) return "Attraction";
+  if (/amusement|theme|water park|zoo|aquarium|activity|attraction|adventure|trek|hiking|climb|rafting|kayak|safari|ski|zipline|camping/.test(value)) return "Attraction";
   return "Activity";
 }
 
@@ -244,12 +244,12 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const query = [
     "[out:json][timeout:5];",
     "(",
-    `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork|information|picnic_site"](${bbox});`,
+    `nwr["tourism"~"attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium|artwork|information|picnic_site|camp_site|wilderness_hut"](${bbox});`,
     `nwr["historic"~"monument|memorial|castle|ruins|archaeological_site|fort|heritage|manor|palace"](${bbox});`,
-    `nwr["leisure"~"park|garden|nature_reserve|water_park|marina"](${bbox});`,
-    `nwr["natural"~"waterfall|peak|cave|beach|lake|cliff|hot_spring|volcano|glacier"](${bbox});`,
+    `nwr["leisure"~"park|garden|nature_reserve|water_park|marina|playground|sports_centre|pitch|bird_hide"](${bbox});`,
+    `nwr["natural"~"waterfall|peak|cave|beach|lake|cliff|hot_spring|volcano|glacier|wood|wetland|spring|reef|island"](${bbox});`,
     `nwr["man_made"~"lighthouse|pier|tower"](${bbox});`,
-    `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,
+    `nwr["amenity"~"theatre|arts_centre|place_of_worship"](${bbox});`,\n    `nwr["sport"~"climbing|hiking|canoe|kayak|rafting|paragliding|skiing"](${bbox});`,
     // Keep this feed focused on visitable attractions, not every village or administrative area.
     ");",
     "out center tags;",
@@ -277,7 +277,7 @@ async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
       const latitude = Number(element.lat ?? element.center?.lat);
       const longitude = Number(element.lon ?? element.center?.lon);
       if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-      const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.place ?? "place").toLowerCase();
+      const type = String(tags.tourism ?? tags.historic ?? tags.leisure ?? tags.natural ?? tags.man_made ?? tags.amenity ?? tags.sport ?? tags.route ?? tags.place ?? "place").toLowerCase();
       const address = [
         tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"],
         tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:village"],
