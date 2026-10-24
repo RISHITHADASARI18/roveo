@@ -203,14 +203,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const allocations = allocateDays(dayCount, destinations.length);
     let days: Array<Record<string, unknown>> = [];
+    const localTravelMethod = String(trip.rows[0].local_travel_method ?? "Taxi");
+    // Use the same route matrix in both normal and too-short-trip cases.
+    const destinationMetrics = await loadRoadMetrics(destinations, localTravelMethod);
 
     if (dayCount >= destinations.length) {
       let dayNumber = 1;
-      const localTravelMethod = String(trip.rows[0].local_travel_method ?? "Taxi");
-      // Use the same road matrix for the destination-to-destination legs as for
-      // local stops. Starting a new city at 9 AM without accounting for the
-      // transfer was making multi-city itineraries impossible to follow.
-      const destinationMetrics = await loadRoadMetrics(destinations, localTravelMethod);
       for (let index = 0; index < destinations.length; index += 1) {
         const destination = destinations[index];
         const destinationPlaces = placesByDestination.get(destination.id) ?? [];
@@ -260,16 +258,59 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const dayIndex = Math.min(dayCount - 1, Math.floor(index * dayCount / destinations.length));
         destinationBuckets[dayIndex].push(destination);
       });
-      days = destinationBuckets.map((bucket, index) => {
-        const bucketPlaces = bucket.flatMap((destination) => placesByDestination.get(destination.id) ?? []);
-        const planned = buildSmartItinerary(bucketPlaces, 1)[0];
-        return {
+      for (let index = 0; index < destinationBuckets.length; index += 1) {
+        const bucket = destinationBuckets[index];
+        const firstDestination = bucket[0];
+        const firstDestinationIndex = destinations.findIndex((destination) => destination.id === firstDestination?.id);
+        const previousDestination = firstDestinationIndex > 0 ? destinations[firstDestinationIndex - 1] : undefined;
+        const transferKm = previousDestination && firstDestination
+          ? (destinationMetrics?.distanceKm(previousDestination, firstDestination)
+            ?? Math.round(distanceKm(previousDestination, firstDestination) * 1.3 * 10) / 10)
+          : 0;
+        const transferMinutes = previousDestination && firstDestination
+          ? (destinationMetrics?.travelMinutes(previousDestination, firstDestination)
+            ?? Math.max(30, Math.round(distanceKm(previousDestination, firstDestination) * 2.2)))
+          : 0;
+        const internalLongTransfer = bucket.some((destination, bucketIndex) => {
+          if (bucketIndex === 0) return false;
+          const previous = bucket[bucketIndex - 1];
+          const minutes = destinationMetrics?.travelMinutes(previous, destination)
+            ?? Math.max(30, Math.round(distanceKm(previous, destination) * 2.2));
+          return minutes >= 120;
+        });
+
+        // If one day is being asked to cover far-apart destinations, schedule
+        // only the first destination. The rest remain visibly unscheduled so
+        // the user can add days rather than receive a fake timeline.
+        const schedulableBucket = internalLongTransfer ? bucket.slice(0, 1) : bucket;
+        const bucketPlaces = schedulableBucket.flatMap((destination) => placesByDestination.get(destination.id) ?? []);
+        const placeMetrics = await loadRoadMetrics(bucketPlaces, localTravelMethod);
+        const transferWarning = transferMinutes >= 120
+          ? "Long transfer from " + previousDestination?.name + " to " + firstDestination?.name + " (~" + Math.round(transferMinutes / 60 * 10) / 10 + " hours). The first visit starts after this journey; consider travelling the evening before or adding a day."
+          : internalLongTransfer
+            ? "These destinations are too far apart for one sightseeing day. Only " + firstDestination?.name + " is scheduled; add another day for the remaining destination."
+            : undefined;
+        const planned = buildSmartItinerary(
+          bucketPlaces,
+          1,
+          placeMetrics,
+          index === 0
+            ? {}
+            : {
+                dayStartMinutes: 6 * 60,
+                initialTravelMinutes: transferMinutes,
+                initialTravelDistanceKm: transferKm,
+                transferWarning,
+              }
+        )[0];
+        days.push({
           ...planned,
           dayNumber: index + 1,
-          destinationIds: bucket.map((destination) => destination.id),
-          destinationName: bucket.map((destination) => destination.name).join(" · "),
-        };
-      });
+          destinationIds: schedulableBucket.map((destination) => destination.id),
+          destinationName: schedulableBucket.map((destination) => destination.name).join(" · "),
+          reason: transferWarning ? transferWarning + " " + planned.reason : planned.reason,
+        });
+      }
     }
 
     return NextResponse.json({
