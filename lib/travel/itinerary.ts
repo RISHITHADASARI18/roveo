@@ -78,7 +78,7 @@ type PlannerMetrics = {
 
 function chooseSeeds(places: PlannerPlace[], days: number, distanceKm: PlannerMetrics["distanceKm"]) {
   const seeds: PlannerPlace[] = [];
-  if (!places.length) return seeds;
+  if (!places.length || days <= 0) return seeds;
   const center = centroid(places);
   const centerPoint = { id: "center", name: "", latitude: center.latitude, longitude: center.longitude };
   const first = [...places].sort((a, b) => distanceKm(b, centerPoint) - distanceKm(a, centerPoint))[0];
