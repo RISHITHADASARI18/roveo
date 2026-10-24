@@ -637,7 +637,7 @@ async function discoverBroadPlacesUncached(
   storedCoverage?: DestinationCoverage,
 ): Promise<PlaceDiscoveryResult> {
   // Keep discovery focused on a useful set of important places while ranking the strongest matches first.
-  const limit = Math.min(Math.max(Math.round(maxResults), 1), 100);
+  const limit = Math.min(Math.max(Math.round(maxResults), 1), 250);
   let coverage = storedCoverage ?? await destinationCoverage(destination, { latitude: 0, longitude: 0 });
   // Trips created before scope-aware discovery only stored coordinates/bounds.
   // Resolve the destination once more to determine whether the query is a state,
@@ -653,7 +653,9 @@ async function discoverBroadPlacesUncached(
       const span = Math.max(height, width);
       coverage = {
         ...coverage,
-        scope: span > 1.5 ? "state" : span > 0.5 ? "district" : "city",
+        // Bounding-box size alone often mislabels large cities as districts,
+        // expanding discovery far beyond the selected destination.
+        scope: span > 1.5 ? "state" : "city",
       };
     } else {
       try {
@@ -750,7 +752,7 @@ async function discoverBroadPlacesUncached(
     // when configured. Keep it parallel with the free sources so it adds quality
     // without making each destination wait for the others.
     googleFallback(destination, searchBounds, coverage.center, Math.min(limit, 20)),
-    Promise.resolve([] as DiscoveredPlace[]),
+    wikipediaDestinationSearch(destination),
     nearbyDestinationSearch(searchBounds, coverage),
   ]);
 
@@ -926,7 +928,7 @@ async function discoverBroadPlacesUncached(
 
   if (desiredQuery) {
     const query = desiredQuery.toLowerCase();
-    places = places.filter((place) => (place.name + " " + (place.description ?? "") + " " + place.type).toLowerCase().includes(query));
+    places = places.filter((place) => (place.name + " " + (place.description ?? "") + " " + place.type + " " + place.group).toLowerCase().includes(query));
   }
 
   // Do not write the live result set to PostgreSQL on the request path. The old
