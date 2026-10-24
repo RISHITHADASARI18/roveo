@@ -15,6 +15,11 @@ function tripIdFromParams(params: { id: string }) {
 type CostPlace = { name: string; category?: string | null; latitude?: number | null; longitude?: number | null; destinationId?: string | null };
 type RoutePoint = { latitude: number; longitude: number };
 
+function validRoutePoint(latitude: unknown, longitude: unknown): boolean {
+  const lat = Number(latitude), lon = Number(longitude);
+  return latitude != null && longitude != null && Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
 function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
   const radians = Math.PI / 180;
   const dLat = (b.latitude - a.latitude) * radians;
@@ -25,8 +30,7 @@ function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: 
 
 async function estimateSelectedRouteDistance(places: CostPlace[]) {
   const points = places.filter((place) =>
-    place.latitude != null && place.longitude != null &&
-    Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude))
+    validRoutePoint(place.latitude, place.longitude)
   ).slice(0, 50).map((place) => ({
     latitude: Number(place.latitude),
     longitude: Number(place.longitude),
@@ -210,16 +214,21 @@ export async function POST(
            FROM trip_destinations WHERE trip_id = $1 ORDER BY order_index ASC`,
         [tripId],
       );
-      const routeDestinations: RoutePoint[] = destinationResult.rows
-        .filter((row) => row.latitude != null && row.longitude != null)
-        .map((row) => ({ latitude: Number(row.latitude), longitude: Number(row.longitude) }));
-      const sourcePoint = trip.sourceLat != null && trip.sourceLon != null
+      const allSavedDestinationsHaveCoordinates = destinationResult.rows.length > 0 && destinationResult.rows.every((row) => validRoutePoint(row.latitude, row.longitude));
+      const routeDestinations: RoutePoint[] = allSavedDestinationsHaveCoordinates
+        ? destinationResult.rows.map((row) => ({ latitude: Number(row.latitude), longitude: Number(row.longitude) }))
+        : [];
+      const sourcePoint = validRoutePoint(trip.sourceLat, trip.sourceLon)
         ? { latitude: Number(trip.sourceLat), longitude: Number(trip.sourceLon) }
         : null;
-      const fallbackDestination = trip.destinationLat != null && trip.destinationLon != null
+      const fallbackDestination = validRoutePoint(trip.destinationLat, trip.destinationLon)
         ? { latitude: Number(trip.destinationLat), longitude: Number(trip.destinationLon) }
         : null;
-      const orderedDestinations = routeDestinations.length ? routeDestinations : fallbackDestination ? [fallbackDestination] : [];
+      // Never calculate a partial multi-destination journey: omitting one destination
+      // silently shortens the route and underestimates the travel budget.
+      const orderedDestinations = destinationResult.rows.length
+        ? (allSavedDestinationsHaveCoordinates ? routeDestinations : [])
+        : fallbackDestination ? [fallbackDestination] : [];
       if (sourcePoint && orderedDestinations.length) {
         const routePoints = [sourcePoint, ...orderedDestinations, sourcePoint];
         const useRoadRouting = /car|taxi|bus|coach/i.test(String(trip.travelMethod));
