@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { calculateBudget } from "@/lib/budget/calculate";
 import { searchStays } from "@/lib/accommodation/staying";
 import { estimatePlaceCosts } from "@/lib/budget/place-costs";
-import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates } from "@/lib/budget/route-costs";
+import { estimateDestinationTravelCost, estimateLocalTransportCost, accommodationNights, stayDates, normalizeDateOnly } from "@/lib/budget/route-costs";
 
 export const runtime = "nodejs";
 
@@ -335,10 +335,10 @@ export async function POST(
     let unsupportedCurrencyStay = false;
 
     const nights = accommodationNights(Number(trip.days));
-    if (process.env.STAYINGAPI_KEY && trip.startDate && nights > 0) {
-      const dates = stayDates(String(trip.startDate).slice(0, 10), Number(trip.days));
+    const normalizedStartDate = normalizeDateOnly(trip.startDate);
+    const dates = normalizedStartDate ? stayDates(normalizedStartDate, Number(trip.days)) : null;
+    if (process.env.STAYINGAPI_KEY && dates && nights > 0) {
       try {
-        if (!dates) throw new Error("Invalid trip start date or stay length.");
         const stays = await searchStays({
           location: trip.destination,
           checkIn: dates.checkIn,
@@ -379,9 +379,13 @@ export async function POST(
       ? "provider-listed-price-not-confirmed"
       : unsupportedCurrencyStay
         ? "estimate-unsupported-currency"
-        : process.env.STAYINGAPI_KEY
-          ? "estimate-no-priced-results"
-          : "estimate-provider-not-configured";
+        : nights < 1
+          ? "estimate-no-overnight-stay"
+          : !dates
+            ? "estimate-invalid-stay-dates"
+            : process.env.STAYINGAPI_KEY
+              ? "estimate-no-priced-results"
+              : "estimate-provider-not-configured";
 
     const saved = await db.query(
       `INSERT INTO trip_cost_estimates (
@@ -495,9 +499,13 @@ export async function POST(
             ? "A provider-listed property price was returned; this is not a booking or confirmed availability."
             : unsupportedCurrencyStay
               ? "The provider returned a price in a currency Roveo cannot safely convert, so the accommodation amount remains a Roveo estimate."
-              : process.env.STAYINGAPI_KEY
-                ? "No priced property was returned for these dates; the accommodation amount remains a Roveo estimate."
-                : "Live accommodation provider is not configured; the accommodation amount is a Roveo estimate.",
+              : nights < 1
+                ? "This trip has no overnight stays, so accommodation is estimated at zero."
+                : !dates
+                  ? "The saved trip date or stay length is invalid, so accommodation remains a Roveo estimate."
+                  : process.env.STAYINGAPI_KEY
+                    ? "No priced property was returned for these dates; the accommodation amount remains a Roveo estimate."
+                    : "Live accommodation provider is not configured; the accommodation amount is a Roveo estimate.",
           localTransportSource: routeDistance.source,
           selectedRouteDistanceKm: routeDistance.km,
           localTransportEstimateSource: "Planning estimate based on selected-place route distance and local travel mode; actual fares and traffic vary.",
