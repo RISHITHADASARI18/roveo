@@ -1009,7 +1009,7 @@ async function discoverBroadPlacesUncached(
     return scoreDiff || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name);
   });
 
-  if (!places.length) {
+  if (!places.length && !categoryFilter) {
     throw new Error("No live places were returned for " + destination + ". The destination was located, but the place providers returned no usable records.");
   }
 
