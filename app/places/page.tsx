@@ -43,7 +43,8 @@ function estimateVisitMinutes(place:Place){
 }
 
 function titleCase(value:string){
-  return value.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const readable=value.replaceAll("_"," ").replace(/\s+(hindu|buddhist|jain|christian|muslim|sikh)$/i,"");
+  return readable.replace(/\b\w/g,c=>c.toUpperCase());
 }
 
 const curatedDescriptions:Record<string,string>={
