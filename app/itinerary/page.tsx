@@ -24,6 +24,7 @@ type PlannedPlace = {
   startTime?:string;
   durationMinutes?:number;
   travelTimeMinutes?:number;
+  openingHours?:string;
   address?:string;
   description?:string;
   websiteUrl?:string;
@@ -154,6 +155,7 @@ function ItineraryContent(){
           startTime:item.startTime||"",
           durationMinutes:Number(item.durationMinutes)||0,
           travelTimeMinutes:Number(item.travelTimeMinutes)||0,
+          openingHours:item.place.openingHours||"",
           address:item.place.address||"",
           description:item.place.description||"",
           websiteUrl:item.place.websiteUrl||""
@@ -199,6 +201,7 @@ function ItineraryContent(){
           startTime:place.startTime,
           durationMinutes:Number(place.durationMinutes)||0,
           travelTimeMinutes:Number(place.travelTimeMinutes)||0,
+          openingHours:place.openingHours||"",
           address:place.address||"",
           description:place.description||"",
           websiteUrl:place.websiteUrl||""
@@ -421,6 +424,7 @@ function ItineraryContent(){
                     <strong>{place.name}</strong>
                     <small>{place.startTime||"Suggested time"} · Visit for about {place.durationMinutes||90} min</small>
                     <small>{String(place.type||"place").replaceAll("_"," ")}</small>
+                    {place.openingHours&&<small>Opening hours: {place.openingHours}</small>}
                     {place.address&&<small>{place.address}</small>}
                     {place.description&&<small>{place.description}</small>}
                     {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
