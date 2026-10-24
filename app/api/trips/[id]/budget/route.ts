@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureBudgetSchema } from "@/lib/budget/ensure-schema";
 import { estimatePlaceCosts } from "@/lib/budget/place-costs";
 
 export const runtime = "nodejs";
 
 const CATEGORIES = ["destinationTravel","accommodation","localTransport","food","activities","other","contingency"] as const;
 
-let accommodationPropertyColumnReady: Promise<void> | null = null;
-async function ensureAccommodationPropertyColumn() {
-  if (!accommodationPropertyColumnReady) {
-    accommodationPropertyColumnReady = Promise.all([
-      db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"),
-      db.query("ALTER TABLE trip_budgets ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE"),
-    ]).then(() => undefined).catch((error) => { accommodationPropertyColumnReady = null; throw error; });
-  }
-  return accommodationPropertyColumnReady;
-}
+
 type Category = typeof CATEGORIES[number];
 
 function tripIdFromParams(params: { id: string }) {
@@ -43,7 +35,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
   const tripId=tripIdFromParams(await params);
   if(!tripId)return NextResponse.json({error:"Invalid trip id."},{status:400});
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const result=await db.query(
       `SELECT
         destination_travel AS "destinationTravel",
@@ -133,7 +125,7 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
   const values=CATEGORIES.map(c=>number(body[c]));
   if(values.some(v=>v===null))return NextResponse.json({error:"All budget amounts must be non-negative numbers."},{status:400});
   try {
-    await ensureAccommodationPropertyColumn();
+    await ensureBudgetSchema();
     const trip=await db.query("SELECT budget FROM trips WHERE id=$1",[tripId]);
     if(!trip.rows[0])return NextResponse.json({error:"Trip not found."},{status:404});
     const result=await db.query(
