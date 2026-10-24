@@ -3,7 +3,7 @@ export type PlaceCategoryInput = { name: string; type?: string; group?: string; 
 
 export function normalizePlaceName(value: string) {
   const normalized = value.toLowerCase().normalize("NFKD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -25,7 +25,7 @@ export function isKeralaStateDestination(destination: string) {
 
 export function categoryForPlace(place: PlaceCategoryInput): PlaceCategory {
   const value = normalizePlaceName([place.name, place.type ?? "", place.group ?? "", place.description ?? ""].join(" "));
-  if (/waterfall|falls\\b|cascade/.test(value)) return "Waterfalls";
+  if (/waterfall|falls\b|cascade/.test(value)) return "Waterfalls";
   if (/viewpoint|lookout|observation deck|panorama|scenic point|\bpeak\b/.test(value)) return "Viewpoints";
   if (/beach|coastline|seaside|shoreline/.test(value)) return "Beaches";
   if (/temple|mandir|place of worship|hindu temple/.test(value)) return "Temples";
