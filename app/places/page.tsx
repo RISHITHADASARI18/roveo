@@ -379,7 +379,7 @@ function PlacesContent(){
             name:place.name,
             latitude:place.lat,
             longitude:place.lon,
-            category:place.group,
+            category:categoryForPlace(place),
             description:place.description||null,
             openingHours:place.openingHours||null,
             visitDurationMinutes:estimateVisitMinutes(place),
