@@ -66,7 +66,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         accommodation_property AS "accommodationProperty",
         generated_at AS "generatedAt"
        FROM trip_cost_estimates WHERE trip_id=$1`, [tripId]);
-        const trip = await db.query("SELECT people FROM trips WHERE id = $1", [tripId]);
+        const trip = await db.query("SELECT people, days, budget, source, destination FROM trips WHERE id = $1", [tripId]);
     const places = await db.query(
       "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
