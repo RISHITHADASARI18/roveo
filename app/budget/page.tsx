@@ -32,6 +32,7 @@ type PlaceCostBreakdown = {
   maxTotal: number;
   source: string;
   pricingMethod: string;
+  provisionalUnpricedAllowance?: number;
 };
 
 const CATEGORIES: BudgetItem[] = [
@@ -280,10 +281,25 @@ function BudgetContent() {
                 )}
                 <p className="budget-place-cost-source">{placeCosts.source}</p>
                 <p className="budget-place-cost-source">{placeCosts.pricingMethod}</p>
+              {(placeCosts.provisionalUnpricedAllowance ?? 0) > 0 && <p className="budget-place-cost-note">The generated budget includes ₹{money(placeCosts.provisionalUnpricedAllowance ?? 0)} as a provisional allowance for unpriced selected places. This is a placeholder, not a verified ticket fee.</p>}
               </section>
             )}
 
-            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            <section className="budget-sources-card">
+              <span className="eyebrow">HOW ROVEO ESTIMATES COSTS</span>
+              <h3>Sources & confidence</h3>
+              <ul>
+                <li><strong>Accommodation:</strong> live provider results when available; otherwise a clearly labelled fallback estimate.</li>
+                <li><strong>Local transport:</strong> selected-place road distance from the Open Source Routing Machine (OSRM), with a detour buffer when coordinates are available; transport fares remain estimates.</li>
+                <li><strong>Tickets:</strong> published official venue price ranges where matched. Other places are marked unpriced and get only a provisional allowance in the generated budget.</li>
+                <li><strong>Food and travel to destination:</strong> planning baselines, not live quotes. Confirm current fares and meal prices before booking.</li>
+              </ul>
+              <div className="budget-source-links">
+                <a href="https://project-osrm.org/docs/v26.6.1/index.html" target="_blank" rel="noreferrer">OSRM routing documentation ↗</a>
+                <a href="https://www.keralatourism.org/drivecations/distance-chart" target="_blank" rel="noreferrer">Kerala Tourism distance chart ↗</a>
+              </div>
+            </section>
+                        <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
 
             <div className="budget-editor-footer">
               <div>
