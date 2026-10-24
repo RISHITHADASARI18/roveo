@@ -228,9 +228,11 @@ export function buildSmartItinerary(
         ? Math.min(...current.map((existing) => travelMinutes(place, existing)))
         : 0;
       const projectedMinutes = workload + estimatedDuration(place) + addedTravel;
-      const overloadPenalty = Math.max(0, projectedMinutes - 480) * 0.12;
+      // Do not overfill the last available day just to force every stop into a
+      // timetable. If no day has capacity, this place stays visibly unscheduled.
+      if (projectedMinutes > 480) continue;
       const countPenalty = current.length * 1.5;
-      const score = proximity + countPenalty + overloadPenalty;
+      const score = proximity + countPenalty;
       if (score < bestScore) { bestScore = score; bestDay = day; }
     }
     if (bestDay >= 0) clusters[bestDay].push(place);
