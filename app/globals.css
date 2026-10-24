@@ -437,3 +437,22 @@ html{scroll-behavior:smooth}
 .planned-place-links a:hover{background:#e0f5fc;border-color:#8bcde3}
 .itinerary-intro .planning-rule{margin-top:8px;max-width:680px}
 @media(max-width:600px){.planned-place{gap:9px}.planned-place-links a{font-size:10px}}
+
+
+/* Selected-place ticket cost details in the trip budget */
+.budget-place-costs{margin-top:22px;padding:20px;border:1px solid #d8edf5;border-radius:18px;background:#f8fdff}
+.budget-place-costs-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.budget-place-costs-heading .eyebrow{margin-bottom:8px}
+.budget-place-costs-heading h3{margin:0;color:#23465a;font-size:20px;letter-spacing:-.5px}
+.budget-place-costs-heading p{margin:8px 0 0;color:#748a95;font-size:11px;line-height:1.6}
+.budget-place-costs-heading>strong{font-size:21px;color:#1676a5;white-space:nowrap}
+.budget-place-cost-list{display:flex;flex-direction:column;margin-top:15px}
+.budget-place-cost-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 0;border-top:1px solid #e4f0f5}
+.budget-place-cost-row strong,.budget-place-cost-row small{display:block}
+.budget-place-cost-row strong{font-size:12px;color:#315366}
+.budget-place-cost-row small{font-size:10px;line-height:1.45;color:#82959e;margin-top:4px}
+.budget-place-cost-row>span{font-size:12px;font-weight:800;color:#315366;white-space:nowrap}
+.budget-place-cost-note,.budget-place-cost-source{font-size:10px;line-height:1.6;color:#7c909a}
+.budget-place-cost-note{margin:12px 0 0}
+.budget-place-cost-source{margin:8px 0 0}
+@media(max-width:600px){.budget-place-costs{padding:15px}.budget-place-costs-heading h3{font-size:18px}.budget-place-costs-row{gap:10px}}
