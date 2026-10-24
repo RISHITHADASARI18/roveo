@@ -9,7 +9,10 @@ const CATEGORIES = ["destinationTravel","accommodation","localTransport","food",
 let accommodationPropertyColumnReady: Promise<void> | null = null;
 async function ensureAccommodationPropertyColumn() {
   if (!accommodationPropertyColumnReady) {
-    accommodationPropertyColumnReady = db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB").then(() => undefined).catch((error) => { accommodationPropertyColumnReady = null; throw error; });
+    accommodationPropertyColumnReady = Promise.all([
+      db.query("ALTER TABLE trip_cost_estimates ADD COLUMN IF NOT EXISTS accommodation_property JSONB"),
+      db.query("ALTER TABLE trip_budgets ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]).then(() => undefined).catch((error) => { accommodationPropertyColumnReady = null; throw error; });
   }
   return accommodationPropertyColumnReady;
 }
@@ -50,7 +53,8 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         activities,
         other,
         contingency,
-        updated_at AS "updatedAt"
+        updated_at AS "updatedAt",
+        is_manual AS "isManual"
        FROM trip_budgets WHERE trip_id=$1`,[tripId]);
     // Estimates are also persisted in trip_cost_estimates. If a trip has an
     // estimate but no manually saved budget row yet, use that as the initial
@@ -67,6 +71,7 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
       "SELECT name, category FROM trip_places WHERE trip_id = $1 ORDER BY created_at ASC, id ASC",
       [tripId],
     );
+    if (!trip.rows[0]) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     const people = Number(trip.rows[0]?.people ?? 1);
     const placeCosts = estimatePlaceCosts(
       places.rows.map((place) => ({ name: String(place.name), category: place.category == null ? null : String(place.category) })),
@@ -92,12 +97,14 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         )
       : null;
     const budgetIsNewer = Boolean(recencyResult?.rows[0]?.budgetIsNewer);
-    const initialBudget = savedBudget && (!generatedEstimate || budgetIsNewer)
+    const initialBudget = savedBudget && (savedBudget.isManual || !generatedEstimate || budgetIsNewer)
       ? savedBudget
       : generatedEstimate;
-    if(!initialBudget)return NextResponse.json({budget:null, placeCosts: { ...placeCosts, provisionalUnpricedAllowance }});
+    const tripDetails = { days: Number(trip.rows[0].days), people, budget: Number(trip.rows[0].budget), source: String(trip.rows[0].source ?? ""), destination: String(trip.rows[0].destination ?? "") };
+    if(!initialBudget)return NextResponse.json({budget:null, trip: tripDetails, placeCosts: { ...placeCosts, provisionalUnpricedAllowance }});
     return NextResponse.json({
       budget:buildBreakdown(initialBudget),
+      trip: tripDetails,
       placeCosts: { ...placeCosts, provisionalUnpricedAllowance },
       accommodationProperty: estimateResult.rows[0]?.accommodationProperty ?? null,
       initializedFromEstimate:!result.rows[0] && Boolean(estimateResult.rows[0]),
@@ -140,7 +147,8 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
         activities=EXCLUDED.activities,
         other=EXCLUDED.other,
         contingency=EXCLUDED.contingency,
-        updated_at=NOW()
+        updated_at=NOW(),
+        is_manual=TRUE
        RETURNING destination_travel AS "destinationTravel",accommodation,
         local_transport AS "localTransport",food,activities,other,contingency`,
       [tripId,...values]);
