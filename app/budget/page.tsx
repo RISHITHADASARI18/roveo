@@ -213,7 +213,10 @@ function BudgetContent() {
                 <label className="budget-category-row" key={category.key}>
                   <div>
                     <strong>{category.label}</strong>
-                    <small>{estimateExplanations[category.key] || category.description}</small>
+                    <small>
+                      {estimateExplanations[category.key] || category.description}
+                      {planned > 0 ? ` · ${Math.round((Number(items[category.key] || 0) / planned) * 100)}% of planned spend` : ""}
+                    </small>
                   </div>
                   <div className="budget-category-input">
                     <b>₹</b>
