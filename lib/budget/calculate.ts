@@ -86,10 +86,11 @@ function distanceKm(
 }
 
 function getRouteDistance(input: BudgetCalculationInput): number | null {
-  const destinations = (input.destinations ?? []).filter((item) =>
-    validCoordinates(item.latitude, item.longitude)
-  );
-  if (!validCoordinates(input.sourceLatitude, input.sourceLongitude) || destinations.length === 0) return null;
+  const allDestinations = input.destinations ?? [];
+  if (!validCoordinates(input.sourceLatitude, input.sourceLongitude) ||
+      allDestinations.length === 0 ||
+      allDestinations.some((item) => !validCoordinates(item.latitude, item.longitude))) return null;
+  const destinations = allDestinations;
 
   let outboundDistance = 0;
   let current = { latitude: input.sourceLatitude, longitude: input.sourceLongitude };
@@ -101,9 +102,9 @@ function getRouteDistance(input: BudgetCalculationInput): number | null {
   }
   const returnLeg = distanceKm(current, { latitude: input.sourceLatitude, longitude: input.sourceLongitude });
   if (returnLeg === null) return null;
-  // Count the inter-destination legs once, then add the final return leg.
-  // Straight-line distance is converted to a conservative road/route allowance.
-  return Math.round((outboundDistance + returnLeg) * 1.25);
+  // Count inter-destination legs once and add the return journey. Mode-specific
+  // pricing below applies broad route factors for road travel where appropriate.
+  return Math.round(outboundDistance + returnLeg);
 }
 
 function estimateDestinationTravel(input: BudgetCalculationInput, routeDistanceKm: number | null) {
@@ -123,16 +124,16 @@ function estimateDestinationTravel(input: BudgetCalculationInput, routeDistanceK
     return round(Math.max(3500, routeDistanceKm * 5.5 / 2) * people);
   }
   if (method.includes("train") || method.includes("rail")) {
-    return round(Math.max(150, routeDistanceKm * 1.35 / 2) * people);
+    return round(Math.max(150, routeDistanceKm * 1.35 / 2 * 1.2) * people);
   }
   if (method.includes("bus") || method.includes("coach")) {
-    return round(Math.max(200, routeDistanceKm * 1.6 / 2) * people);
+    return round(Math.max(200, routeDistanceKm * 1.6 / 2 * 1.25) * people);
   }
   if (method.includes("bike") || method.includes("motorcycle")) {
-    return round(routeDistanceKm * 3.2);
+    return round(routeDistanceKm * 3.2 * 1.2);
   }
   if (method.includes("car") || method.includes("drive") || method.includes("own vehicle")) {
-    return round(routeDistanceKm * 11);
+    return round(routeDistanceKm * 11 * 1.15);
   }
   // Unknown modes use a conservative per-person intercity allowance.
   return round(Math.max(500, routeDistanceKm * 1.5 / 2) * people);
@@ -208,7 +209,7 @@ function estimateActivities(days: number, people: number, places: BudgetPlace[])
 export function calculateBudgetComponents(input: BudgetCalculationInput): BudgetComponentResult[] {
   const routeDistanceKm = getRouteDistance(input);
   const places = input.selectedPlaces ?? [];
-  const destination = input.destinations?.[0]?.name || input.destination || "";
+  const destination = (input.destinations ?? []).map((item) => item.name).join(" ") || input.destination || "";
   const destinationTravel = estimateDestinationTravel(input, routeDistanceKm);
   const accommodation = estimateAccommodation(input.stayPreference, input.days, input.people);
   const localTransport = estimateLocalTransport(input.localTravelMethod, input.days, input.people);
@@ -244,11 +245,11 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
   const routeDistanceKm = getRouteDistance(input);
   const places = input.selectedPlaces ?? [];
   const uniquePlaces = new Map(places.filter((place) => safeText(place.name)).map((place) => [safeText(place.name), place]));
-  const destinationName = input.destinations?.[0]?.name || input.destination || "the destination";
+  const destinationName = (input.destinations ?? []).map((item) => item.name).join(", ") || input.destination || "the destination";
   const explanations: Record<BudgetComponent, string> = {
     destinationTravel: routeDistanceKm === null
       ? "Estimated round-trip fare based on your selected travel mode; route coordinates were unavailable, so this uses a broad fallback allowance."
-      : `Estimated round-trip ${safeText(input.travelMethod) || "travel"} cost for ${input.people} traveller(s), using about ${routeDistanceKm.toLocaleString("en-IN")} km of road-adjusted route distance. This is not a live fare quote.`,
+      : `Estimated round-trip ${safeText(input.travelMethod) || "travel"} cost for ${input.people} traveller(s), using about ${routeDistanceKm.toLocaleString("en-IN")} km between saved coordinates and broad mode-specific fare assumptions. This is not a live fare quote.`,
     accommodation: `${Math.max(0, input.days - 1)} night(s), ${Math.max(1, Math.ceil(input.people / 2))} room(s), using a typical nightly rate for “${input.stayPreference}”. Live accommodation pricing may replace this when available.`,
     localTransport: `Estimated local transport for ${input.days} day(s) using “${input.localTravelMethod}”, scaled for ${input.people} traveller(s) where applicable.`,
     food: `Estimated meals for ${input.people} traveller(s) across ${input.days} day(s), using a typical daily food allowance for ${destinationName}; actual restaurant choices will change this.`,
@@ -259,7 +260,7 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
   const assumptions = [
     "All amounts are estimates in Indian rupees (INR), not guaranteed quotes.",
     "Intercity fares, meals, local transport and attraction tickets can change by date, season, provider and traveller age.",
-    "The route distance is estimated from saved destination coordinates and adjusted upward from straight-line distance; it is not a turn-by-turn route.",
+    "The route distance is estimated from saved coordinates as straight-line distance; mode-specific factors approximate road/rail routing but are not turn-by-turn routes or live fare quotes.",
     "Accommodation is based on typical room rates unless the response identifies a live provider price.",
     uniquePlaces.size
       ? `Activities consider ${uniquePlaces.size} unique saved place(s); only a trip-day-limited number of visits are budgeted.`
