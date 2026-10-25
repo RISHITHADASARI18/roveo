@@ -91,18 +91,19 @@ function getRouteDistance(input: BudgetCalculationInput): number | null {
   );
   if (!validCoordinates(input.sourceLatitude, input.sourceLongitude) || destinations.length === 0) return null;
 
-  let total = 0;
+  let outboundDistance = 0;
   let current = { latitude: input.sourceLatitude, longitude: input.sourceLongitude };
   for (const destination of destinations) {
     const leg = distanceKm(current, destination);
     if (leg === null) return null;
-    total += leg;
+    outboundDistance += leg;
     current = { latitude: destination.latitude, longitude: destination.longitude };
   }
   const returnLeg = distanceKm(current, { latitude: input.sourceLatitude, longitude: input.sourceLongitude });
   if (returnLeg === null) return null;
+  // Count the inter-destination legs once, then add the final return leg.
   // Straight-line distance is converted to a conservative road/route allowance.
-  return Math.round(total * 2 * 1.25);
+  return Math.round((outboundDistance + returnLeg) * 1.25);
 }
 
 function estimateDestinationTravel(input: BudgetCalculationInput, routeDistanceKm: number | null) {
