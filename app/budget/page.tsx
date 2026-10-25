@@ -42,6 +42,9 @@ function BudgetContent() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
+  const [estimateExplanations, setEstimateExplanations] = useState<Record<string, string>>({});
+  const [estimateAssumptions, setEstimateAssumptions] = useState<string[]>([]);
+  const [estimateInputs, setEstimateInputs] = useState<{ destinations?: number; selectedPlaces?: number; routeDistanceKm?: number | null; nights?: number } | null>(null);
   const [estimating, setEstimating] = useState(false);
 
   useEffect(() => {
@@ -103,9 +106,12 @@ function BudgetContent() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
       if (data.calculation?.items) setItems(data.calculation.items);
+      if (data.calculation?.explanations) setEstimateExplanations(data.calculation.explanations);
+      if (Array.isArray(data.calculation?.assumptions)) setEstimateAssumptions(data.calculation.assumptions);
+      if (data.calculation?.inputsUsed) setEstimateInputs(data.calculation.inputsUsed);
       const source = data.pricing?.accommodationSource === "stayingapi"
         ? "Live accommodation price + Roveo planning estimates"
-        : "Roveo planning estimates";
+        : "Roveo planning estimates (not live quotes)";
       setEstimateSource(source);
       setMessage("Estimate refreshed.");
     } catch (error) {
@@ -207,7 +213,7 @@ function BudgetContent() {
                 <label className="budget-category-row" key={category.key}>
                   <div>
                     <strong>{category.label}</strong>
-                    <small>{category.description}</small>
+                    <small>{estimateExplanations[category.key] || category.description}</small>
                   </div>
                   <div className="budget-category-input">
                     <b>₹</b>
@@ -224,7 +230,19 @@ function BudgetContent() {
               ))}
             </div>
 
-            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo planning estimate"}</strong><span>Accommodation may use live provider pricing when dates and a provider key are available. Other categories are calculated estimates, not guaranteed quotes.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            {estimateInputs && (
+              <div className="budget-message" role="status">
+                Based on {estimateInputs.destinations ?? 1} destination(s), {estimateInputs.selectedPlaces ?? 0} saved place(s), {estimateInputs.nights ?? Math.max(0, days - 1)} night(s)
+                {estimateInputs.routeDistanceKm != null ? `, and an estimated round-trip route of ${estimateInputs.routeDistanceKm.toLocaleString("en-IN")} km` : ", with a fallback intercity travel allowance because destination coordinates are unavailable"}.
+              </div>
+            )}
+            {estimateAssumptions.length > 0 && (
+              <details className="budget-message">
+                <summary>How this estimate was calculated</summary>
+                <ul>{estimateAssumptions.map((assumption, index) => <li key={index}>{assumption}</li>)}</ul>
+              </details>
+            )}
 
             <div className="budget-editor-footer">
               <div>
