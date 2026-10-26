@@ -336,7 +336,7 @@ function PlacesContent(){
     const daysForDestination=Number(activeDestination?.days)||days;
     const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
     return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
-  },[places,activeDestination?.days,days]);
+  },[visible,activeDestination?.days,days]);
 
   async function addNearbyDestination(nearby:NearbyDestination){
     if(!tripId)return;
