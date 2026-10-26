@@ -180,6 +180,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid trip id." }, { status: 400 });
   }
 
+  let requestedRouteMode: TravelMode | null = null;
   let body: { mode?: unknown } = {};
   try {
     body = await request.json();
@@ -213,6 +214,7 @@ export async function POST(
     if (!mode) {
       return NextResponse.json({ error: "Invalid route mode." }, { status: 400 });
     }
+    requestedRouteMode = mode;
 
     const items = await loadTripItems(tripId);
     const legs: Array<{
@@ -313,9 +315,7 @@ export async function POST(
   } catch (error) {
     console.error("POST /api/trips/[id]/routes failed:", error);
     const message = error instanceof Error ? error.message : "Could not calculate trip routes.";
-    const unavailable = modeFromLocalTravelMethod(
-      (await db.query("SELECT local_travel_method AS \"localTravelMethod\" FROM trips WHERE id = $1", [tripId])).rows[0]?.localTravelMethod ?? ""
-    ) === "TRANSIT" && /transit|journey|coverage/i.test(message);
+    const unavailable = requestedRouteMode === "TRANSIT" && /no public-transit journey is available/i.test(message);
     return NextResponse.json(
       { error: message, available: false, mode: "TRANSIT", itineraryUnaffected: true },
       { status: unavailable ? 200 : 502 }
