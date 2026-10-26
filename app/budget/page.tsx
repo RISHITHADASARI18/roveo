@@ -23,6 +23,24 @@ function money(value: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
 
+function fitWithinBudget(values: Record<string, number>, limit: number) {
+  const keys = CATEGORIES.map((category) => category.key);
+  const total = keys.reduce((sum, key) => sum + Math.max(0, Number(values[key]) || 0), 0);
+  if (total <= limit || total <= 0) return values;
+  const limitCents = Math.floor(Math.max(0, limit) * 100);
+  const shares = keys.map((key) => {
+    const exactCents = Math.max(0, Number(values[key]) || 0) / total * limitCents;
+    return { key, cents: Math.floor(exactCents), remainder: exactCents - Math.floor(exactCents) };
+  });
+  let centsLeft = limitCents - shares.reduce((sum, share) => sum + share.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder);
+  for (let index = 0; centsLeft > 0; index = (index + 1) % shares.length) {
+    shares[index].cents += 1;
+    centsLeft -= 1;
+  }
+  return { ...values, ...Object.fromEntries(shares.map((share) => [share.key, share.cents / 100])) };
+}
+
 function BudgetContent() {
   const params = useSearchParams();
   const tripId = params.get("tripId") || "";
@@ -65,7 +83,7 @@ function BudgetContent() {
         if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
-          setItems(next);
+          setItems(fitWithinBudget(next, totalBudget));
         } else if (!cancelled) {
           await generateEstimate();
         }
