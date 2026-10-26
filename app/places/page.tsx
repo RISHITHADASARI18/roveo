@@ -72,15 +72,20 @@ const placeCategories:PlaceCategory[]=["All places","Viewpoints","Waterfalls","N
 function matchesCategory(place:Place,category:string){
   if(category==="All places")return true;
   const text=(place.name+" "+place.type+" "+(place.description||"")+" "+place.group).toLowerCase().replaceAll("_"," ");
+  const type=place.type.toLowerCase().replaceAll("_"," ");
   const rules:Record<string,RegExp>={
-    "Viewpoints":/viewpoint|lookout|observation tower|\bpeak\b|\bcliff\b|panorama|doddabetta/,
-    "Waterfalls":/waterfall|\bfalls\b|cascade|athirappilly|palaruvi/,
-    "Nature":/nature|forest|wildlife|sanctuary|national park|nature reserve|garden|lake|backwater|river|mountain|hill|cave|park|bird sanctuary/,
-    "Beaches":/beach|shore|coast|coastal|lighthouse|sea view/,
-    "Temples":/temple|shrine|place of worship|pilgrimage|ashram|gurudwara|gurdwara|mosque|church/,
-    "Adventure":/trek|hiking|camping|adventure|zipline|rafting|kayak|paragliding|safari|boating|amusement|theme park/,
-    "Culture & history":/museum|heritage|historic|fort|palace|monument|memorial|archaeological|gallery|theatre|cultural|old town/
+    "Viewpoints":/viewpoint|lookout|observation tower|panoramic|panorama|scenic overlook|\bpeak\b|\bcliff\b|doddabetta|watch tower|view point/,
+    "Waterfalls":/waterfall|\bfalls\b|cascade|athirappilly|palaruvi|\bwaterfall\b/,
+    "Nature":/nature|forest|wildlife|sanctuary|national park|nature reserve|garden|lake|backwater|river|mountain|hill|cave|park|bird sanctuary|natural feature|wetland|forest reserve|botanical garden|\bnatural\b/,
+    "Beaches":/beach|shore|coast|coastal|lighthouse|sea view|waterfront|seaside|\bcoastline\b/,
+    "Temples":/temple|shrine|place of worship|place_of_worship|hindu temple|pilgrimage|ashram|gurudwara|gurdwara|mosque|church|mandir|pagoda/,
+    "Adventure":/trek|hiking|camping|adventure|zipline|rafting|kayak|paragliding|safari|boating|amusement|theme park|climbing|skiing|water sport/,
+    "Culture & history":/museum|heritage|historic|fort|palace|monument|memorial|archaeological|gallery|theatre|cultural|old town|castle|ruins|art gallery|historical landmark/
   };
+  if(category==="Waterfalls" && /waterfall|cascade/.test(type))return true;
+  if(category==="Viewpoints" && /viewpoint|lookout|observation tower/.test(type))return true;
+  if(category==="Beaches" && /beach/.test(type))return true;
+  if(category==="Temples" && /place of worship|hindu temple|temple/.test(type))return true;
   return rules[category]?.test(text) ?? false;
 }
 
@@ -326,8 +331,8 @@ function PlacesContent(){
     // The discovery API ranks real tourist attractions before secondary POIs.
     // Use that relevance order for every destination instead of a Kerala-only
     // name list that left other cities with an empty "Main places" section.
-    const preferred=places.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
-    const ranked=preferred.length>=6?preferred:places;
+    const preferred=visible.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
+    const ranked=preferred.length>=6?preferred:visible;
     const daysForDestination=Number(activeDestination?.days)||days;
     const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
     return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
