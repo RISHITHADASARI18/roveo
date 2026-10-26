@@ -61,7 +61,7 @@ function ensureRouteLegsTable(): Promise<void> {
         day_id BIGINT NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
         from_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
         to_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
-        mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE')),
+        mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE', 'TRANSIT')),
         provider TEXT NOT NULL DEFAULT 'open',
         distance_meters DOUBLE PRECISION NOT NULL CHECK (distance_meters >= 0),
         duration_seconds DOUBLE PRECISION NOT NULL CHECK (duration_seconds >= 0),
@@ -69,6 +69,9 @@ function ensureRouteLegsTable(): Promise<void> {
         generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (from_item_id, to_item_id, mode)
       );
+      ALTER TABLE itinerary_route_legs DROP CONSTRAINT IF EXISTS itinerary_route_legs_mode_check;
+      ALTER TABLE itinerary_route_legs ADD CONSTRAINT itinerary_route_legs_mode_check
+        CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE', 'TRANSIT'));
       CREATE INDEX IF NOT EXISTS itinerary_route_legs_trip_id_idx
         ON itinerary_route_legs (trip_id);
       CREATE INDEX IF NOT EXISTS itinerary_route_legs_day_id_idx
@@ -211,13 +214,6 @@ export async function POST(
       return NextResponse.json({ error: "Invalid route mode." }, { status: 400 });
     }
 
-    if (mode === "TRANSIT") {
-      return NextResponse.json(
-        { error: "Public-transit route management is not available with the current routing provider." },
-        { status: 400 }
-      );
-    }
-
     const items = await loadTripItems(tripId);
     const legs: Array<{
       dayId: number;
@@ -307,6 +303,7 @@ export async function POST(
       tripId,
       mode,
       routeCount: legs.length,
+      provider: mode === "TRANSIT" ? "google-routes" : "open",
       routes: legs.map((leg) => ({
         ...leg,
         distanceKm: Math.round((leg.distanceMeters / 1000) * 100) / 100,
@@ -315,9 +312,13 @@ export async function POST(
     });
   } catch (error) {
     console.error("POST /api/trips/[id]/routes failed:", error);
+    const message = error instanceof Error ? error.message : "Could not calculate trip routes.";
+    const unavailable = modeFromLocalTravelMethod(
+      (await db.query("SELECT local_travel_method AS \"localTravelMethod\" FROM trips WHERE id = $1", [tripId])).rows[0]?.localTravelMethod ?? ""
+    ) === "TRANSIT" && /transit|journey|coverage/i.test(message);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not calculate trip routes." },
-      { status: 502 }
+      { error: message, available: false, mode: "TRANSIT", itineraryUnaffected: true },
+      { status: unavailable ? 200 : 502 }
     );
   }
 }
