@@ -678,10 +678,8 @@ export const openTravelProvider: TravelProvider = {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const detail = String(data.error?.message ?? "");
-        if (response.status === 400 || response.status === 404 || /route|transit|no result|not found/i.test(detail)) {
-          throw new Error("No public-transit journey is available between these two stops in the provider's current coverage. Your itinerary is still saved.");
-        }
-        throw new Error("The transit routing provider could not calculate this journey right now. Your itinerary is still saved.");
+        console.error("Google Routes transit request failed:", response.status, detail);
+        throw new Error("The transit routing provider could not calculate this journey right now. Check that Google Routes API is enabled and the server-side GOOGLE_MAPS_API_KEY is valid. Your itinerary is still saved.");
       }
 
       const route = data.routes?.[0];
