@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getTravelProvider } from "@/lib/travel";
-import type { TravelMode } from "@/lib/travel/types";
+import type { RouteResult, TravelMode } from "@/lib/travel/types";
 
 export const runtime = "nodejs";
 
@@ -236,7 +236,7 @@ export async function POST(
 
       if (from.dayId !== to.dayId) continue;
 
-      let result;
+      let result: RouteResult;
       try {
         result = await getTravelProvider().computeRoute({
           origin: { latitude: from.latitude, longitude: from.longitude },
