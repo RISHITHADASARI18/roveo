@@ -221,8 +221,11 @@ function ItineraryContent(){
           body:JSON.stringify({days:payloadDays})
         });
         const saveData=await saveRes.json().catch(()=>({}));
-        if(!saveRes.ok)throw new Error(saveData.error||"The itinerary was generated but could not be saved.");
-        setMessage("Your day-by-day plan is ready and saved. You can move or remove stops, then save your edits.");
+        if(!saveRes.ok){
+          setMessage("Your day-by-day plan was generated, but saving failed: "+String(saveData.error||"Please use Save itinerary to retry."));
+        }else{
+          setMessage("Your day-by-day plan is ready and saved. You can move or remove stops, then save your edits.");
+        }
       }
     }catch(error){
       setMessage(error instanceof Error?error.message:"Could not build the smart itinerary.");
