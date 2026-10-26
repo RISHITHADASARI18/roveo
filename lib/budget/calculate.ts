@@ -245,7 +245,7 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
   // plan over the amount they said they can spend.
   const budgetLimit = round(input.budget);
   const estimatedCoreTotal = round(items.destinationTravel + items.accommodation + items.localTransport + items.food + items.activities + items.other);
-  if (budgetLimit > 0 && estimatedCoreTotal > budgetLimit) {
+  if (estimatedCoreTotal > budgetLimit) {
     const keys: Exclude<BudgetComponent, "contingency">[] = [
       "destinationTravel", "accommodation", "localTransport", "food", "activities", "other",
     ];
