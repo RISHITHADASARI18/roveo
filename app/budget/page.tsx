@@ -23,6 +23,24 @@ function money(value: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
 
+function fitWithinBudget(values: Record<string, number>, limit: number) {
+  const keys = CATEGORIES.map((category) => category.key);
+  const total = keys.reduce((sum, key) => sum + Math.max(0, Number(values[key]) || 0), 0);
+  if (total <= limit || total <= 0) return values;
+  const limitCents = Math.floor(Math.max(0, limit) * 100);
+  const shares = keys.map((key) => {
+    const exactCents = Math.max(0, Number(values[key]) || 0) / total * limitCents;
+    return { key, cents: Math.floor(exactCents), remainder: exactCents - Math.floor(exactCents) };
+  });
+  let centsLeft = limitCents - shares.reduce((sum, share) => sum + share.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder);
+  for (let index = 0; centsLeft > 0; index = (index + 1) % shares.length) {
+    shares[index].cents += 1;
+    centsLeft -= 1;
+  }
+  return { ...values, ...Object.fromEntries(shares.map((share) => [share.key, share.cents / 100])) };
+}
+
 function BudgetContent() {
   const params = useSearchParams();
   const tripId = params.get("tripId") || "";
@@ -35,6 +53,7 @@ function BudgetContent() {
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
 
+  const [showScreenshotReminder, setShowScreenshotReminder] = useState(true);
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
   );
@@ -42,6 +61,9 @@ function BudgetContent() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [estimateSource, setEstimateSource] = useState("");
+  const [estimateExplanations, setEstimateExplanations] = useState<Record<string, string>>({});
+  const [estimateAssumptions, setEstimateAssumptions] = useState<string[]>([]);
+  const [estimateInputs, setEstimateInputs] = useState<{ destinations?: number; selectedPlaces?: number; routeDistanceKm?: number | null; nights?: number } | null>(null);
   const [estimating, setEstimating] = useState(false);
 
   useEffect(() => {
@@ -62,7 +84,7 @@ function BudgetContent() {
         if (!cancelled && data.budget) {
           const next = { ...items };
           for (const item of data.budget.items) next[item.category] = Number(item.amount) || 0;
-          setItems(next);
+          setItems(fitWithinBudget(next, totalBudget));
         } else if (!cancelled) {
           await generateEstimate();
         }
@@ -89,8 +111,14 @@ function BudgetContent() {
   const progress = totalBudget > 0 ? Math.min(100, (planned / totalBudget) * 100) : planned > 0 ? 100 : 0;
 
   function updateItem(key: string, value: string) {
-    const amount = Math.max(0, Number(value) || 0);
-    setItems((current) => ({ ...current, [key]: amount }));
+    const requested = Math.max(0, Number(value) || 0);
+    setItems((current) => {
+      const otherCategories = Object.entries(current)
+        .filter(([categoryKey]) => categoryKey !== key)
+        .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount) || 0), 0);
+      const available = Math.max(0, totalBudget - otherCategories);
+      return { ...current, [key]: Math.min(requested, available) };
+    });
     setMessage("");
   }
 
@@ -103,9 +131,12 @@ function BudgetContent() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not generate the estimate.");
       if (data.calculation?.items) setItems(data.calculation.items);
+      if (data.calculation?.explanations) setEstimateExplanations(data.calculation.explanations);
+      if (Array.isArray(data.calculation?.assumptions)) setEstimateAssumptions(data.calculation.assumptions);
+      if (data.calculation?.inputsUsed) setEstimateInputs(data.calculation.inputsUsed);
       const source = data.pricing?.accommodationSource === "stayingapi"
         ? "Live accommodation price + Roveo planning estimates"
-        : "Roveo planning estimates";
+        : "Roveo planning estimates (not live quotes)";
       setEstimateSource(source);
       setMessage("Estimate refreshed.");
     } catch (error) {
@@ -140,6 +171,15 @@ function BudgetContent() {
 
   return (
     <main className="budget-page">
+      {showScreenshotReminder&&<div role="dialog" aria-modal="true" aria-labelledby="budget-screenshot-title" style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(18,35,48,.58)",display:"grid",placeItems:"center",padding:20}}>
+        <section style={{width:"min(460px,100%)",background:"#fff",color:"#20313b",borderRadius:22,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,.25)"}}>
+          <div aria-hidden="true" style={{fontSize:34,marginBottom:8}}>📸</div>
+          <h2 id="budget-screenshot-title" style={{fontSize:23,margin:"0 0 10px"}}>Keep a screenshot of your budget</h2>
+          <p style={{lineHeight:1.6,margin:"0 0 12px"}}>Take a screenshot of this breakdown as a quick backup you can refer to while travelling.</p>
+          <p style={{lineHeight:1.6,margin:"0 0 20px",fontSize:14,color:"#52636c"}}><strong>Important:</strong> budget edits are not saved automatically. Click <strong>Save budget</strong> and wait for the success message before leaving the page. A screenshot is an extra copy.</p>
+          <button type="button" className="plan-button" onClick={()=>setShowScreenshotReminder(false)} style={{width:"100%"}}>Got it — show my budget</button>
+        </section>
+      </div>}
       <nav className="dashboard-nav">
         <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
         <div className="dashboard-nav-links">
@@ -207,7 +247,10 @@ function BudgetContent() {
                 <label className="budget-category-row" key={category.key}>
                   <div>
                     <strong>{category.label}</strong>
-                    <small>{category.description}</small>
+                    <small>
+                      {estimateExplanations[category.key] || category.description}
+                      {planned > 0 ? ` · ${Math.round((Number(items[category.key] || 0) / planned) * 100)}% of planned spend` : ""}
+                    </small>
                   </div>
                   <div className="budget-category-input">
                     <b>₹</b>
@@ -224,7 +267,19 @@ function BudgetContent() {
               ))}
             </div>
 
-            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo planning estimate"}</strong><span>Accommodation may use live provider pricing when dates and a provider key are available. Other categories are calculated estimates, not guaranteed quotes.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            {estimateInputs && (
+              <div className="budget-message" role="status">
+                Based on {estimateInputs.destinations ?? 1} destination(s), {estimateInputs.selectedPlaces ?? 0} saved place(s), {estimateInputs.nights ?? Math.max(0, days - 1)} night(s)
+                {estimateInputs.routeDistanceKm != null ? `, and an estimated round-trip route of ${estimateInputs.routeDistanceKm.toLocaleString("en-IN")} km` : ", with a fallback intercity travel allowance because destination coordinates are unavailable"}.
+              </div>
+            )}
+            {estimateAssumptions.length > 0 && (
+              <details className="budget-message">
+                <summary>How this estimate was calculated</summary>
+                <ul>{estimateAssumptions.map((assumption, index) => <li key={index}>{assumption}</li>)}</ul>
+              </details>
+            )}
 
             <div className="budget-editor-footer">
               <div>
@@ -236,6 +291,10 @@ function BudgetContent() {
               </button>
             </div>
 
+            <div className="budget-message budget-reserve-note" role="note">
+              <strong>Keep a little extra money aside.</strong>
+              <p>Unexpected costs can come up during a trip. If possible, carry an additional 5–10% of your budget as emergency money. This is a separate recommendation and is not added to your planned spending or the budget you entered.</p>
+            </div>
             {message && <p className="budget-message">{message}</p>}
           </div>
         </div>

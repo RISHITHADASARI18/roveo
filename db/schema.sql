@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS itinerary_route_legs (
   day_id BIGINT NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
   from_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
   to_item_id BIGINT NOT NULL REFERENCES itinerary_items(id) ON DELETE CASCADE,
-  mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE')),
+  mode TEXT NOT NULL CHECK (mode IN ('DRIVE', 'WALK', 'BICYCLE', 'TRANSIT')),
   provider TEXT NOT NULL DEFAULT 'open',
   distance_meters DOUBLE PRECISION NOT NULL CHECK (distance_meters >= 0),
   duration_seconds DOUBLE PRECISION NOT NULL CHECK (duration_seconds >= 0),

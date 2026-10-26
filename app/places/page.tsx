@@ -67,6 +67,28 @@ function conciseDescription(place:Place){
   return first.length<=155 ? first : first.slice(0,152).replace(/\s+\S*$/,"")+"…";
 }
 
+type PlaceCategory = "All places" | "Viewpoints" | "Waterfalls" | "Nature" | "Beaches" | "Temples" | "Adventure" | "Culture & history";
+const placeCategories:PlaceCategory[]=["All places","Viewpoints","Waterfalls","Nature","Beaches","Temples","Adventure","Culture & history"];
+function matchesCategory(place:Place,category:string){
+  if(category==="All places")return true;
+  const text=(place.name+" "+place.type+" "+(place.description||"")+" "+place.group).toLowerCase().replaceAll("_"," ");
+  const type=place.type.toLowerCase().replaceAll("_"," ");
+  const rules:Record<string,RegExp>={
+    "Viewpoints":/viewpoint|lookout|observation tower|panoramic|panorama|scenic overlook|\bpeak\b|\bcliff\b|doddabetta|watch tower|view point/,
+    "Waterfalls":/waterfall|\bfalls\b|cascade|athirappilly|palaruvi|\bwaterfall\b/,
+    "Nature":/nature|forest|wildlife|sanctuary|national park|nature reserve|garden|lake|backwater|river|mountain|hill|cave|park|bird sanctuary|natural feature|wetland|forest reserve|botanical garden|\bnatural\b/,
+    "Beaches":/beach|shore|coast|coastal|lighthouse|sea view|waterfront|seaside|\bcoastline\b/,
+    "Temples":/temple|shrine|place of worship|place_of_worship|hindu temple|pilgrimage|ashram|gurudwara|gurdwara|mosque|church|mandir|pagoda/,
+    "Adventure":/trek|hiking|camping|adventure|zipline|rafting|kayak|paragliding|safari|boating|amusement|theme park|climbing|skiing|water sport/,
+    "Culture & history":/museum|heritage|historic|fort|palace|monument|memorial|archaeological|gallery|theatre|cultural|old town|castle|ruins|art gallery|historical landmark/
+  };
+  if(category==="Waterfalls" && /waterfall|cascade/.test(type))return true;
+  if(category==="Viewpoints" && /viewpoint|lookout|observation tower/.test(type))return true;
+  if(category==="Beaches" && /beach/.test(type))return true;
+  if(category==="Temples" && /place of worship|hindu temple|temple/.test(type))return true;
+  return rules[category]?.test(text) ?? false;
+}
+
 function classify(tags:any):Place["group"]{
   const tourism=tags.tourism||"";
   const historic=tags.historic||"";
@@ -115,6 +137,7 @@ function PlacesContent(){
   const [places,setPlaces]=useState<Place[]>([]);
   const [center,setCenter]=useState<GeoPoint|null>(null);
   const [search,setSearch]=useState("");
+  const [selectedCategory,setSelectedCategory]=useState("All places");
   const [liveQuery,setLiveQuery]=useState("");
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("Finding places around your destination…");
@@ -302,18 +325,18 @@ function PlacesContent(){
   const destination=activeDestination?.name || destinationParam;
   const activeNearbyDestinations=destinationResults.find(item=>item.destination.id===activeDestinationId)?.nearbyDestinations ?? [];
 
-  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),[places,search]);
+  const visible=useMemo(()=>places.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())&&matchesCategory(p,selectedCategory)),[places,search,selectedCategory]);
 
   const mainPlaces=useMemo(()=>{
     // The discovery API ranks real tourist attractions before secondary POIs.
     // Use that relevance order for every destination instead of a Kerala-only
     // name list that left other cities with an empty "Main places" section.
-    const preferred=places.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
-    const ranked=preferred.length>=6?preferred:places;
+    const preferred=visible.filter(place=>place.type!=="city"&&place.type!=="town"&&place.type!=="village");
+    const ranked=preferred.length>=6?preferred:visible;
     const daysForDestination=Number(activeDestination?.days)||days;
     const highlightLimit=Math.min(18,Math.max(6,daysForDestination*4));
     return ranked.filter((place,index,array)=>array.findIndex(item=>item.id===place.id)===index).slice(0,highlightLimit);
-  },[places,activeDestination?.days,days]);
+  },[visible,activeDestination?.days,days]);
 
   async function addNearbyDestination(nearby:NearbyDestination){
     if(!tripId)return;
@@ -410,6 +433,15 @@ function PlacesContent(){
         <a href="#places">Places</a>
         <a href="#nearby">Nearby stops</a>
       </nav>
+      <section id="categories" className="places-category-section" aria-label="Filter places by category">
+        <div className="section-heading">
+          <div><span className="eyebrow">EXPLORE BY INTEREST</span><h2>Find your kind of place.</h2><p>Choose a category to filter places for the selected destination.</p></div>
+          <span className="live-badge">{visible.length} shown</span>
+        </div>
+        <div className="places-category-filters" role="group" aria-label="Place categories">
+          {placeCategories.map(category=><button key={category} type="button" className={"places-category-filter"+(selectedCategory===category?" active":"")} aria-pressed={selectedCategory===category} onClick={()=>setSelectedCategory(category)}>{category}</button>)}
+        </div>
+      </section>
       {!loading && activeDestinationId && activeNearbyDestinations.length>0 && <section id="nearby" className="nearby-destinations">
         <div className="section-heading">
           <div><span className="eyebrow">NEARBY DESTINATIONS</span><h2>Want to add another stop?</h2><p>These are nearby cities and towns found around the selected destination. They are suggestions only and are never added automatically.</p></div>

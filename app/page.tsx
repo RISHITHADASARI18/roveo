@@ -28,7 +28,7 @@ export default function Home() {
         <div className="nav-links">
           <a href="#how-it-works">How it works</a>
           <a className="dashboard-link" href="/dashboard">Dashboard</a>
-          <a className="login-button" href="/login">Log in</a>
+          <a className="primary-button" href="/dashboard">Plan a trip <span>→</span></a>
         </div>
       </nav>
 

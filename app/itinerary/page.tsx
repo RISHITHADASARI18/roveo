@@ -43,6 +43,7 @@ function ItineraryContent(){
   const stay=params.get("stay")||"Hotel";
   const tripId=params.get("tripId")||"";
 
+  const [showScreenshotReminder,setShowScreenshotReminder]=useState(true);
   const [center,setCenter]=useState<any>(null);
   const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<PlannedPlace[][]>([]);
@@ -64,7 +65,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Real road routes loaded.":"");
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?(data.mode==="TRANSIT"?"Public-transit journeys loaded with estimated journey times.":"Real road routes loaded."):data.mode==="TRANSIT"?"Transit routes have not been calculated yet. Save your itinerary to try again.":"");
     }catch(error){
       setRoutes([]);
       setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
@@ -202,7 +203,30 @@ function ItineraryContent(){
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
-        setMessage("Smart plan ready — nearby places are grouped together and each day is ordered to reduce backtracking.");
+        // Persist the generated day-by-day plan immediately. Previously the
+        // plan only existed in page state until the user noticed and clicked
+        // Save itinerary, so leaving/reloading could make it look broken.
+        const payloadDays=next.map((items:any[],dayIndex:number)=>({
+          dayNumber:dayIndex+1,
+          items:items.map((place:any,index:number)=>({
+            tripPlaceId:Number(place.id),
+            position:index+1,
+            startTime:place.startTime||null,
+            durationMinutes:place.durationMinutes||null,
+            travelTimeMinutes:place.travelTimeMinutes||0
+          }))
+        }));
+        const saveRes=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{
+          method:"PUT",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({days:payloadDays})
+        });
+        const saveData=await saveRes.json().catch(()=>({}));
+        if(!saveRes.ok){
+          setMessage("Your day-by-day plan was generated, but saving failed: "+String(saveData.error||"Please use Save itinerary to retry."));
+        }else{
+          setMessage("Your day-by-day plan is ready and saved. You can move or remove stops, then save your edits.");
+        }
       }
     }catch(error){
       setMessage(error instanceof Error?error.message:"Could not build the smart itinerary.");
@@ -310,7 +334,7 @@ function ItineraryContent(){
   async function calculateRoutes(){
     if(!tripId)return;
     try{
-      setRouteMessage("Calculating real road routes between same-day stops…");
+      setRouteMessage(localTravel.toLowerCase().includes("public")?"Checking public-transit coverage and journey times…":"Calculating real road routes between same-day stops…");
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -319,7 +343,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(data.routeCount?"Real road routes calculated and saved.":"No same-day route legs are needed yet.");
+      setRouteMessage(data.available===false?String(data.error||"Public-transit data is unavailable for this location. Your itinerary is still saved."):data.routeCount?(data.mode==="TRANSIT"?"Public-transit routes and journey times calculated.":"Real road routes calculated and saved."):"No same-day route legs are needed yet.");
     }catch(error){
       setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
     }
@@ -354,6 +378,15 @@ function ItineraryContent(){
   const formattedBudget=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget);
 
   return <main className="itinerary-page">
+    {showScreenshotReminder&&<div role="dialog" aria-modal="true" aria-labelledby="itinerary-screenshot-title" style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(18,35,48,.58)",display:"grid",placeItems:"center",padding:20}}>
+      <section style={{width:"min(460px,100%)",background:"#fff",color:"#20313b",borderRadius:22,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,.25)"}}>
+        <div aria-hidden="true" style={{fontSize:34,marginBottom:8}}>📸</div>
+        <h2 id="itinerary-screenshot-title" style={{fontSize:23,margin:"0 0 10px"}}>Keep a screenshot of your itinerary</h2>
+        <p style={{lineHeight:1.6,margin:"0 0 12px"}}>Take a screenshot of your day-by-day plan as a handy backup before you leave this page.</p>
+        <p style={{lineHeight:1.6,margin:"0 0 20px",fontSize:14,color:"#52636c"}}>Roveo saves the generated itinerary automatically when saving succeeds. If you move or remove stops, click <strong>Save itinerary</strong> to save those edits too. A screenshot is an extra copy, not a replacement for saving.</p>
+        <button type="button" className="primary-button" onClick={()=>setShowScreenshotReminder(false)} style={{width:"100%",justifyContent:"center"}}>Got it — show my itinerary</button>
+      </section>
+    </div>}
     <nav className="dashboard-nav">
       <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
       <div className="dashboard-nav-links"><a href="/dashboard">Edit trip</a><a className="active" href={"/trip?"+params.toString()}>My plan</a><a href={"/places?"+params.toString()}>Explore places</a></div>
@@ -361,7 +394,7 @@ function ItineraryContent(){
 
     <div className="page-navigation itinerary-navigation">
       <a className="page-nav secondary" href={"/places?"+params.toString()}>← Places to explore</a>
-      <a className="page-nav primary" href={"/trip?"+params.toString()}>Back to trip →</a>
+      <a className="page-nav primary" href={"/budget?"+params.toString()}>Next: budget →</a>
     </div>
 
     <section className="itinerary-hero">
@@ -388,7 +421,7 @@ function ItineraryContent(){
           <button type="button" className="primary-button" onClick={buildPlan} disabled={planning||loading||!tripId||!selectedCount}>{planning?"Planning…":"↻ Rebuild smart plan"}</button>
           <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length}>{saving?"Saving…":"Save itinerary"}</button>
           {saveMessage&&<span>{saveMessage}</span>}
-          {routeMessage&&<span>{routeMessage}</span>}
+          {routeMessage&&<span role="status">{routeMessage}</span>}
         </div>
 
         {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
@@ -459,7 +492,7 @@ function ItineraryContent(){
           <span className="eyebrow">05 · ROVEO LOGIC</span>
           <h2>Less travel. More exploring.</h2>
           <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
-          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
+          <p className="planning-rule">{localTravel.toLowerCase().includes("public")?"When Google Routes has public-transit coverage for a pair of stops, Roveo shows the provider's route line and estimated journey time. Coverage varies by location; when transit data is missing, the itinerary remains saved and usable.":"The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance."}</p>
         </div>
       </aside>
     </section>

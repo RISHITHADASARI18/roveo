@@ -646,6 +646,55 @@ export async function discoverPlaces(
 
 export const openTravelProvider: TravelProvider = {
   async computeRoute(request: RouteRequest): Promise<RouteResult> {
+    if (request.mode === "TRANSIT") {
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.GOOGLE_PLACES_API_KEY;
+      if (!apiKey) {
+        throw new Error("Public-transit routes are unavailable because no transit-capable routing API key is configured. Add GOOGLE_MAPS_API_KEY with Google Routes API enabled to calculate transit journeys. Your itinerary is saved independently.");
+      }
+
+      const response = await fetchWithTimeout(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.distanceMeters,routes.legs.steps.transitDetails",
+          },
+          body: JSON.stringify({
+            origin: { location: { latLng: { latitude: request.origin.latitude, longitude: request.origin.longitude } } },
+            destination: { location: { latLng: { latitude: request.destination.latitude, longitude: request.destination.longitude } } },
+            travelMode: "TRANSIT",
+            computeAlternativeRoutes: false,
+            languageCode: "en",
+            units: "METRIC",
+          }),
+          cache: "no-store",
+        },
+        10000,
+      );
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = String(data.error?.message ?? "");
+        console.error("Google Routes transit request failed:", response.status, detail);
+        throw new Error("The transit routing provider could not calculate this journey right now. Check that Google Routes API is enabled and the server-side GOOGLE_MAPS_API_KEY is valid. Your itinerary is still saved.");
+      }
+
+      const route = data.routes?.[0];
+      if (!route) {
+        throw new Error("No public-transit journey is available between these two stops in the provider's current coverage. Your itinerary is still saved.");
+      }
+      const durationSeconds = Number.parseInt(String(route.duration ?? "0s").replace("s", ""), 10);
+      return {
+        provider: "google-routes",
+        distanceMeters: Number(route.distanceMeters ?? 0),
+        durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0,
+        encodedPolyline: typeof route.polyline?.encodedPolyline === "string" ? route.polyline.encodedPolyline : undefined,
+      };
+    }
+
     const profile = profileForMode(request.mode);
     const coordinates = [
       request.origin.longitude + "," + request.origin.latitude,

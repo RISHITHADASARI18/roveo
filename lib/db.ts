@@ -22,17 +22,28 @@ function createPool() {
     connectionString = connectionString.replace(/([?&])sslmode=(?:prefer|require|verify-ca)(?=&|$)/i, "$1").replace(/[?&]$/, "");
   }
 
-  return new Pool({
+  const pool = new Pool({
     connectionString,
     ssl: process.env.NODE_ENV === "production"
       ? { rejectUnauthorized: false }
       : undefined,
     max: 5,
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.roveoDbPool = pool;
+  }
+
+  return pool;
 }
 
-export const db = globalThis.roveoDbPool ?? createPool();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.roveoDbPool = db;
-}
+// Do not create the pool at module-import/build time. Next.js may import API
+// route modules while collecting route configuration, when deployment runtime
+// secrets are not available. Create the real pool only when code uses the DB.
+export const db = new Proxy({} as Pool, {
+  get(_target, property) {
+    const pool = globalThis.roveoDbPool ?? createPool();
+    const value = Reflect.get(pool, property, pool);
+    return typeof value === "function" ? value.bind(pool) : value;
+  },
+});

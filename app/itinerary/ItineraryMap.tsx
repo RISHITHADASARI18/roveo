@@ -19,7 +19,8 @@ type RouteLeg = {
   dayId: number;
   fromItemId: number;
   toItemId: number;
-  mode: "DRIVE" | "WALK" | "BICYCLE";
+  mode: "DRIVE" | "WALK" | "BICYCLE" | "TRANSIT";
+  provider?: string;
   distanceKm: number;
   durationMinutes: number;
   encodedPolyline?: string;
@@ -94,7 +95,7 @@ export default function ItineraryMap({
     .filter((route) => typeof route.encodedPolyline === "string" && route.encodedPolyline)
     .map((route) => ({
       ...route,
-      positions: decodePolyline(route.encodedPolyline as string),
+      positions: decodePolyline(route.encodedPolyline as string, route.provider === "google-routes" ? 5 : 6),
     }))
     .filter((route) => route.positions.length > 1);
 
@@ -128,7 +129,7 @@ export default function ItineraryMap({
                 ? "Driving"
                 : route.mode === "WALK"
                   ? "Walking"
-                  : "Bicycle"}
+                  : route.mode === "TRANSIT" ? "Public transport" : "Bicycle"}
             </Popup>
           </Polyline>
         ))}

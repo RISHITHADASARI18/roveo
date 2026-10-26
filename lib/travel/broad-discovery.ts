@@ -174,13 +174,15 @@ function buildCells(bounds: Bounds) {
   const height = Math.max(0, bounds.north - bounds.south);
   const width = Math.max(0, bounds.east - bounds.west);
   if (!height || !width) return [bounds];
-  // Large regions such as Kerala must be split into a real 2x2 grid.
-  // Using only two long strips makes each Overpass query too expensive and
-  // commonly causes the public endpoint to time out with an empty response.
-  const largeRegion = Math.max(height, width) > 1.5;
+
+  // A fixed 2x2 split left large states under-sampled: each provider response
+  // could be dominated by one dense city and leave other parts of the state
+  // with no discoveries. Use a 3x3 grid for genuinely broad regions, while
+  // keeping city searches to one or two manageable cells.
+  const span = Math.max(height, width);
   const aspect = width / Math.max(height, 0.1);
-  const columns = largeRegion ? 2 : (aspect >= 1.5 ? 2 : 1);
-  const rows = largeRegion ? 2 : (aspect <= 0.67 ? 2 : 1);
+  const columns = span > 3 ? 3 : span > 1.5 ? 2 : (aspect >= 1.5 ? 2 : 1);
+  const rows = span > 3 ? 3 : span > 1.5 ? 2 : (aspect <= 0.67 ? 2 : 1);
   const cells: Bounds[] = [];
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
@@ -192,7 +194,7 @@ function buildCells(bounds: Bounds) {
       });
     }
   }
-  return cells.slice(0, 4);
+  return cells;
 }
 
 async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: DestinationCoverage) {
@@ -237,6 +239,24 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
     return places;
   });
   try { return await Promise.any(attempts); } catch { return []; }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(items.length, Math.max(1, Math.floor(concurrency)));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index]);
+    }
+  }));
+  return results;
 }
 
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
@@ -724,7 +744,11 @@ async function discoverBroadPlacesUncached(
   // Run nearby-stop suggestions alongside the main place providers instead of
   // waiting for all attractions to finish before starting this extra lookup.
   const [cellResults, wikiResults, coreResults, googleResults, destinationResults, nearbyDestinations] = await Promise.all([
-    Promise.all(cells.map(overpassCell)),
+    // Public Overpass mirrors rate-limit aggressively. A 3x3 regional grid
+    // must not launch 18 requests at once (two mirrored requests per cell),
+    // or the providers can reject every tile and make discovery look broken.
+    // Bound tile concurrency while preserving result order and mirror fallback.
+    mapWithConcurrency(cells, 3, overpassCell),
     Promise.all(cells.map(async (cell) => {
       const cellCenter = {
         latitude: (cell.south + cell.north) / 2,
