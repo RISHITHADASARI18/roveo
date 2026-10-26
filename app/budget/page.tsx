@@ -53,6 +53,7 @@ function BudgetContent() {
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
 
+  const [showScreenshotReminder, setShowScreenshotReminder] = useState(true);
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
   );
@@ -170,6 +171,15 @@ function BudgetContent() {
 
   return (
     <main className="budget-page">
+      {showScreenshotReminder&&<div role="dialog" aria-modal="true" aria-labelledby="budget-screenshot-title" style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(18,35,48,.58)",display:"grid",placeItems:"center",padding:20}}>
+        <section style={{width:"min(460px,100%)",background:"#fff",color:"#20313b",borderRadius:22,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,.25)"}}>
+          <div aria-hidden="true" style={{fontSize:34,marginBottom:8}}>📸</div>
+          <h2 id="budget-screenshot-title" style={{fontSize:23,margin:"0 0 10px"}}>Keep a screenshot of your budget</h2>
+          <p style={{lineHeight:1.6,margin:"0 0 12px"}}>Take a screenshot of this breakdown as a quick backup you can refer to while travelling.</p>
+          <p style={{lineHeight:1.6,margin:"0 0 20px",fontSize:14,color:"#52636c"}}><strong>Important:</strong> budget edits are not saved automatically. Click <strong>Save budget</strong> and wait for the success message before leaving the page. A screenshot is an extra copy.</p>
+          <button type="button" className="plan-button" onClick={()=>setShowScreenshotReminder(false)} style={{width:"100%"}}>Got it — show my budget</button>
+        </section>
+      </div>}
       <nav className="dashboard-nav">
         <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
         <div className="dashboard-nav-links">
