@@ -236,11 +236,17 @@ export async function POST(
 
       if (from.dayId !== to.dayId) continue;
 
-      const result = await getTravelProvider().computeRoute({
-        origin: { latitude: from.latitude, longitude: from.longitude },
-        destination: { latitude: to.latitude, longitude: to.longitude },
-        mode,
-      });
+      let result;
+      try {
+        result = await getTravelProvider().computeRoute({
+          origin: { latitude: from.latitude, longitude: from.longitude },
+          destination: { latitude: to.latitude, longitude: to.longitude },
+          mode,
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "No route data was returned.";
+        throw new Error(detail + " Stops: " + from.name + " → " + to.name + ".");
+      }
 
       legs.push({
         dayId: from.dayId,
