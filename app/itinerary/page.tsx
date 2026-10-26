@@ -202,7 +202,27 @@ function ItineraryContent(){
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
-        setMessage("Smart plan ready — nearby places are grouped together and each day is ordered to reduce backtracking.");
+        // Persist the generated day-by-day plan immediately. Previously the
+        // plan only existed in page state until the user noticed and clicked
+        // Save itinerary, so leaving/reloading could make it look broken.
+        const payloadDays=next.map((items:any[],dayIndex:number)=>({
+          dayNumber:dayIndex+1,
+          items:items.map((place:any,index:number)=>({
+            tripPlaceId:Number(place.id),
+            position:index+1,
+            startTime:place.startTime||null,
+            durationMinutes:place.durationMinutes||null,
+            travelTimeMinutes:place.travelTimeMinutes||0
+          }))
+        }));
+        const saveRes=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/itinerary",{
+          method:"PUT",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({days:payloadDays})
+        });
+        const saveData=await saveRes.json().catch(()=>({}));
+        if(!saveRes.ok)throw new Error(saveData.error||"The itinerary was generated but could not be saved.");
+        setMessage("Your day-by-day plan is ready and saved. You can move or remove stops, then save your edits.");
       }
     }catch(error){
       setMessage(error instanceof Error?error.message:"Could not build the smart itinerary.");
