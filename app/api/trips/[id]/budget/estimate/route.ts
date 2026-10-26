@@ -159,17 +159,33 @@ export async function POST(
       }
     }
 
-    const subtotal =
-      calculation.items.destinationTravel +
-      calculation.items.accommodation +
-      calculation.items.localTransport +
-      calculation.items.food +
-      calculation.items.activities +
-      calculation.items.other;
-    calculation.items.contingency = Math.round(subtotal * 0.1 * 100) / 100;
+    const coreKeys = ["destinationTravel", "accommodation", "localTransport", "food", "activities", "other"] as const;
+    let subtotal = coreKeys.reduce((sum, key) => sum + calculation.items[key], 0);
+    // Live accommodation prices can change the estimate after the base
+    // calculation, so enforce the same hard budget ceiling again here.
+    const budgetLimit = Math.max(0, Number(trip.budget) || 0);
+    if (budgetLimit > 0 && subtotal > budgetLimit) {
+      const totalCents = Math.floor(budgetLimit * 100);
+      const shares = coreKeys.map((key) => {
+        const exactCents = calculation.items[key] / subtotal * totalCents;
+        return { key, cents: Math.floor(exactCents), remainder: exactCents - Math.floor(exactCents) };
+      });
+      let centsLeft = totalCents - shares.reduce((sum, item) => sum + item.cents, 0);
+      shares.sort((a, b) => b.remainder - a.remainder);
+      for (let index = 0; centsLeft > 0; index = (index + 1) % shares.length) {
+        shares[index].cents += 1;
+        centsLeft -= 1;
+      }
+      for (const share of shares) calculation.items[share.key] = share.cents / 100;
+      subtotal = coreKeys.reduce((sum, key) => sum + calculation.items[key], 0);
+      calculation.assumptions.push("The raw estimate was above your budget, so category targets were fitted within your budget. Confirm actual prices and prioritize essentials before booking.");
+    }
+    // Keep contingency outside the stated budget; recommend a separate buffer
+    // in the UI instead of making the plan exceed the user's amount.
+    calculation.items.contingency = 0;
     calculation.subtotal = Math.round(subtotal * 100) / 100;
-    calculation.total = Math.round((subtotal + calculation.items.contingency) * 100) / 100;
-    calculation.remaining = Math.round((calculation.budget - calculation.total) * 100) / 100;
+    calculation.total = Math.min(budgetLimit, Math.round(subtotal * 100) / 100);
+    calculation.remaining = Math.max(0, Math.round((budgetLimit - calculation.total) * 100) / 100);
 
     const saved = await db.query(
       `INSERT INTO trip_cost_estimates (
