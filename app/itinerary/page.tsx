@@ -384,7 +384,7 @@ function ItineraryContent(){
 
     <div className="page-navigation itinerary-navigation">
       <a className="page-nav secondary" href={"/places?"+params.toString()}>← Places to explore</a>
-      <a className="page-nav primary" href={"/trip?"+params.toString()}>Back to trip →</a>
+      <a className="page-nav primary" href={"/budget?"+params.toString()}>Next: budget →</a>
     </div>
 
     <section className="itinerary-hero">
