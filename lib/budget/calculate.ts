@@ -240,8 +240,30 @@ export function calculateBudgetComponents(input: BudgetCalculationInput): Budget
 export function calculateBudget(input: BudgetCalculationInput): BudgetCalculation {
   const components = calculateBudgetComponents(input);
   const items = Object.fromEntries(components.map((component) => [component.component, component.amount])) as Record<BudgetComponent, number>;
+  // The user's entered budget is a hard ceiling for the planned spend. Keep
+  // emergency money as separate advice, not as an extra line that pushes the
+  // plan over the amount they said they can spend.
+  const budgetLimit = round(input.budget);
+  const estimatedCoreTotal = round(items.destinationTravel + items.accommodation + items.localTransport + items.food + items.activities + items.other);
+  if (budgetLimit > 0 && estimatedCoreTotal > budgetLimit) {
+    const scale = budgetLimit / estimatedCoreTotal;
+    const keys: Exclude<BudgetComponent, "contingency">[] = [
+      "destinationTravel", "accommodation", "localTransport", "food", "activities", "other",
+    ];
+    let assigned = 0;
+    keys.forEach((key, index) => {
+      // Allocate the rounding remainder to the last category so the sum is
+      // exactly the budget limit, never a few rupees over it.
+      const amount = index === keys.length - 1
+        ? round(budgetLimit - assigned)
+        : round(items[key] * scale);
+      items[key] = amount;
+      assigned = round(assigned + amount);
+    });
+  }
+  items.contingency = 0;
   const subtotal = round(items.destinationTravel + items.accommodation + items.localTransport + items.food + items.activities + items.other);
-  const total = round(subtotal + items.contingency);
+  const total = Math.min(budgetLimit, subtotal);
   const routeDistanceKm = getRouteDistance(input);
   const places = input.selectedPlaces ?? [];
   const uniquePlaces = new Map(places.filter((place) => safeText(place.name)).map((place) => [safeText(place.name), place]));
@@ -255,10 +277,12 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
     food: `Estimated meals for ${input.people} traveller(s) across ${input.days} day(s), using a typical daily food allowance for ${destinationName}; actual restaurant choices will change this.`,
     activities: estimateActivities(input.days, input.people, [...uniquePlaces.values()]).explanation,
     other: "Includes a 5% allowance for parking, small purchases, tips and incidental costs.",
-    contingency: "A 10% reserve calculated on the estimated subtotal for unexpected costs.",
+    contingency: "Not included in planned spending. Keep separate extra money available for unexpected costs; this is advice, not part of your stated budget.",
   };
   const assumptions = [
     "All amounts are estimates in Indian rupees (INR), not guaranteed quotes.",
+    "The planned categories are capped at your stated budget. If the raw estimate is higher, the category amounts are proportionally fitted to the budget and should be treated as a target to prioritize, not as confirmed prices.",
+    "Keep separate extra money for unexpected costs; the suggested safety buffer is not added to the trip budget or planned total.",
     "Intercity fares, meals, local transport and attraction tickets can change by date, season, provider and traveller age.",
     "The route distance is estimated from saved coordinates as straight-line distance; mode-specific factors approximate road/rail routing but are not turn-by-turn routes or live fare quotes.",
     "Accommodation is based on typical room rates unless the response identifies a live provider price.",
@@ -271,7 +295,7 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
     subtotal,
     total,
     budget: round(input.budget),
-    remaining: round(input.budget - total),
+    remaining: round(Math.max(0, budgetLimit - total)),
     currency: "INR",
     confidence: "fallback",
     source: "roveo",
