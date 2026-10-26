@@ -60,7 +60,7 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
     const trip=await db.query("SELECT budget FROM trips WHERE id=$1",[tripId]);
     if(!trip.rows[0])return NextResponse.json({error:"Trip not found."},{status:404});
     const budgetLimit = Math.max(0, Number(trip.rows[0].budget) || 0);
-    const requestedTotal = values.reduce((sum, value) => sum + Number(value || 0), 0);
+    const requestedTotal = values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
     if (requestedTotal > budgetLimit + 0.009) {
       return NextResponse.json({
         error: "Your planned categories exceed the trip budget. Reduce one or more categories before saving.",
