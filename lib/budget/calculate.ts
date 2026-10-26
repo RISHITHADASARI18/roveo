@@ -246,20 +246,21 @@ export function calculateBudget(input: BudgetCalculationInput): BudgetCalculatio
   const budgetLimit = round(input.budget);
   const estimatedCoreTotal = round(items.destinationTravel + items.accommodation + items.localTransport + items.food + items.activities + items.other);
   if (budgetLimit > 0 && estimatedCoreTotal > budgetLimit) {
-    const scale = budgetLimit / estimatedCoreTotal;
     const keys: Exclude<BudgetComponent, "contingency">[] = [
       "destinationTravel", "accommodation", "localTransport", "food", "activities", "other",
     ];
-    let assigned = 0;
-    keys.forEach((key, index) => {
-      // Allocate the rounding remainder to the last category so the sum is
-      // exactly the budget limit, never a few rupees over it.
-      const amount = index === keys.length - 1
-        ? round(budgetLimit - assigned)
-        : round(items[key] * scale);
-      items[key] = amount;
-      assigned = round(assigned + amount);
+    const budgetCents = Math.floor(budgetLimit * 100);
+    const shares = keys.map((key) => {
+      const exactCents = estimatedCoreTotal > 0 ? items[key] / estimatedCoreTotal * budgetCents : 0;
+      return { key, cents: Math.floor(exactCents), remainder: exactCents - Math.floor(exactCents) };
     });
+    let centsLeft = budgetCents - shares.reduce((sum, share) => sum + share.cents, 0);
+    shares.sort((a, b) => b.remainder - a.remainder);
+    for (let index = 0; centsLeft > 0; index = (index + 1) % shares.length) {
+      shares[index].cents += 1;
+      centsLeft -= 1;
+    }
+    for (const share of shares) items[share.key] = share.cents / 100;
   }
   items.contingency = 0;
   const subtotal = round(items.destinationTravel + items.accommodation + items.localTransport + items.food + items.activities + items.other);
