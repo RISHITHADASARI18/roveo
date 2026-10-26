@@ -65,7 +65,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not load saved routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?"Real road routes loaded.":"");
+      setRouteMessage(Array.isArray(data.routes)&&data.routes.length?(data.mode==="TRANSIT"?"Public-transit journeys loaded with estimated journey times.":"Real road routes loaded."):data.mode==="TRANSIT"?"Transit routes have not been calculated yet. Save your itinerary to try again.":"");
     }catch(error){
       setRoutes([]);
       setRouteMessage(error instanceof Error?error.message:"Could not load saved routes.");
@@ -334,7 +334,7 @@ function ItineraryContent(){
   async function calculateRoutes(){
     if(!tripId)return;
     try{
-      setRouteMessage("Calculating real road routes between same-day stops…");
+      setRouteMessage(localTravel.toLowerCase().includes("public")?"Checking public-transit coverage and journey times…":"Calculating real road routes between same-day stops…");
       const res=await fetch("/api/trips/"+encodeURIComponent(tripId)+"/routes",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -343,7 +343,7 @@ function ItineraryContent(){
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Could not calculate routes.");
       setRoutes(Array.isArray(data.routes)?data.routes:[]);
-      setRouteMessage(data.routeCount?"Real road routes calculated and saved.":"No same-day route legs are needed yet.");
+      setRouteMessage(data.available===false?String(data.error||"Public-transit data is unavailable for this location. Your itinerary is still saved."):data.routeCount?(data.mode==="TRANSIT"?"Public-transit routes and journey times calculated.":"Real road routes calculated and saved."):"No same-day route legs are needed yet.");
     }catch(error){
       setRouteMessage(error instanceof Error?error.message:"Could not calculate routes.");
     }
@@ -421,7 +421,7 @@ function ItineraryContent(){
           <button type="button" className="primary-button" onClick={buildPlan} disabled={planning||loading||!tripId||!selectedCount}>{planning?"Planning…":"↻ Rebuild smart plan"}</button>
           <button type="button" className="primary-button" onClick={saveItinerary} disabled={saving||!tripId||!planned.length}>{saving?"Saving…":"Save itinerary"}</button>
           {saveMessage&&<span>{saveMessage}</span>}
-          {routeMessage&&<span>{routeMessage}</span>}
+          {routeMessage&&<span role="status">{routeMessage}</span>}
         </div>
 
         {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
@@ -492,7 +492,7 @@ function ItineraryContent(){
           <span className="eyebrow">05 · ROVEO LOGIC</span>
           <h2>Less travel. More exploring.</h2>
           <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
-          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
+          <p className="planning-rule">{localTravel.toLowerCase().includes("public")?"When Google Routes has public-transit coverage for a pair of stops, Roveo shows the provider's route line and estimated journey time. Coverage varies by location; when transit data is missing, the itinerary remains saved and usable.":"The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance."}</p>
         </div>
       </aside>
     </section>
