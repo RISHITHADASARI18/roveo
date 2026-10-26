@@ -241,6 +241,24 @@ async function nearbyDestinationSearch(bounds: Bounds | undefined, coverage: Des
   try { return await Promise.any(attempts); } catch { return []; }
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(items.length, Math.max(1, Math.floor(concurrency)));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index]);
+    }
+  }));
+  return results;
+}
+
 async function overpassCell(cell: Bounds): Promise<DiscoveredPlace[]> {
   const bbox = [cell.south, cell.west, cell.north, cell.east].join(",");
   const query = [
@@ -726,7 +744,11 @@ async function discoverBroadPlacesUncached(
   // Run nearby-stop suggestions alongside the main place providers instead of
   // waiting for all attractions to finish before starting this extra lookup.
   const [cellResults, wikiResults, coreResults, googleResults, destinationResults, nearbyDestinations] = await Promise.all([
-    Promise.all(cells.map(overpassCell)),
+    // Public Overpass mirrors rate-limit aggressively. A 3x3 regional grid
+    // must not launch 18 requests at once (two mirrored requests per cell),
+    // or the providers can reject every tile and make discovery look broken.
+    // Bound tile concurrency while preserving result order and mirror fallback.
+    mapWithConcurrency(cells, 3, overpassCell),
     Promise.all(cells.map(async (cell) => {
       const cellCenter = {
         latitude: (cell.south + cell.north) / 2,
