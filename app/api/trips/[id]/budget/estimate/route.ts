@@ -164,7 +164,7 @@ export async function POST(
     // Live accommodation prices can change the estimate after the base
     // calculation, so enforce the same hard budget ceiling again here.
     const budgetLimit = Math.max(0, Number(trip.budget) || 0);
-    if (budgetLimit > 0 && subtotal > budgetLimit) {
+    if (subtotal > budgetLimit) {
       const totalCents = Math.floor(budgetLimit * 100);
       const shares = coreKeys.map((key) => {
         const exactCents = calculation.items[key] / subtotal * totalCents;
