@@ -92,8 +92,14 @@ function BudgetContent() {
   const progress = totalBudget > 0 ? Math.min(100, (planned / totalBudget) * 100) : planned > 0 ? 100 : 0;
 
   function updateItem(key: string, value: string) {
-    const amount = Math.max(0, Number(value) || 0);
-    setItems((current) => ({ ...current, [key]: amount }));
+    const requested = Math.max(0, Number(value) || 0);
+    setItems((current) => {
+      const otherCategories = Object.entries(current)
+        .filter(([categoryKey]) => categoryKey !== key)
+        .reduce((sum, [, amount]) => sum + Math.max(0, Number(amount) || 0), 0);
+      const available = Math.max(0, totalBudget - otherCategories);
+      return { ...current, [key]: Math.min(requested, available) };
+    });
     setMessage("");
   }
 
@@ -257,6 +263,10 @@ function BudgetContent() {
               </button>
             </div>
 
+            <div className="budget-message budget-reserve-note" role="note">
+              <strong>Keep a little extra money aside.</strong>
+              <p>Unexpected costs can come up during a trip. If possible, carry an additional 5–10% of your budget as emergency money. This is a separate recommendation and is not added to your planned spending or the budget you entered.</p>
+            </div>
             {message && <p className="budget-message">{message}</p>}
           </div>
         </div>
