@@ -125,10 +125,6 @@ export default function DashboardPage() {
 
   return (
     <main className="dashboard-page">
-      <nav className="dashboard-nav">
-        <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
-        
-      </nav>
       <section className="planner">
         <div className="planner-heading">
           <span className="eyebrow">YOUR TRIP STARTS HERE</span>
