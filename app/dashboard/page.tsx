@@ -7,7 +7,6 @@ type Location = { id:string; name:string; displayName:string; lat:number; lon:nu
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [stay, setStay] = useState("Hotel");
   const [source, setSource] = useState("");
   const [sourceLocation, setSourceLocation] = useState<Location|null>(null);
   const [destinationLocations, setDestinationLocations] = useState<Location[]>([]);
@@ -99,7 +98,6 @@ export default function DashboardPage() {
           budget: Number(budget),
           travel,
           localTravel: localTravel.join(", "),
-          stay,
           startDate: startDate || null,
         }),
       });
@@ -120,7 +118,6 @@ export default function DashboardPage() {
         budget,
         travel,
         localTravel: localTravel.join(", "),
-        stay,
       });
       if (startDate) params.set("startDate", startDate);
       router.push("/trip?" + params.toString());
@@ -133,11 +130,7 @@ export default function DashboardPage() {
     <main className="dashboard-page">
       <nav className="dashboard-nav">
         <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
-        <div className="dashboard-nav-links">
-          <a className="active" href="/dashboard">Plan a trip</a>
-          <a href="#trips">My trips</a>
-          <a href="/">Home</a>
-        </div>
+        
       </nav>
       <section className="planner">
         <div className="planner-heading">
@@ -191,16 +184,6 @@ export default function DashboardPage() {
               <label><span>🗓️ Start date (for live stay prices)</span><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
               <div className="local-travel-field"><span className="local-travel-label">🗺️ How will you get around?</span><small className="local-travel-hint">Choose all the options you might use.</small><div className="local-travel-options" role="group" aria-label="Choose one or more local transport options">{[{name:"Car",icon:"🚗"},{name:"Taxi",icon:"🚕"},{name:"Public transport",icon:"🚌"},{name:"Walking",icon:"🚶"},{name:"Bike",icon:"🚲"}].map(option=><button key={option.name} type="button" aria-pressed={localTravel.includes(option.name)} className={localTravel.includes(option.name)?"selected":""} onClick={()=>setLocalTravel(current=>current.includes(option.name)?current.filter(item=>item!==option.name):[...current,option.name])}>{option.icon} <span>{option.name}</span><b aria-hidden="true">{localTravel.includes(option.name)?"✓":"+"}</b></button>)}</div><small className="local-travel-hint">{localTravel.length ? localTravel.join(" · ") : "Select at least one option."}</small></div>
-            </div>
-          </div>
-          <div className="form-section">
-            <div className="form-title"><span>03</span><div><h2>Where will you stay?</h2><p>Pick the kind of stay that suits your trip.</p></div></div>
-            <div className="choice-grid">
-              {["Hotel", "Homestay", "Hostel", "Other"].map((item) => (
-                <button className={stay === item ? "selected" : ""} type="button" key={item} onClick={() => setStay(item)}>
-                  {item === "Hotel" ? "🏨" : item === "Homestay" ? "🏠" : item === "Hostel" ? "🛏️" : "🏕️"} {item}
-                </button>
-              ))}
             </div>
           </div>
           <div className="planner-action">
