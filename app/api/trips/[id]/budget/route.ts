@@ -31,6 +31,9 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
   const tripId=tripIdFromParams(await params);
   if(!tripId)return NextResponse.json({error:"Invalid trip id."},{status:400});
   try {
+    const tripResult = await db.query("SELECT budget FROM trips WHERE id=$1", [tripId]);
+    if (!tripResult.rows[0]) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+    const totalBudget = Math.max(0, Number(tripResult.rows[0].budget) || 0);
     const result=await db.query(
       `SELECT
         destination_travel AS "destinationTravel",
@@ -41,8 +44,8 @@ export async function GET(_request: Request,{params}:{params:Promise<{id:string}
         other,
         contingency
        FROM trip_budgets WHERE trip_id=$1`,[tripId]);
-    if(!result.rows[0])return NextResponse.json({budget:null});
-    return NextResponse.json({budget:buildBreakdown(result.rows[0])});
+    if(!result.rows[0])return NextResponse.json({budget:null, totalBudget});
+    return NextResponse.json({budget:buildBreakdown(result.rows[0]), totalBudget});
   } catch(error) {
     console.error("GET /api/trips/[id]/budget failed:",error);
     return NextResponse.json({error:"Could not load the trip budget."},{status:500});
