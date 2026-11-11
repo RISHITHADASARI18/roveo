@@ -27,7 +27,6 @@ export default function Home() {
 
         <div className="nav-links">
           <a href="#how-it-works">How it works</a>
-          <a className="dashboard-link" href="/dashboard">Dashboard</a>
           <a className="login-button" href="/login">Log in</a>
         </div>
       </nav>
@@ -41,7 +40,7 @@ export default function Home() {
             so travelling with others feels simple.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/dashboard">Go to Dashboard <span>→</span></a>
+            <a className="primary-button" href="/dashboard">Plan a trip <span>→</span></a>
             <a className="secondary-button" href="#how-it-works">See how it works</a>
           </div>
         </div>
@@ -105,7 +104,7 @@ export default function Home() {
           <span className="eyebrow">READY TO ROVE?</span>
           <h2>Your next trip starts here.</h2>
         </div>
-        <a className="primary-button light-button" href="/dashboard">Open Dashboard <span>→</span></a>
+        <a className="primary-button light-button" href="/dashboard">Start planning <span>→</span></a>
       </section>
 
       <footer>
