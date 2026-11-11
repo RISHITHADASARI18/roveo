@@ -14,8 +14,8 @@ export default function DashboardPage() {
   const [destinationSuggestions, setDestinationSuggestions] = useState<Location[]>([]);
   const [activeLocation, setActiveLocation] = useState<"source"|"destination"|null>(null);
   const [destination, setDestination] = useState("");
-  const [days, setDays] = useState("5");
-  const [people, setPeople] = useState("4");
+  const [days, setDays] = useState("");
+  const [people, setPeople] = useState("");
   const [budget, setBudget] = useState("");
   const [travel, setTravel] = useState("");
   const [localTravel, setLocalTravel] = useState<string[]>([]);
@@ -178,8 +178,8 @@ export default function DashboardPage() {
           <div className="form-section">
             <div className="form-title"><span>02</span><div><h2>Tell us about the trip</h2><p>These details help us plan realistically, including when you travel and how you move around the destination.</p></div></div>
             <div className="input-grid four">
-              <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} /></label>
-              <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} /></label>
+              <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Enter number of days" /></label>
+              <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} placeholder="Enter number of people" /></label>
               <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
               <label><span>🗓️ Start date (for live stay prices)</span><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
