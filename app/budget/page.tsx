@@ -48,7 +48,7 @@ function BudgetContent() {
   const destination = params.get("destination") || "Your trip";
   const days = Math.max(1, Number(params.get("days")) || 1);
   const people = Math.max(1, Number(params.get("people")) || 1);
-  const totalBudget = Math.max(0, Number(params.get("budget")) || 0);
+  const [totalBudget, setTotalBudget] = useState(Math.max(0, Number(params.get("budget")) || 0));
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
   const stay = params.get("stay") || "";
@@ -80,6 +80,12 @@ function BudgetContent() {
         const response = await fetch("/api/trips/" + encodeURIComponent(tripId) + "/budget");
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load the budget.");
+
+        // The saved trip record is authoritative. URL parameters can be stale
+        // or missing when users revisit a trip from a different entry point.
+        if (!cancelled && Number.isFinite(Number(data.totalBudget))) {
+          setTotalBudget(Math.max(0, Number(data.totalBudget)));
+        }
 
         if (!cancelled && data.budget) {
           const next = { ...items };
