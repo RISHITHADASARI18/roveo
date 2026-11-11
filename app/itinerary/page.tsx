@@ -40,7 +40,6 @@ function ItineraryContent(){
   const budget=Math.max(0,Number(params.get("budget"))||0);
   const travel=params.get("travel")||"Car";
   const localTravel=params.get("localTravel")||"Taxi";
-  const stay=params.get("stay")||"Hotel";
   const tripId=params.get("tripId")||"";
 
   const [center,setCenter]=useState<any>(null);
@@ -356,7 +355,7 @@ function ItineraryContent(){
   return <main className="itinerary-page">
     <nav className="dashboard-nav">
       <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
-      <div className="dashboard-nav-links"><a href="/dashboard">Edit trip</a><a className="active" href={"/trip?"+params.toString()}>My plan</a><a href={"/places?"+params.toString()}>Explore places</a></div>
+      <div className="dashboard-nav-links"><a className="active" href={"/trip?"+params.toString()}>My plan</a><a href={"/places?"+params.toString()}>Explore places</a></div>
     </nav>
 
     <div className="page-navigation itinerary-navigation">
@@ -366,7 +365,7 @@ function ItineraryContent(){
 
     <section className="itinerary-hero">
       <div><span className="eyebrow">02 · SMART ITINERARY</span><h1>Where to visit <span>each day.</span></h1><p>{routeLabel||"Your destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"}</p></div>
-      <div className="itinerary-budget"><span>TRIP BUDGET</span><strong>₹{formattedBudget}</strong><small>{travel} to destination · {localTravel} locally · {stay}</small></div>
+      <div className="itinerary-budget"><span>TRIP BUDGET</span><strong>₹{formattedBudget}</strong><small>{travel} to destination · {localTravel} locally</small></div>
     </section>
 
     <section className="itinerary-layout">
@@ -448,7 +447,6 @@ function ItineraryContent(){
         <div className="budget-breakdown">
           <span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2>
           <div><span>Starting point</span><strong>{source||"—"}</strong></div>
-          <div><span>Stay</span><strong>{stay}</strong></div>
           <div><span>Travel to destination</span><strong>{travel}</strong></div>
           <div><span>Getting around</span><strong>{localTravel}</strong></div>
           <div><span>Travellers</span><strong>{people}</strong></div>
