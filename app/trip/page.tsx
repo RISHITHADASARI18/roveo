@@ -21,7 +21,6 @@ function TripContent(){
   const budget=Math.max(0,Number(params.get("budget"))||0);
   const travel=params.get("travel")||"Car";
   const localTravel=params.get("localTravel")||"Taxi";
-  const stay=params.get("stay")||"Hotel";
   const [geo,setGeo]=useState<Geo|null>(null);
   const [places,setPlaces]=useState<Place[]>([]);
   const [dayPlans,setDayPlans]=useState<Day[]>([]);
@@ -145,17 +144,17 @@ function TripContent(){
   }
 
   return <main className="trip-page">
-    <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a href="/dashboard">← Edit trip</a><a className="active" href={"/trip?" + params.toString()}>Trip</a><a href={"/budget?" + params.toString()}>Budget</a><a href={"/places?" + params.toString()}>Places</a><a href={"/itinerary?" + params.toString()}>Itinerary</a></div></nav>
+    <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a className="active" href={"/trip?" + params.toString()}>Trip</a><a href={"/budget?" + params.toString()}>Budget</a><a href={"/places?" + params.toString()}>Places</a><a href={"/itinerary?" + params.toString()}>Itinerary</a></div></nav>
 
     <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
     <section className="trip-hero">
-      <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{routeLabel||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {routeLabel||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally · {stay}</p></div>
+      <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{routeLabel||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {routeLabel||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally</p></div>
       <div className="budget-card"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>≈ ₹{money(budget/days)} / day for the group</small></div>
     </section>
 
     <section className="trip-layout">
       <div className="trip-main">
-        <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🏨 {stay}</span><span>💰 ₹{money(budget)}</span></div></div>
+        <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>💰 ₹{money(budget)}</span></div></div>
 
         <section className="trip-budget-entry">
           <div>
@@ -195,7 +194,7 @@ function TripContent(){
 
       <aside className="trip-side">
         <div className="map-card"><div className="map-heading"><div><span className="eyebrow">03 · MAP</span><h2>Locate the trip</h2></div><span className="map-pin">●</span></div>{geo?<iframe title="Roveo trip map" src={mapUrl} loading="lazy"/>:<div className="map-loading">Locating destination…</div>}{geo&&<a className="map-link" href={"https://www.openstreetmap.org/?mlat="+geo.lat+"&mlon="+geo.lon+"#map=12/"+geo.lat+"/"+geo.lon} target="_blank" rel="noreferrer">Open full map ↗</a>}</div>
-        <div className="budget-breakdown"><span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2><div><span>Stay</span><strong>{stay}</strong></div><div><span>Travel to destination</span><strong>{travel}</strong></div><div><span>Getting around</span><strong>{localTravel}</strong></div><div><span>Travellers</span><strong>{people}</strong></div><div><span>Budget</span><strong>₹{money(budget)}</strong></div><div><span>Daily budget</span><strong>₹{money(budget/days)}</strong></div><small>Accommodation and travel prices will be connected to live providers next, so Roveo can recommend stays and calculate the real trip cost.</small></div>
+        <div className="budget-breakdown"><span className="eyebrow">04 · TRIP DETAILS</span><h2>Your preferences</h2><div><span>Travel to destination</span><strong>{travel}</strong></div><div><span>Getting around</span><strong>{localTravel}</strong></div><div><span>Travellers</span><strong>{people}</strong></div><div><span>Budget</span><strong>₹{money(budget)}</strong></div><div><span>Daily budget</span><strong>₹{money(budget/days)}</strong></div><small>Accommodation and travel prices will be connected to live providers next, so Roveo can recommend stays and calculate the real trip cost.</small></div>
         <div className="budget-breakdown"><span className="eyebrow">05 · HOW ROVEO PLANS</span><h2>Travel less. Explore more.</h2><p className="planning-rule">Roveo separates your journey to the destination from local travel, then groups nearby attractions across your days so you spend less time moving between them.</p><p className="planning-rule">You can remove, move, add or regenerate places whenever your plan changes.</p></div>
       </aside>
     </section>
