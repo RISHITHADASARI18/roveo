@@ -381,7 +381,7 @@ function PlacesContent(){
   return <main className="places-page">
     <nav className="dashboard-nav">
       <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
-      <div className="dashboard-nav-links"><a href="/dashboard">Edit trip</a><a href="/trip">My plan</a><a className="active" href="/places">Explore</a></div>
+      <div className="dashboard-nav-links"><a href="/trip">My plan</a><a className="active" href="/places">Explore</a></div>
     </nav>
 
     <div className="page-navigation places-navigation">
