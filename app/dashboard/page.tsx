@@ -97,7 +97,6 @@ export default function DashboardPage() {
           budget: Number(budget),
           travel,
           localTravel: localTravel.join(", "),
-          startDate: startDate || null,
         }),
       });
 
@@ -118,7 +117,6 @@ export default function DashboardPage() {
         travel,
         localTravel: localTravel.join(", "),
       });
-      if (startDate) params.set("startDate", startDate);
       router.push("/trip?" + params.toString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save your trip.");
@@ -198,7 +196,7 @@ export default function DashboardPage() {
           <article><span>01</span><h3>Find places</h3><p>Discover attractions and activities that make sense for your destination and budget.</p></article>
           <article><span>02</span><h3>Group nearby spots</h3><p>Keep places that are close together on the same day to reduce unnecessary travel.</p></article>
           <article><span>03</span><h3>Build each day</h3><p>Turn the results into a practical day-by-day route instead of a random list of places.</p></article>
-          <article><span>04</span><h3>Track the budget</h3><p>Estimate travel, stay, food and activities so you can see how much of your budget remains.</p></article>
+          <article><span>04</span><h3>Track the budget</h3><p>Estimate travel, accommodation, food and activities so you can see how much of your budget remains.</p></article>
           <article><span>05</span><h3>Show it on a map</h3><p>See your route and selected places together so the whole trip is easy to understand.</p></article>
           <article><span>06</span><h3>Adjust anytime</h3><p>Add, remove or reorder places and rebuild the itinerary around your changes.</p></article>
         </div>
