@@ -42,6 +42,7 @@ function ItineraryContent(){
   const localTravel=params.get("localTravel")||"Taxi";
   const tripId=params.get("tripId")||"";
 
+  const [showScreenshotReminder,setShowScreenshotReminder]=useState(true);
   const [center,setCenter]=useState<any>(null);
   const [selectedPlaces,setSelectedPlaces]=useState<any[]>([]);
   const [plans,setPlans]=useState<PlannedPlace[][]>([]);
@@ -353,6 +354,15 @@ function ItineraryContent(){
   const formattedBudget=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0}).format(budget);
 
   return <main className="itinerary-page">
+    {showScreenshotReminder&&<div role="dialog" aria-modal="true" aria-labelledby="itinerary-screenshot-title" style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(18,35,48,.58)",display:"grid",placeItems:"center",padding:20}}>
+      <section style={{width:"min(460px,100%)",background:"#fff",color:"#20313b",borderRadius:22,padding:26,boxShadow:"0 24px 80px rgba(0,0,0,.25)"}}>
+        <div aria-hidden="true" style={{fontSize:34,marginBottom:8}}>📸</div>
+        <h2 id="itinerary-screenshot-title" style={{fontSize:23,margin:"0 0 10px"}}>Your itinerary is not saved automatically</h2>
+        <p style={{lineHeight:1.6,margin:"0 0 12px"}}>Your day-by-day arrangement may be lost when you leave this page. Take a screenshot so you can refer to it later, or return to this page from your trip link to build the plan again.</p>
+        <p style={{lineHeight:1.6,margin:"0 0 20px",fontSize:14,color:"#52636c"}}>If you want to keep this exact arrangement, click <strong>Save itinerary</strong> before leaving. A screenshot is a useful backup.</p>
+        <button type="button" className="primary-button" onClick={()=>setShowScreenshotReminder(false)} style={{width:"100%",justifyContent:"center"}}>Got it — show my plan</button>
+      </section>
+    </div>}
     <nav className="dashboard-nav">
       <a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a>
       <div className="dashboard-nav-links"><a className="active" href={"/trip?"+params.toString()}>My plan</a><a href={"/places?"+params.toString()}>Explore places</a></div>
