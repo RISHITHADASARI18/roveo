@@ -33,7 +33,6 @@ function BudgetContent() {
   const totalBudget = Math.max(0, Number(params.get("budget")) || 0);
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
-  const stay = params.get("stay") || "";
 
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
@@ -244,7 +243,6 @@ function BudgetContent() {
           <div className="budget-side-card">
             <span className="eyebrow">TRIP SETTINGS</span>
             <h2>What Roveo is using</h2>
-            <div><span>Stay</span><strong>{stay || "Not set"}</strong></div>
             <div><span>Destination travel</span><strong>{travel || "Not set"}</strong></div>
             <div><span>Local travel</span><strong>{localTravel || "Not set"}</strong></div>
             <div><span>Travellers</span><strong>{people}</strong></div>
