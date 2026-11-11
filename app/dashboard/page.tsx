@@ -19,7 +19,6 @@ export default function DashboardPage() {
   const [budget, setBudget] = useState("");
   const [travel, setTravel] = useState("");
   const [localTravel, setLocalTravel] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -181,7 +180,6 @@ export default function DashboardPage() {
               <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Enter number of days" /></label>
               <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} placeholder="Enter number of people" /></label>
               <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
-              <label><span>🗓️ Start date (for live stay prices)</span><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
               <div className="local-travel-field"><span className="local-travel-label">🗺️ How will you get around?</span><small className="local-travel-hint">Choose all the options you might use.</small><div className="local-travel-options" role="group" aria-label="Choose one or more local transport options">{[{name:"Car",icon:"🚗"},{name:"Taxi",icon:"🚕"},{name:"Public transport",icon:"🚌"},{name:"Walking",icon:"🚶"},{name:"Bike",icon:"🚲"}].map(option=><button key={option.name} type="button" aria-pressed={localTravel.includes(option.name)} className={localTravel.includes(option.name)?"selected":""} onClick={()=>setLocalTravel(current=>current.includes(option.name)?current.filter(item=>item!==option.name):[...current,option.name])}>{option.icon} <span>{option.name}</span><b aria-hidden="true">{localTravel.includes(option.name)?"✓":"+"}</b></button>)}</div><small className="local-travel-hint">{localTravel.length ? localTravel.join(" · ") : "Select at least one option."}</small></div>
             </div>
@@ -204,10 +202,6 @@ export default function DashboardPage() {
           <article><span>05</span><h3>Show it on a map</h3><p>See your route and selected places together so the whole trip is easy to understand.</p></article>
           <article><span>06</span><h3>Adjust anytime</h3><p>Add, remove or reorder places and rebuild the itinerary around your changes.</p></article>
         </div>
-      </section>
-      <section className="trip-preview" id="trips">
-        <div><span className="eyebrow">YOUR TRIPS</span><h2>Your planned adventures will live here.</h2><p>Once you create a trip, Roveo will keep the itinerary, places, stay and budget together in one workspace.</p></div>
-        <div className="empty-trip"><span>✦</span><strong>No trips yet</strong><small>Your first adventure is one plan away.</small></div>
       </section>
     </main>
   );
