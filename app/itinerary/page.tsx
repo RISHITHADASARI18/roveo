@@ -27,6 +27,9 @@ type PlannedPlace = {
   address?:string;
   description?:string;
   websiteUrl?:string;
+  openingHours?:string;
+  routeDistanceKm?:number;
+  openingHoursConflict?:boolean;
 };
 
 function ItineraryContent(){
