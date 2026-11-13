@@ -34,7 +34,7 @@ function centroid(items: PlannerPlace[]) {
 }
 
 function isFullDay(place: PlannerPlace) {
-  return /ramoji|film city|theme park|amusement park|water park|large safari|wildlife safari/i.test(place.name + " " + (place.category || ""));
+  return /ramoji|film city|theme park|amusement park|water park|wonderla|imagica|snow world|large safari|wildlife safari/i.test(place.name + " " + (place.category || ""));
 }
 
 function categoryDuration(place: PlannerPlace) {
@@ -59,6 +59,14 @@ export function timeLabel(minutes: number) {
   const minute = minutes % 60;
   const suffix = hour >= 12 ? "PM" : "AM";
   return (hour % 12 || 12) + ":" + String(minute).padStart(2, "0") + " " + suffix;
+}
+
+function defaultOpeningHours(place: PlannerPlace) {
+  const name = place.name.toLowerCase();
+  if (/ramoji film city/.test(name)) return "09:00-17:30";
+  if (/birla mandir/.test(name)) return "07:00-12:00, 15:00-21:00";
+  if (/charminar/.test(name)) return "09:00-17:30";
+  return place.openingHours;
 }
 
 function parseOpeningRanges(value?: string) {
@@ -163,7 +171,7 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       const travelTime=previous?roadEstimateMinutes(distance):0;
       if(previous){totalDistance+=distance;clock+=travelTime;}
       const durationMinutes=categoryDuration(place);
-      clock=fitStart(clock,durationMinutes,place.openingHours);
+      clock=fitStart(clock,durationMinutes,defaultOpeningHours(place));
       items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime});
       clock+=durationMinutes;
       if(placeIndex===0&&ordered.length>1)clock+=30;
@@ -186,7 +194,7 @@ export function rescheduleDay(items: PlannedPlace[], travelTimes: number[]) {
   return items.map((place, index) => {
     const travelTimeMinutes = index === 0 ? 0 : Math.max(0, Math.round(travelTimes[index - 1] ?? place.travelTimeMinutes ?? 0));
     clock += travelTimeMinutes;
-    clock = fitStart(clock, place.durationMinutes, place.openingHours);
+    clock = fitStart(clock, place.durationMinutes, defaultOpeningHours(place));
     const next = { ...place, startTime: timeLabel(clock), travelTimeMinutes };
     clock += place.durationMinutes;
     if (index === 0 && items.length > 1) clock += 30;
