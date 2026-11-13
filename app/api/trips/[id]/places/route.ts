@@ -14,6 +14,7 @@ type PlaceInput = {
   photoUrl?: unknown;
   websiteUrl?: unknown;
   address?: unknown;
+  openingHours?: unknown;
   destinationId?: unknown;
 };
 
@@ -65,6 +66,7 @@ export async function GET(
         photo_url AS "photoUrl",
         website_url AS "websiteUrl",
         address,
+        opening_hours AS "openingHours",
         created_at AS "createdAt"
        FROM trip_places
        WHERE trip_id = $1
@@ -108,6 +110,7 @@ export async function POST(
   const photoUrl = text(body.photoUrl) || null;
   const websiteUrl = text(body.websiteUrl) || null;
   const address = text(body.address) || null;
+  const openingHours = text(body.openingHours) || null;
   const destinationId = body.destinationId == null || body.destinationId === "" ? null : Number(body.destinationId);
   if (destinationId !== null && (!Number.isInteger(destinationId) || destinationId <= 0)) {
     return NextResponse.json({ error: "Invalid destinationId." }, { status: 400 });
@@ -134,13 +137,14 @@ export async function POST(
       if (destination.rowCount === 0) return NextResponse.json({ error: "Destination does not belong to this trip." }, { status: 400 });
     }
 
+    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS opening_hours TEXT");
     const result = await db.query(
       `INSERT INTO trip_places (
         trip_id, provider, provider_place_id, name,
         latitude, longitude, category, description,
-        photo_url, website_url, address, destination_id
+        photo_url, website_url, address, opening_hours, destination_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (trip_id, provider_place_id)
       DO UPDATE SET
         name = EXCLUDED.name,
@@ -151,6 +155,7 @@ export async function POST(
         photo_url = EXCLUDED.photo_url,
         website_url = EXCLUDED.website_url,
         address = EXCLUDED.address,
+        opening_hours = EXCLUDED.opening_hours,
         destination_id = COALESCE(EXCLUDED.destination_id, trip_places.destination_id)
       RETURNING
         id,
@@ -164,12 +169,13 @@ export async function POST(
         photo_url AS "photoUrl",
         website_url AS "websiteUrl",
         address,
+        opening_hours AS "openingHours",
         destination_id AS "destinationId",
         created_at AS "createdAt"`,
       [
         tripId, provider, providerPlaceId, name,
         latitude, longitude, category, description,
-        photoUrl, websiteUrl, address, destinationId
+        photoUrl, websiteUrl, address, openingHours, destinationId
       ]
     );
 
