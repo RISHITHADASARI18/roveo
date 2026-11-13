@@ -19,7 +19,7 @@ export type PlannedDay = {
 const DAY_START = 8 * 60 + 30;
 const DAY_CAPACITY = 9 * 60;
 
-export function haversineKm(a: PlannerPlace, b: PlannerPlace) {
+export function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
   const p = Math.PI / 180;
   const dLat = (b.latitude - a.latitude) * p;
   const dLon = (b.longitude - a.longitude) * p;
