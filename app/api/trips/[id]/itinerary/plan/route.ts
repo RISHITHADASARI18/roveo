@@ -18,10 +18,10 @@ type TripDestination = {
 };
 
 function routeMode(value: unknown): TravelMode | null {
-  const method = String(value ?? "").toLowerCase();
-  if (method === "car" || method === "taxi") return "DRIVE";
-  if (method === "walking") return "WALK";
-  if (method === "bike") return "BICYCLE";
+  const methods = String(value ?? "").toLowerCase().split(",").map((item) => item.trim());
+  if (methods.includes("car") || methods.includes("taxi")) return "DRIVE";
+  if (methods.includes("bike")) return "BICYCLE";
+  if (methods.includes("walking")) return "WALK";
   return null; // Public-transit routing is not supported by the current provider.
 }
 
