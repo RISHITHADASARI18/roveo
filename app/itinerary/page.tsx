@@ -149,7 +149,8 @@ function ItineraryContent(){
           travelTimeMinutes:Number(item.travelTimeMinutes)||0,
           address:item.place.address||"",
           description:item.place.description||"",
-          websiteUrl:item.place.websiteUrl||""
+          websiteUrl:item.place.websiteUrl||"",
+          openingHours:item.place.openingHours||""
         }:null).filter(Boolean)
       );
       setPlans(restored);
@@ -194,7 +195,8 @@ function ItineraryContent(){
           travelTimeMinutes:Number(place.travelTimeMinutes)||0,
           address:place.address||"",
           description:place.description||"",
-          websiteUrl:place.websiteUrl||""
+          websiteUrl:place.websiteUrl||"",
+          openingHours:place.openingHours||""
         }))
       );
       setPlans(next);
@@ -385,7 +387,7 @@ function ItineraryContent(){
             <span className="eyebrow">YOUR RECOMMENDED ITINERARY</span>
             <h2>Roveo plans the day, not just the list.</h2>
             <p>{loading||planning?message:plannerReason||message}</p>
-            <p className="planning-rule">Each stop below comes from your saved selections in Places to Explore. Visit times and durations are planning estimates; check opening hours before you go.</p>
+            <p className="planning-rule">Each stop below comes from your saved selections. Roveo considers visit duration, road-transfer time and available opening-hour data. Confirm timings with the attraction before travelling.</p>
           </div>
           <div className="itinerary-count"><strong>{planned.length}</strong><span>of {selectedCount} selected places scheduled</span></div>
         </div>
@@ -409,7 +411,7 @@ function ItineraryContent(){
             return <article className="itinerary-day" key={day}>
               <div className="itinerary-day-head">
                 <div><span className="day-number">DAY {day+1}</span><h3>{planDestinations[day]?planDestinations[day]+" · "+dayTitle:dayTitle}</h3></div>
-                <div className="day-stats"><strong>{items.length} places</strong><span>~{total.toFixed(1)} km straight-line between stops</span></div>
+                <div className="day-stats"><strong>{items.length} places</strong><span>{items.reduce((sum,place)=>sum+(place.routeDistanceKm||0),0)>0?`~${items.reduce((sum,place)=>sum+(place.routeDistanceKm||0),0).toFixed(1)} km by road`:`~${total.toFixed(1)} km straight-line estimate`}</span><span>~{items.reduce((sum,place)=>sum+(place.travelTimeMinutes||0),0)} min between stops</span></div>
               </div>
 
               <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
@@ -421,6 +423,8 @@ function ItineraryContent(){
                     <strong>{place.name}</strong>
                     <small>{place.startTime||"Suggested time"} · Visit for about {place.durationMinutes||90} min</small>
                     <small>{String(place.type||"place").replaceAll("_"," ")}</small>
+                    {place.openingHours&&<small>Opening hours: {place.openingHours}</small>}
+                    {place.routeDistanceKm!=null&&<small>Road distance from previous stop: ~{place.routeDistanceKm} km</small>}
                     {place.address&&<small>{place.address}</small>}
                     {place.description&&<small>{place.description}</small>}
                     {place.travelTimeMinutes? <small>Travel from previous stop: ~{place.travelTimeMinutes} min</small>:null}
@@ -466,8 +470,8 @@ function ItineraryContent(){
         <div className="budget-breakdown">
           <span className="eyebrow">05 · ROVEO LOGIC</span>
           <h2>Less travel. More exploring.</h2>
-          <p className="planning-rule">Roveo first groups the places you selected into geographic areas. Then it orders each day from one stop to the next instead of randomly spreading attractions across the destination.</p>
-          <p className="planning-rule">The final Save step calculates real road routes between the same-day stops, so the map reflects the actual route rather than just straight-line distance.</p>
+          <p className="planning-rule">Roveo groups nearby places, estimates how long each visit takes, reserves a full day for major attractions such as film/theme parks, and avoids filling a day beyond a realistic sightseeing window.</p>
+          <p className="planning-rule">The planner requests road-route durations between consecutive same-day stops when routing is available. If a route service is unavailable, it falls back to a conservative road-time estimate. Places with known opening hours are scheduled within an available time window when possible.</p>
         </div>
       </aside>
     </section>
