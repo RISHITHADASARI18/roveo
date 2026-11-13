@@ -424,6 +424,7 @@ function ItineraryContent(){
                     <small>{place.startTime||"Suggested time"} · Visit for about {place.durationMinutes||90} min</small>
                     <small>{String(place.type||"place").replaceAll("_"," ")}</small>
                     {place.openingHours&&<small>Opening hours: {place.openingHours}</small>}
+                    {place.openingHoursConflict&&<small style={{color:"#b45309"}}>⚠ This suggested visit may fall outside the listed opening hours. Move it to another day or confirm directly before visiting.</small>}
                     {place.routeDistanceKm!=null&&<small>Road distance from previous stop: ~{place.routeDistanceKm} km</small>}
                     {place.address&&<small>{place.address}</small>}
                     {place.description&&<small>{place.description}</small>}
