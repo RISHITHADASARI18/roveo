@@ -204,7 +204,7 @@ function ItineraryContent(){
       if(!data.selectedPlaceCount){
         setMessage("No places have been selected yet. Go back to Places to Explore and add the places you want.");
       }else{
-        setMessage("Smart plan ready — nearby places are grouped together and each day is ordered to reduce backtracking.");
+        setMessage("Smart plan ready — nearby stops are grouped, road travel time is included where routing is available, and major full-day attractions are kept separate.");
       }
     }catch(error){
       setMessage(error instanceof Error?error.message:"Could not build the smart itinerary.");
@@ -402,7 +402,7 @@ function ItineraryContent(){
           {routeMessage&&<span>{routeMessage}</span>}
         </div>
 
-        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place is":"places are"} not in the current plan.</strong> Rebuild the smart plan to distribute all selected places again.</div>}
+        {unplanned.length>0&&<div className="itinerary-loading"><strong>{unplanned.length} selected {unplanned.length===1?"place does":"places do"} not fit into the available days.</strong> Roveo has left these out rather than creating an unrealistic schedule. Add another trip day or remove some stops, then rebuild the plan.</div>}
 
         <div className="itinerary-days">
           {plans.map((items,day)=>{
@@ -414,7 +414,7 @@ function ItineraryContent(){
                 <div className="day-stats"><strong>{items.length} places</strong><span>{items.reduce((sum,place)=>sum+(place.routeDistanceKm||0),0)>0?`~${items.reduce((sum,place)=>sum+(place.routeDistanceKm||0),0).toFixed(1)} km by road`:`~${total.toFixed(1)} km straight-line estimate`}</span><span>~{items.reduce((sum,place)=>sum+(place.travelTimeMinutes||0),0)} min between stops</span></div>
               </div>
 
-              <p className="planning-rule">Roveo grouped this day geographically first, then ordered the stops to reduce backtracking.</p>
+              <p className="planning-rule">Stops are ordered by proximity. Transfer time and visit duration are included in the day plan.</p>
 
               <div className="planned-place-list">
                 {items.map((place,index)=><div className="planned-place" key={place.id}>
