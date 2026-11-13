@@ -80,6 +80,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       description: row.description ? String(row.description) : undefined,
       address: row.address ? String(row.address) : undefined,
       websiteUrl: row.websiteUrl ? String(row.websiteUrl) : undefined,
+      openingHours: row.openingHours ? String(row.openingHours) : undefined,
       destinationId: row.destinationId == null ? null : String(row.destinationId),
     })).filter((place) =>
       place.name &&
