@@ -4,6 +4,7 @@ export type PlannedPlace = PlannerPlace & {
   startTime: string;
   durationMinutes: number;
   travelTimeMinutes: number;
+  routeDistanceKm?: number;
 };
 
 export type PlannedDay = {
@@ -53,7 +54,7 @@ function roadEstimateMinutes(distanceKm: number) {
   return distanceKm <= 0.2 ? 5 : Math.max(8, Math.round((distanceKm * 1.35 / 22) * 60));
 }
 
-function timeLabel(minutes: number) {
+export function timeLabel(minutes: number) {
   const hour = Math.floor(minutes / 60);
   const minute = minutes % 60;
   const suffix = hour >= 12 ? "PM" : "AM";
@@ -79,7 +80,7 @@ function parseOpeningRanges(value?: string) {
   return ranges.sort((a,b)=>a.start-b.start);
 }
 
-function fitStart(clock:number,duration:number,openingHours?:string) {
+export function fitStart(clock:number,duration:number,openingHours?:string) {
   const ranges=parseOpeningRanges(openingHours);
   if (!ranges.length) return clock;
   for (const range of ranges) {
@@ -177,5 +178,18 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       :spread==="nearby"?"Nearby stops are grouped together, with transfer time included between visits."
       : "The selected places are grouped geographically and transfer time is included in the daily workload.";
     return {dayNumber:index+1,title,reason,items,straightLineKm:Math.round(totalDistance*10)/10};
+  });
+}
+
+export function rescheduleDay(items: PlannedPlace[], travelTimes: number[]) {
+  let clock = DAY_START;
+  return items.map((place, index) => {
+    const travelTimeMinutes = index === 0 ? 0 : Math.max(0, Math.round(travelTimes[index - 1] ?? place.travelTimeMinutes ?? 0));
+    clock += travelTimeMinutes;
+    clock = fitStart(clock, place.durationMinutes, place.openingHours);
+    const next = { ...place, startTime: timeLabel(clock), travelTimeMinutes };
+    clock += place.durationMinutes;
+    if (index === 0 && items.length > 1) clock += 30;
+    return next;
   });
 }
