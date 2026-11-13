@@ -5,6 +5,7 @@ export type PlannedPlace = PlannerPlace & {
   durationMinutes: number;
   travelTimeMinutes: number;
   routeDistanceKm?: number;
+  openingHoursConflict?: boolean;
 };
 
 export type PlannedDay = {
@@ -86,6 +87,11 @@ function parseOpeningRanges(value?: string) {
     }
   }
   return ranges.sort((a,b)=>a.start-b.start);
+}
+
+export function fitsOpeningHours(clock:number,duration:number,openingHours?:string) {
+  const ranges=parseOpeningRanges(openingHours);
+  return !ranges.length || ranges.some(range=>clock>=range.start&&clock+duration<=range.end);
 }
 
 export function fitStart(clock:number,duration:number,openingHours?:string) {
@@ -172,7 +178,8 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       if(previous){totalDistance+=distance;clock+=travelTime;}
       const durationMinutes=categoryDuration(place);
       clock=fitStart(clock,durationMinutes,defaultOpeningHours(place));
-      items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime});
+      const openingHoursConflict=!fitsOpeningHours(clock,durationMinutes,defaultOpeningHours(place));
+      items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime,openingHoursConflict});
       clock+=durationMinutes;
       if(placeIndex===0&&ordered.length>1)clock+=30;
     });
@@ -195,7 +202,8 @@ export function rescheduleDay(items: PlannedPlace[], travelTimes: number[]) {
     const travelTimeMinutes = index === 0 ? 0 : Math.max(0, Math.round(travelTimes[index - 1] ?? place.travelTimeMinutes ?? 0));
     clock += travelTimeMinutes;
     clock = fitStart(clock, place.durationMinutes, defaultOpeningHours(place));
-    const next = { ...place, startTime: timeLabel(clock), travelTimeMinutes };
+    const openingHoursConflict = !fitsOpeningHours(clock, place.durationMinutes, defaultOpeningHours(place));
+    const next = { ...place, startTime: timeLabel(clock), travelTimeMinutes, openingHoursConflict };
     clock += place.durationMinutes;
     if (index === 0 && items.length > 1) clock += 30;
     return next;
