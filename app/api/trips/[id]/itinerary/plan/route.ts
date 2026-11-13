@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildSmartItinerary } from "@/lib/travel/itinerary";
 import type { PlannerPlace } from "@/lib/travel/itinerary-types";
+import { getTravelProvider } from "@/lib/travel";
+import type { TravelMode } from "@/lib/travel/types";
+import { rescheduleDay, type PlannedPlace } from "@/lib/travel/itinerary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +16,47 @@ type TripDestination = {
   longitude: number;
   order: number;
 };
+
+function routeMode(value: unknown): TravelMode | null {
+  const method = String(value ?? "").toLowerCase();
+  if (method === "car" || method === "taxi") return "DRIVE";
+  if (method === "walking") return "WALK";
+  if (method === "bike") return "BICYCLE";
+  return null; // Public-transit routing is not supported by the current provider.
+}
+
+async function addRoadTravelTimes(days: Array<Record<string, any>>, localTravelMethod: unknown) {
+  const mode = routeMode(localTravelMethod);
+  const provider = getTravelProvider();
+  let routeCount = 0;
+  for (const day of days) {
+    const items = Array.isArray(day.items) ? day.items as PlannedPlace[] : [];
+    const travelTimes: number[] = [];
+    for (let index = 1; index < items.length; index += 1) {
+      const from = items[index - 1];
+      const to = items[index];
+      let minutes = to.travelTimeMinutes || 0;
+      if (mode && routeCount < 80) {
+        try {
+          const route = await provider.computeRoute({
+            origin: { latitude: from.latitude, longitude: from.longitude },
+            destination: { latitude: to.latitude, longitude: to.longitude },
+            mode,
+          });
+          minutes = Math.max(1, Math.round(route.durationSeconds / 60));
+          to.routeDistanceKm = Math.round(route.distanceMeters / 1000 * 10) / 10;
+          routeCount += 1;
+        } catch {
+          // Keep the conservative road-distance estimate when routing is unavailable.
+        }
+      }
+      travelTimes.push(minutes);
+    }
+    day.items = rescheduleDay(items, travelTimes);
+    day.travelMinutes = travelTimes.reduce((sum, value) => sum + value, 0);
+  }
+  return { days, routeCount };
+}
 
 function tripIdFromParams(params: { id: string }) {
   const id = Number(params.id);
@@ -58,7 +102,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try { body = await request.json(); } catch {}
 
   try {
-    const trip = await db.query("SELECT days, destination FROM trips WHERE id = $1", [tripId]);
+    const trip = await db.query("SELECT days, destination, local_travel_method AS \"localTravelMethod\" FROM trips WHERE id = $1", [tripId]);
     if (trip.rowCount === 0) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
 
@@ -115,10 +159,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (destinations.length <= 1) {
-      const days = buildSmartItinerary(places, dayCount).map((day) => ({
+      const plannedDays = buildSmartItinerary(places, dayCount).map((day) => ({
         ...day,
         destinationName: destinations[0]?.name ?? String(trip.rows[0].destination ?? ""),
       }));
+      const { days } = await addRoadTravelTimes(plannedDays, trip.rows[0].localTravelMethod);
       return NextResponse.json({
         tripId,
         days,
@@ -192,9 +237,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
     }
 
+    const roadResult = await addRoadTravelTimes(days, trip.rows[0].localTravelMethod);
+    days = roadResult.days;
     return NextResponse.json({
       tripId,
       days,
+      roadRouteCount: roadResult.routeCount,
       selectedPlaceCount: places.length,
       plannedPlaceCount: days.reduce((sum, day) => sum + (Array.isArray(day.items) ? day.items.length : 0), 0),
       destinations: destinations.map((item) => ({ id: item.id, name: item.name, order: item.order })),
