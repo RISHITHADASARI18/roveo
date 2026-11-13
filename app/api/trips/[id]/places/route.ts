@@ -51,7 +51,7 @@ export async function GET(
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-
+    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS opening_hours TEXT");
     const result = await db.query(
       `SELECT
         id,
