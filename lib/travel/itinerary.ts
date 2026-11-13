@@ -14,7 +14,10 @@ export type PlannedDay = {
   straightLineKm: number;
 };
 
-function haversineKm(a: PlannerPlace, b: PlannerPlace) {
+const DAY_START = 8 * 60 + 30;
+const DAY_CAPACITY = 9 * 60;
+
+export function haversineKm(a: PlannerPlace, b: PlannerPlace) {
   const p = Math.PI / 180;
   const dLat = (b.latitude - a.latitude) * p;
   const dLon = (b.longitude - a.longitude) * p;
@@ -23,19 +26,31 @@ function haversineKm(a: PlannerPlace, b: PlannerPlace) {
 }
 
 function centroid(items: PlannerPlace[]) {
-  if (!items.length) return { latitude: 0, longitude: 0 };
   return {
     latitude: items.reduce((sum, item) => sum + item.latitude, 0) / items.length,
     longitude: items.reduce((sum, item) => sum + item.longitude, 0) / items.length,
   };
 }
 
-function categoryDuration(category = "") {
-  const value = category.toLowerCase();
-  if (/museum|palace|fort|heritage|historic|religious|temple|church|monument/.test(value)) return 105;
+function isFullDay(place: PlannerPlace) {
+  return /ramoji|film city|theme park|amusement park|water park|large safari|wildlife safari/i.test(place.name + " " + (place.category || ""));
+}
+
+function categoryDuration(place: PlannerPlace) {
+  const value = (place.name + " " + (place.category || "")).toLowerCase();
+  if (isFullDay(place)) return 480;
+  if (/zoo|aquarium|large museum|science museum/.test(value)) return 210;
+  if (/fort|palace|museum|heritage|historic/.test(value)) return 150;
+  if (/temple|mosque|church|place of worship|shrine/.test(value)) return 75;
+  if (/market|bazaar|shopping/.test(value)) return 90;
   if (/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(value)) return 120;
-  if (/activity|amusement|theme|water_park|zoo|aquarium/.test(value)) return 150;
+  if (/activity|adventure|ride/.test(value)) return 150;
   return 90;
+}
+
+function roadEstimateMinutes(distanceKm: number) {
+  // Conservative urban road estimate: allow for indirect roads and slower city traffic.
+  return distanceKm <= 0.2 ? 5 : Math.max(8, Math.round((distanceKm * 1.35 / 22) * 60));
 }
 
 function timeLabel(minutes: number) {
@@ -45,134 +60,122 @@ function timeLabel(minutes: number) {
   return (hour % 12 || 12) + ":" + String(minute).padStart(2, "0") + " " + suffix;
 }
 
-function chooseSeeds(places: PlannerPlace[], days: number) {
-  const seeds: PlannerPlace[] = [];
-  if (!places.length) return seeds;
-  const center = centroid(places);
-  const centerPoint = { id: "center", name: "", latitude: center.latitude, longitude: center.longitude };
-  const first = [...places].sort((a, b) => haversineKm(b, centerPoint) - haversineKm(a, centerPoint))[0];
-  seeds.push(first);
-
-  while (seeds.length < Math.min(days, places.length)) {
-    let best: PlannerPlace | null = null;
-    let bestScore = -1;
-    for (const place of places) {
-      if (seeds.includes(place)) continue;
-      const score = Math.min(...seeds.map((seed) => haversineKm(place, seed)));
-      if (score > bestScore) { bestScore = score; best = place; }
-    }
-    if (!best) break;
-    seeds.push(best);
+function parseOpeningRanges(value?: string) {
+  if (!value) return [];
+  const ranges: Array<{start:number;end:number}> = [];
+  const matches = value.matchAll(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g);
+  for (const match of matches) {
+    const start = Number(match[1]) * 60 + Number(match[2]);
+    const end = Number(match[3]) * 60 + Number(match[4]);
+    if (start >= 0 && end > start && end <= 24 * 60) ranges.push({start,end});
   }
-  return seeds;
+  if (!ranges.length) {
+    const simple = value.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*[-–]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+    if (simple) {
+      const toMinutes = (h:string,m:string|undefined,ampm:string) => ((Number(h)%12)+(ampm.toUpperCase()==="PM"?12:0))*60+Number(m||0);
+      ranges.push({start:toMinutes(simple[1],simple[2],simple[3]),end:toMinutes(simple[4],simple[5],simple[6])});
+    }
+  }
+  return ranges.sort((a,b)=>a.start-b.start);
+}
+
+function fitStart(clock:number,duration:number,openingHours?:string) {
+  const ranges=parseOpeningRanges(openingHours);
+  if (!ranges.length) return clock;
+  for (const range of ranges) {
+    const start=Math.max(clock,range.start);
+    if (start+duration<=range.end) return start;
+  }
+  // Keep the suggested slot visible but make the conflict obvious to the user.
+  return clock;
 }
 
 function orderCluster(items: PlannerPlace[]) {
   if (items.length <= 2) return [...items];
   const remaining = [...items];
-  const center = centroid(items);
-  const centerPoint = { id: "center", name: "", latitude: center.latitude, longitude: center.longitude };
-  let current = [...remaining].sort((a, b) => haversineKm(a, centerPoint) - haversineKm(b, centerPoint))[0];
+  let current = remaining.splice(0,1)[0];
   const ordered = [current];
-  remaining.splice(remaining.indexOf(current), 1);
-
   while (remaining.length) {
-    let nearestIndex = 0;
-    let nearestDistance = Infinity;
-    remaining.forEach((candidate, index) => {
-      const distance = haversineKm(current, candidate);
-      if (distance < nearestDistance) { nearestDistance = distance; nearestIndex = index; }
+    let nearestIndex=0,nearestDistance=Infinity;
+    remaining.forEach((candidate,index)=>{
+      const distance=haversineKm(current,candidate);
+      if(distance<nearestDistance){nearestDistance=distance;nearestIndex=index;}
     });
-    current = remaining.splice(nearestIndex, 1)[0];
+    current=remaining.splice(nearestIndex,1)[0];
     ordered.push(current);
-  }
-
-  let improved = true;
-  while (improved) {
-    improved = false;
-    for (let i = 0; i < ordered.length - 2; i += 1) {
-      for (let j = i + 2; j < ordered.length; j += 1) {
-        const a = ordered[i], b = ordered[i + 1], c = ordered[j], d = ordered[j + 1];
-        const currentDistance = haversineKm(a, b) + (d ? haversineKm(c, d) : 0);
-        const swappedDistance = haversineKm(a, c) + (d ? haversineKm(b, d) : 0);
-        if (swappedDistance + 0.05 < currentDistance) {
-          const reversed = ordered.slice(i + 1, j + 1).reverse();
-          ordered.splice(i + 1, reversed.length, ...reversed);
-          improved = true;
-        }
-      }
-    }
   }
   return ordered;
 }
 
 export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: number): PlannedDay[] {
-  const places = inputPlaces.filter((place, index, all) =>
-    Number.isFinite(place.latitude) &&
-    Number.isFinite(place.longitude) &&
-    place.name.trim() &&
-    all.findIndex((candidate) => candidate.id === place.id) === index
+  const places=inputPlaces.filter((place,index,all)=>
+    Number.isFinite(place.latitude)&&Number.isFinite(place.longitude)&&place.name.trim()&&
+    all.findIndex(candidate=>candidate.id===place.id)===index
   );
+  const days=Math.max(1,Math.min(30,Math.floor(dayCount)||1));
+  const clusters:PlannerPlace[][]=Array.from({length:days},()=>[]);
+  const loads=Array.from({length:days},()=>0);
 
-  const days = Math.max(1, Math.min(30, Math.floor(dayCount) || 1));
-  const clusters: PlannerPlace[][] = Array.from({ length: days }, () => []);
-
-  if (!places.length) {
-    return clusters.map((_, index) => ({
-      dayNumber: index + 1,
-      title: index === 0 ? "Arrival & local discovery" : "Free day",
-      reason: "No places have been selected for this day yet.",
-      items: [],
-      straightLineKm: 0,
-    }));
+  // Schedule full-day attractions first and isolate them from other stops.
+  const fullDayPlaces=places.filter(isFullDay);
+  const regularPlaces=places.filter(place=>!isFullDay(place));
+  for(const place of fullDayPlaces.slice(0,days)){
+    const dayIndex=loads.indexOf(Math.min(...loads));
+    clusters[dayIndex].push(place);
+    loads[dayIndex]=DAY_CAPACITY;
   }
 
-  const seeds = chooseSeeds(places, days);
-  seeds.forEach((seed, index) => clusters[index].push(seed));
-  const seeded = new Set(seeds.map((place) => place.id));
-  const remaining = places.filter((place) => !seeded.has(place.id));
-  const target = Math.ceil(places.length / days);
-
-  for (const place of remaining) {
-    let bestDay = 0;
-    let bestScore = Infinity;
-    for (let day = 0; day < days; day += 1) {
-      if (clusters[day].length >= target && clusters.some((items) => items.length < target)) continue;
-      const center = centroid(clusters[day].length ? clusters[day] : [seeds[day] ?? place]);
-      const centerPoint = { id: "centroid", name: "", latitude: center.latitude, longitude: center.longitude };
-      const score = haversineKm(place, centerPoint) + clusters[day].length * 0.8;
-      if (score < bestScore) { bestScore = score; bestDay = day; }
+  // Add remaining places to the closest feasible day, considering visit time,
+  // realistic road-transfer allowance, and the current day's total workload.
+  const orderedByImportance=[...regularPlaces].sort((a,b)=>categoryDuration(b)-categoryDuration(a));
+  for(const place of orderedByImportance){
+    let bestDay=-1,bestScore=Infinity;
+    for(let day=0;day<days;day++){
+      if(clusters[day].some(isFullDay))continue;
+      const transfer=clusters[day].length
+        ?Math.min(...clusters[day].map(existing=>roadEstimateMinutes(haversineKm(existing,place))))
+        :0;
+      const proposed=loads[day]+categoryDuration(place)+transfer;
+      if(proposed>DAY_CAPACITY)continue;
+      const distance=clusters[day].length
+        ?haversineKm(place,centroid(clusters[day]))
+        :0;
+      const score=distance*1.8+proposed/DAY_CAPACITY*2;
+      if(score<bestScore){bestScore=score;bestDay=day;}
     }
-    clusters[bestDay].push(place);
+    if(bestDay>=0){
+      const transfer=clusters[bestDay].length
+        ?Math.min(...clusters[bestDay].map(existing=>roadEstimateMinutes(haversineKm(existing,place))))
+        :0;
+      clusters[bestDay].push(place);
+      loads[bestDay]+=categoryDuration(place)+transfer;
+    }
   }
 
-  return clusters.map((cluster, index) => {
-    const ordered = orderCluster(cluster);
-    let clock = 9 * 60;
-    let totalDistance = 0;
-
-    const items = ordered.map((place, placeIndex) => {
-      const previous = ordered[placeIndex - 1];
-      const travelTime = previous ? Math.max(10, Math.round(haversineKm(previous, place) * 4)) : 0;
-      if (previous) { totalDistance += haversineKm(previous, place); clock += travelTime; }
-      const startTime = timeLabel(clock);
-      const durationMinutes = categoryDuration(place.category);
-      clock += durationMinutes;
-      if (placeIndex === 1 && ordered.length >= 3) clock += 45;
-      return { ...place, startTime, durationMinutes, travelTimeMinutes: travelTime };
+  return clusters.map((cluster,index)=>{
+    const ordered=orderCluster(cluster);
+    let clock=DAY_START,totalDistance=0;
+    const items:PlannedPlace[]=[];
+    ordered.forEach((place,placeIndex)=>{
+      const previous=ordered[placeIndex-1];
+      const distance=previous?haversineKm(previous,place):0;
+      const travelTime=previous?roadEstimateMinutes(distance):0;
+      if(previous){totalDistance+=distance;clock+=travelTime;}
+      const durationMinutes=categoryDuration(place);
+      clock=fitStart(clock,durationMinutes,place.openingHours);
+      items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime});
+      clock+=durationMinutes;
+      if(placeIndex===0&&ordered.length>1)clock+=30;
     });
-
-    const maxKm = ordered.length ? Math.max(...ordered.map((place) => haversineKm(place, ordered[0]))) : 0;
-    const spread = maxKm > 35 ? "wide" : maxKm > 15 ? "regional" : "nearby";
-    const title = index === 0 ? "Start with the " + spread + " highlights" : index === days - 1 ? "Final discoveries nearby" : "Explore one area at a time";
-    const reason = ordered.length <= 1
-      ? "A light day keeps the trip flexible."
-      : spread === "nearby"
-        ? "These stops are close together, so more of the day stays available for exploring."
-        : spread === "regional"
-          ? "These places form a practical local cluster instead of mixing distant sides of the destination."
-          : "This day contains the remaining selected places; consider moving one if the area feels too spread out.";
-
-    return { dayNumber: index + 1, title, reason, items, straightLineKm: Math.round(totalDistance * 10) / 10 };
+    const maxKm=ordered.length?Math.max(...ordered.map(place=>haversineKm(place,ordered[0]))):0;
+    const spread=maxKm>35?"wide":maxKm>15?"regional":"nearby";
+    const fullDay=ordered.some(isFullDay);
+    const title=fullDay?"Full-day attraction":index===0?"Start with nearby highlights":index===days-1?"Final discoveries nearby":"Explore one area at a time";
+    const reason=fullDay
+      ?"This attraction is treated as a full-day visit. Other stops are not crowded into the same day."
+      :ordered.length<=1?"A lighter day leaves enough time for travel and exploring."
+      :spread==="nearby"?"Nearby stops are grouped together, with transfer time included between visits."
+      : "The selected places are grouped geographically and transfer time is included in the daily workload.";
+    return {dayNumber:index+1,title,reason,items,straightLineKm:Math.round(totalDistance*10)/10};
   });
 }
