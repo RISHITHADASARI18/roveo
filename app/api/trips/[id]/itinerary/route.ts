@@ -55,6 +55,7 @@ export async function GET(
     }
 
 
+    await db.query("ALTER TABLE trip_places ADD COLUMN IF NOT EXISTS opening_hours TEXT");
     const result = await db.query(
       `SELECT
         d.id AS "dayId",
@@ -73,7 +74,8 @@ export async function GET(
         p.description,
         p.photo_url AS "photoUrl",
         p.website_url AS "websiteUrl",
-        p.address
+        p.address,
+        p.opening_hours AS "openingHours"
        FROM itinerary_days d
        LEFT JOIN itinerary_items i ON i.day_id = d.id
        LEFT JOIN trip_places p ON p.id = i.trip_place_id
@@ -117,6 +119,7 @@ export async function GET(
                 photoUrl: row.photoUrl,
                 websiteUrl: row.websiteUrl,
                 address: row.address,
+                openingHours: row.openingHours,
               }
             : null,
         });
