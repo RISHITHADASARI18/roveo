@@ -162,12 +162,14 @@ export async function POST(request: Request) {
   const budget = nonNegativeNumber(body.budget);
   const travel = text(body.travel);
   const localTravel = text(body.localTravel);
-  const stay = text(body.stay);
+  // Accommodation is no longer collected in the trip form. Keep a neutral
+  // database value for compatibility with the existing trips schema.
+  const stay = text(body.stay) || "Not specified";
   const startDate = text(body.startDate) || null;
 
-  if (!sourceLocation || destinations.length === 0 || !days || !people || budget === null || !travel || !localTravel || !stay) {
+  if (!sourceLocation || destinations.length === 0 || !days || !people || budget === null || !travel || !localTravel) {
     return NextResponse.json(
-      { error: "Source, at least one destination, days, people, budget, travel, local travel and stay are required." },
+      { error: "Source, at least one destination, days, people, budget, travel and local travel are required." },
       { status: 400 }
     );
   }
