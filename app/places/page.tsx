@@ -363,6 +363,7 @@ function PlacesContent(){
             description:place.description||null,
             websiteUrl:place.website||null,
             address:place.address||null,
+            openingHours:place.openingHours||null,
             destinationId:activeDestinationId.startsWith("param-")?null:Number(activeDestinationId)
           })
         });
