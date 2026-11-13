@@ -31,12 +31,11 @@ async function addRoadTravelTimes(days: Array<Record<string, any>>, localTravelM
   let routeCount = 0;
   for (const day of days) {
     const items = Array.isArray(day.items) ? day.items as PlannedPlace[] : [];
-    const travelTimes: number[] = [];
-    for (let index = 1; index < items.length; index += 1) {
-      const from = items[index - 1];
-      const to = items[index];
+    const available = Math.max(0, 30 - routeCount);
+    const legs = await Promise.all(items.slice(1).map(async (to, index) => {
+      const from = items[index];
       let minutes = to.travelTimeMinutes || 0;
-      if (mode && routeCount < 80) {
+      if (mode && index < available) {
         try {
           const route = await provider.computeRoute({
             origin: { latitude: from.latitude, longitude: from.longitude },
@@ -45,15 +44,17 @@ async function addRoadTravelTimes(days: Array<Record<string, any>>, localTravelM
           });
           minutes = Math.max(1, Math.round(route.durationSeconds / 60));
           to.routeDistanceKm = Math.round(route.distanceMeters / 1000 * 10) / 10;
-          routeCount += 1;
+          return { minutes, routed: true };
         } catch {
           // Keep the conservative road-distance estimate when routing is unavailable.
         }
       }
-      travelTimes.push(minutes);
-    }
-    day.items = rescheduleDay(items, travelTimes);
-    day.travelMinutes = travelTimes.reduce((sum, value) => sum + value, 0);
+      return { minutes, routed: false };
+    }));
+    routeCount += legs.filter((leg) => leg.routed).length;
+    day.items = rescheduleDay(items, legs.map((leg) => leg.minutes));
+    day.travelMinutes = legs.reduce((sum, leg) => sum + leg.minutes, 0);
+    day.routeDistanceKm = items.slice(1).reduce((sum, place) => sum + (place.routeDistanceKm || 0), 0);
   }
   return { days, routeCount };
 }
