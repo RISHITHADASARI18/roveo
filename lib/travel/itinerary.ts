@@ -41,11 +41,12 @@ function isFullDay(place: PlannerPlace) {
 function categoryDuration(place: PlannerPlace) {
   const value = (place.name + " " + (place.category || "")).toLowerCase();
   if (isFullDay(place)) return 480;
-  if (/zoo|aquarium|large museum|science museum/.test(value)) return 210;
-  if (/fort|palace|museum|heritage|historic/.test(value)) return 150;
+  if (/zoo|aquarium|large museum|science museum/.test(value)) return 240;
+  if (/fort|palace|museum|heritage|historic/.test(value)) return 180;
   if (/temple|mosque|church|place of worship|shrine/.test(value)) return 75;
   if (/market|bazaar|shopping/.test(value)) return 90;
-  if (/park|garden|beach|nature|waterfall|viewpoint|lake|mountain/.test(value)) return 120;
+  if (/lake|viewpoint/.test(value)) return 90;
+  if (/park|garden|beach|nature|waterfall|mountain/.test(value)) return 120;
   if (/activity|adventure|ride/.test(value)) return 150;
   return 90;
 }
@@ -138,9 +139,12 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
   const days=Math.max(1,Math.min(30,Math.floor(dayCount)||1));
   // Keep a realistic sightseeing workday. Transfer time and a lunch/rest buffer
   // count against this limit; do not pack attractions just to use every slot.
-  const MAX_DAY_WORK=450;
+  const MAX_DAY_WORK=420;
   const clusters:PlannerPlace[][]=Array.from({length:days},()=>[]);
-  const remaining=[...places];
+  // Prefer recognised major attractions and established visitor highlights.
+  // Keep generic/low-priority POIs out when stronger attractions are available.
+  const notablePlaces=places.filter(place=>importanceScore(place)>=40);
+  const remaining=[...(notablePlaces.length?notablePlaces:places)];
   const fullDayPlaces=remaining.filter(isFullDay).sort((a,b)=>importanceScore(b)-importanceScore(a));
   for(const place of fullDayPlaces.slice(0,days)){
     const dayIndex=clusters.findIndex(day=>day.length===0);
