@@ -121,9 +121,8 @@ export async function POST(
     // flexible local transport/activity allowances to fit the entered budget.
     const fixed = calculation.items.destinationTravel +
       calculation.items.accommodation + calculation.items.food + calculation.items.other;
-    const reserve = Math.round(fixed * 0.05);
     const flexible = calculation.items.localTransport + calculation.items.activities;
-    const available = Math.max(0, calculation.budget - fixed - reserve);
+    const available = Math.max(0, calculation.budget / 1.05 - fixed);
     if (flexible > available && flexible > 0) {
       const factor = available / flexible;
       calculation.items.localTransport = Math.round(calculation.items.localTransport * factor);
