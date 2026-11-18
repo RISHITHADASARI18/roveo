@@ -16,8 +16,9 @@ export function calculateAccommodation(stay:string,days:number,people:number){
   const nights=Math.max(0,days-1);
   const s=stay.toLowerCase();
   if(!nights)return 0;
-  if(s.includes("hostel")||s.includes("dorm"))return round(500*people*nights);
-  const nightlyRoom=s.includes("luxury")?4500:s.includes("resort")?3200:s.includes("homestay")?1300:s.includes("guest")?1200:s.includes("budget")?1500:s.includes("hotel")?2200:1700;
+  if(s.includes("relative")||s.includes("free")||s.includes("no stay"))return 0;
+  if(s.includes("hostel")||s.includes("dorm"))return round(350*people*nights);
+  const nightlyRoom=s.includes("resort")?2200:s.includes("homestay")?900:s.includes("guest")?850:s.includes("lodge")?700:s.includes("budget")?850:s.includes("hotel")?1200:1000;
   return round(nightlyRoom*Math.max(1,Math.ceil(people/2))*nights);
 }
 
@@ -29,9 +30,7 @@ export function calculateLocalTransport(method:string,days:number){
 
 /** Average meal allowance per traveller/day; avoids premium-city price assumptions. */
 export function calculateFood(days:number,people:number,destination=""){
-  const d=destination.toLowerCase();
-  const metro=/mumbai|delhi|new delhi|bengaluru|bangalore|hyderabad|chennai|pune/.test(d);
-  const perPersonPerDay=metro?500:450;
+  const perPersonPerDay=200; // affordable local eateries and simple meals, per person/day
   return round(perPersonPerDay*days*people);
 }
 
