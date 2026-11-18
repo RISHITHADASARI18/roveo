@@ -33,6 +33,7 @@ function BudgetContent() {
   const totalBudget = Math.max(0, Number(params.get("budget")) || 0);
   const travel = params.get("travel") || "";
   const localTravel = params.get("localTravel") || "";
+  const stayPreference = params.get("stay") || "Not specified";
 
   const [items, setItems] = useState<Record<string, number>>(
     Object.fromEntries(CATEGORIES.map((category) => [category.key, 0]))
@@ -245,6 +246,7 @@ function BudgetContent() {
             <h2>What Roveo is using</h2>
             <div><span>Destination travel</span><strong>{travel || "Not set"}</strong></div>
             <div><span>Local travel</span><strong>{localTravel || "Not set"}</strong></div>
+            <div><span>Preferred stay</span><strong>{stayPreference === "Not specified" ? "No preference" : stayPreference}</strong></div>
             <div><span>Travellers</span><strong>{people}</strong></div>
             <div><span>Days</span><strong>{days}</strong></div>
           </div>
