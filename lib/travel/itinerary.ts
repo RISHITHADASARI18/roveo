@@ -195,6 +195,7 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
         return {place,distance,transfer,duration,arrival,startAt,waiting};
       }).filter(candidate=>
         candidate.startAt>=candidate.arrival && candidate.startAt+candidate.duration<=DAY_END &&
+        fitsOpeningHours(candidate.startAt,candidate.duration,defaultOpeningHours(candidate.place)) &&
         used+candidate.transfer+candidate.waiting+candidate.duration<=MAX_DAY_WORK
       );
       if(!feasible.length)break;
