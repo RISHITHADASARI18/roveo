@@ -57,7 +57,7 @@ export function calculateBudgetComponents(input:BudgetCalculationInput):BudgetCo
 
   const fixed=destinationTravel+accommodation+food+other;
   const contingencyOnFixed=calculateContingency(fixed);
-  const flexibleBudget=Math.max(0,input.budget-fixed-contingencyOnFixed);
+  const flexibleBudget=Math.max(0,input.budget/1.05-fixed);
   const flexibleTotal=localTransport+activities;
   if(flexibleTotal>flexibleBudget&&flexibleTotal>0){
     const factor=flexibleBudget/flexibleTotal;
