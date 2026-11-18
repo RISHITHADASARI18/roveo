@@ -102,20 +102,33 @@ export async function POST(
           stayPreference: trip.stayPreference,
         });
         if (stays.length) {
-          const sorted = [...stays].sort((a,b)=>a.totalPrice-b.totalPrice);
-          const chosen = sorted[Math.floor(sorted.length / 2)] ?? sorted[0];
-          liveStay = {name:chosen.name,totalPrice:chosen.totalPrice,currency:chosen.currency,platform:chosen.platform,url:chosen.url};
-          if (chosen.currency === "INR") {
-            calculation.items.accommodation = Number(chosen.totalPrice);
-            accommodationSource = "stayingapi";
-            accommodationConfidence = "live";
-          }
+          // Use the average of matching stay-type results, not an arbitrary
+          // property from a mixed list. searchStays already filters by preference.
+          const averagePrice = stays.reduce((sum, stay) => sum + stay.totalPrice, 0) / stays.length;
+          const representative = stays[0];
+          liveStay = {name:representative.name,totalPrice:Math.round(averagePrice),currency:"INR",platform:representative.platform,url:representative.url};
+          calculation.items.accommodation = Math.round(averagePrice);
+          accommodationSource = "stayingapi";
+          accommodationConfidence = "live";
         }
       } catch (error) {
         console.error("Live accommodation estimate failed:", error);
       }
     }
 
+    // A live stay quote can be higher than the fallback average. Preserve
+    // destination travel, the selected stay and average food costs; trim only
+    // flexible local transport/activity allowances to fit the entered budget.
+    const fixed = calculation.items.destinationTravel +
+      calculation.items.accommodation + calculation.items.food + calculation.items.other;
+    const reserve = Math.round(fixed * 0.05);
+    const flexible = calculation.items.localTransport + calculation.items.activities;
+    const available = Math.max(0, calculation.budget - fixed - reserve);
+    if (flexible > available && flexible > 0) {
+      const factor = available / flexible;
+      calculation.items.localTransport = Math.round(calculation.items.localTransport * factor);
+      calculation.items.activities = Math.round(calculation.items.activities * factor);
+    }
     const subtotal =
       calculation.items.destinationTravel +
       calculation.items.accommodation +
@@ -123,7 +136,7 @@ export async function POST(
       calculation.items.food +
       calculation.items.activities +
       calculation.items.other;
-    calculation.items.contingency = Math.round(subtotal * 0.1 * 100) / 100;
+    calculation.items.contingency = Math.round(subtotal * 0.05 * 100) / 100;
     calculation.subtotal = Math.round(subtotal * 100) / 100;
     calculation.total = Math.round((subtotal + calculation.items.contingency) * 100) / 100;
     calculation.remaining = Math.round((calculation.budget - calculation.total) * 100) / 100;
