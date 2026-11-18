@@ -122,48 +122,65 @@ function orderCluster(items: PlannerPlace[]) {
   return ordered;
 }
 
+function importanceScore(place: PlannerPlace) {
+  const value=(place.name+" "+(place.category||"")).toLowerCase();
+  if(/ramoji|wonderla|golconda|charminar|hussain sagar|hussein sagar|birla mandir|salar jung|qutb shahi|meenakshi|taj mahal|red fort|gateway of india|agra fort/.test(value)) return 100;
+  if(/zoo|national park|wildlife|fort|palace|monument|major temple|heritage|lake|museum|beach/.test(value)) return 70;
+  if(/viewpoint|garden|waterfall|market|shopping|cafe|mall/.test(value)) return 40;
+  return 20;
+}
+
 export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: number): PlannedDay[] {
   const places=inputPlaces.filter((place,index,all)=>
     Number.isFinite(place.latitude)&&Number.isFinite(place.longitude)&&place.name.trim()&&
     all.findIndex(candidate=>candidate.id===place.id)===index
   );
   const days=Math.max(1,Math.min(30,Math.floor(dayCount)||1));
+  // Keep a realistic sightseeing workday. Transfer time and a lunch/rest buffer
+  // count against this limit; do not pack attractions just to use every slot.
+  const MAX_DAY_WORK=450;
   const clusters:PlannerPlace[][]=Array.from({length:days},()=>[]);
-  const loads=Array.from({length:days},()=>0);
-
-  // Schedule full-day attractions first and isolate them from other stops.
-  const fullDayPlaces=places.filter(isFullDay);
-  const regularPlaces=places.filter(place=>!isFullDay(place));
+  const remaining=[...places];
+  const fullDayPlaces=remaining.filter(isFullDay).sort((a,b)=>importanceScore(b)-importanceScore(a));
   for(const place of fullDayPlaces.slice(0,days)){
-    const dayIndex=loads.indexOf(Math.min(...loads));
-    clusters[dayIndex].push(place);
-    loads[dayIndex]=DAY_CAPACITY;
+    const dayIndex=clusters.findIndex(day=>day.length===0);
+    if(dayIndex>=0)clusters[dayIndex].push(place);
+    remaining.splice(remaining.findIndex(item=>item.id===place.id),1);
   }
 
-  // Add remaining places to the closest feasible day, considering visit time,
-  // realistic road-transfer allowance, and the current day's total workload.
-  const orderedByImportance=[...regularPlaces].sort((a,b)=>categoryDuration(b)-categoryDuration(a));
-  for(const place of orderedByImportance){
-    let bestDay=-1,bestScore=Infinity;
-    for(let day=0;day<days;day++){
-      if(clusters[day].some(isFullDay))continue;
-      const transfer=clusters[day].length
-        ?Math.min(...clusters[day].map(existing=>roadEstimateMinutes(haversineKm(existing,place))))
-        :0;
-      const proposed=loads[day]+categoryDuration(place)+transfer;
-      if(proposed>DAY_CAPACITY)continue;
-      const distance=clusters[day].length
-        ?haversineKm(place,centroid(clusters[day]))
-        :0;
-      const score=distance*1.8+proposed/DAY_CAPACITY*2;
-      if(score<bestScore){bestScore=score;bestDay=day;}
-    }
-    if(bestDay>=0){
-      const transfer=clusters[bestDay].length
-        ?Math.min(...clusters[bestDay].map(existing=>roadEstimateMinutes(haversineKm(existing,place))))
-        :0;
-      clusters[bestDay].push(place);
-      loads[bestDay]+=categoryDuration(place)+transfer;
+  for(let dayIndex=0;dayIndex<days;dayIndex++){
+    if(clusters[dayIndex].length)continue;
+    if(!remaining.length)break;
+    // Start each day with the most important remaining attraction, preferring
+    // a place near other remaining attractions rather than an isolated detour.
+    const ranked=[...remaining].sort((a,b)=>{
+      const score=(place:PlannerPlace)=>{
+        const neighbours=remaining.filter(other=>other.id!==place.id)
+          .map(other=>haversineKm(place,other)).sort((x,y)=>x-y).slice(0,3);
+        const proximity=neighbours.length?neighbours.reduce((sum,x)=>sum+x,0)/neighbours.length:0;
+        return importanceScore(place)*10-proximity;
+      };
+      return score(b)-score(a);
+    });
+    const first=ranked[0];
+    clusters[dayIndex].push(first);
+    remaining.splice(remaining.findIndex(item=>item.id===first.id),1);
+    let used=categoryDuration(first)+30; // meal/rest buffer
+    let current=first;
+    while(remaining.length){
+      const feasible=remaining.map(place=>({
+        place,
+        distance:haversineKm(current,place),
+        transfer:roadEstimateMinutes(haversineKm(current,place))
+      })).filter(candidate=>used+candidate.transfer+categoryDuration(candidate.place)<=MAX_DAY_WORK);
+      if(!feasible.length)break;
+      // Nearby attractions are preferred; importance breaks near-distance ties.
+      feasible.sort((a,b)=>(a.distance*1.2-importanceScore(a.place)*0.015)-(b.distance*1.2-importanceScore(b.place)*0.015));
+      const next=feasible[0].place;
+      clusters[dayIndex].push(next);
+      used+=roadEstimateMinutes(haversineKm(current,next))+categoryDuration(next);
+      current=next;
+      remaining.splice(remaining.findIndex(item=>item.id===next.id),1);
     }
   }
 
@@ -176,22 +193,22 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       const distance=previous?haversineKm(previous,place):0;
       const travelTime=previous?roadEstimateMinutes(distance):0;
       if(previous){totalDistance+=distance;clock+=travelTime;}
+      if(placeIndex===1)clock+=30; // lunch/rest break after the first stop
       const durationMinutes=categoryDuration(place);
       clock=fitStart(clock,durationMinutes,defaultOpeningHours(place));
       const openingHoursConflict=!fitsOpeningHours(clock,durationMinutes,defaultOpeningHours(place));
       items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime,openingHoursConflict});
       clock+=durationMinutes;
-      if(placeIndex===0&&ordered.length>1)clock+=30;
     });
     const maxKm=ordered.length?Math.max(...ordered.map(place=>haversineKm(place,ordered[0]))):0;
     const spread=maxKm>35?"wide":maxKm>15?"regional":"nearby";
     const fullDay=ordered.some(isFullDay);
     const title=fullDay?"Full-day attraction":index===0?"Start with nearby highlights":index===days-1?"Final discoveries nearby":"Explore one area at a time";
     const reason=fullDay
-      ?"This attraction is treated as a full-day visit. Other stops are not crowded into the same day."
+      ?"This attraction takes most of the day, so no other sightseeing stops are added."
       :ordered.length<=1?"A lighter day leaves enough time for travel and exploring."
-      :spread==="nearby"?"Nearby stops are grouped together, with transfer time included between visits."
-      : "The selected places are grouped geographically and transfer time is included in the daily workload.";
+      :spread==="nearby"?"Nearby stops are grouped together; travel and a meal break are included."
+      :"Stops are grouped by proximity, with transfer time and a meal break included.";
     return {dayNumber:index+1,title,reason,items,straightLineKm:Math.round(totalDistance*10)/10};
   });
 }
