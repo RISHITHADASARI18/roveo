@@ -154,7 +154,7 @@ function TripContent(){
 
     <section className="trip-layout">
       <div className="trip-main">
-        <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>💰 ₹{money(budget)}</span></div></div>
+        <div className="planner-summary"><div><span className="eyebrow">YOUR PREFERENCES</span><h2>Built around your trip</h2></div><div className="preference-pills"><span>📅 {days} days</span><span>👥 {people} people</span><span>🧳 {travel} to destination</span><span>🗺️ {localTravel} locally</span><span>🛏️ {params.get("stay")||"No preference"}</span><span>💰 ₹{money(budget)}</span></div></div>
 
         <section className="trip-budget-entry">
           <div>
