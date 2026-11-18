@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [people, setPeople] = useState("");
   const [budget, setBudget] = useState("");
   const [travel, setTravel] = useState("");
+  const [stay, setStay] = useState("Not specified");
   const [localTravel, setLocalTravel] = useState<string[]>([]);
   const [error, setError] = useState("");
 
@@ -96,6 +97,7 @@ export default function DashboardPage() {
           people: Number(people),
           budget: Number(budget),
           travel,
+          stay,
           localTravel: localTravel.join(", "),
         }),
       });
@@ -115,6 +117,7 @@ export default function DashboardPage() {
         people,
         budget,
         travel,
+        stay,
         localTravel: localTravel.join(", "),
       });
       router.push("/trip?" + params.toString());
@@ -174,7 +177,7 @@ export default function DashboardPage() {
               <label><span>📅 Days</span><input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Enter number of days" /></label>
               <label><span>👥 People</span><input type="number" min="1" value={people} onChange={(e) => setPeople(e.target.value)} placeholder="Enter number of people" /></label>
               <label><span>💰 Total budget</span><input type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="₹ 40,000" /></label>
-              <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>
+              <label><span>🧳 How are you getting there?</span><select value={travel} onChange={(e) => setTravel(e.target.value)}><option value="" disabled>Choose</option><option>Car</option><option>Bus</option><option>Train</option><option>Flight</option></select></label>\n              <label><span>🛏️ Preferred stay (optional)</span><select value={stay} onChange={(e) => setStay(e.target.value)}><option value="Not specified">No preference</option><option value="Hostel">Hostel / dorm</option><option value="Homestay">Homestay</option><option value="Guesthouse">Guesthouse</option><option value="Budget stay">Budget stay</option><option value="Hotel">Standard stay</option><option value="Resort">Resort</option></select><small className="local-travel-hint">Roveo will estimate only this type of stay.</small></label>
               <div className="local-travel-field"><span className="local-travel-label">🗺️ How will you get around?</span><small className="local-travel-hint">Choose all the options you might use.</small><div className="local-travel-options" role="group" aria-label="Choose one or more local transport options">{[{name:"Car",icon:"🚗"},{name:"Taxi",icon:"🚕"},{name:"Public transport",icon:"🚌"},{name:"Walking",icon:"🚶"},{name:"Bike",icon:"🚲"}].map(option=><button key={option.name} type="button" aria-pressed={localTravel.includes(option.name)} className={localTravel.includes(option.name)?"selected":""} onClick={()=>setLocalTravel(current=>current.includes(option.name)?current.filter(item=>item!==option.name):[...current,option.name])}>{option.icon} <span>{option.name}</span><b aria-hidden="true">{localTravel.includes(option.name)?"✓":"+"}</b></button>)}</div><small className="local-travel-hint">{localTravel.length ? localTravel.join(" · ") : "Select at least one option."}</small></div>
             </div>
           </div>
