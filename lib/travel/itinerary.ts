@@ -16,8 +16,9 @@ export type PlannedDay = {
   straightLineKm: number;
 };
 
-const DAY_START = 8 * 60 + 30;
-const DAY_CAPACITY = 9 * 60;
+const DAY_START = 8 * 60;
+const DAY_END = 22 * 60;
+const MAX_DAY_WORK = 10 * 60;
 
 export function haversineKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
   const p = Math.PI / 180;
@@ -41,6 +42,13 @@ function isFullDay(place: PlannerPlace) {
 function categoryDuration(place: PlannerPlace) {
   const value = (place.name + " " + (place.category || "")).toLowerCase();
   if (isFullDay(place)) return 480;
+  if (/nehru zoo|zoological park|city zoo/.test(value)) return 240;
+  if (/golconda fort/.test(value)) return 180;
+  if (/ramoji film city/.test(value)) return 480;
+  if (/hussain sagar|tank bund|necklace road/.test(value)) return 90;
+  if (/charminar/.test(value)) return 75;
+  if (/birla mandir/.test(value)) return 60;
+  if (/qutb shahi tomb|salar jung|chowmahalla|falaknuma/.test(value)) return 120;
   if (/zoo|aquarium|large museum|science museum/.test(value)) return 240;
   if (/fort|palace|museum|heritage|historic/.test(value)) return 180;
   if (/temple|mosque|church|place of worship|shrine/.test(value)) return 75;
@@ -65,10 +73,21 @@ export function timeLabel(minutes: number) {
 
 function defaultOpeningHours(place: PlannerPlace) {
   const name = place.name.toLowerCase();
+  // Prefer provider-supplied opening hours. These known-place fallbacks are
+  // conservative planning windows; verify holiday/weekly closures before travel.
   if (/ramoji film city/.test(name)) return "09:00-17:30";
-  if (/birla mandir/.test(name)) return "07:00-12:00, 15:00-21:00";
+  if (/nehru zoo|zoological park/.test(name)) return "08:30-17:00";
+  if (/golconda fort/.test(name)) return "09:00-17:00";
   if (/charminar/.test(name)) return "09:00-17:30";
-  return place.openingHours;
+  if (/hussain sagar|tank bund|necklace road/.test(name)) return "06:00-22:00";
+  if (/birla mandir/.test(name)) return "07:00-12:00, 15:00-21:00";
+  if (/qutb shahi tomb/.test(name)) return "09:30-17:30";
+  if (/salar jung|chowmahalla palace|purani haveli/.test(name)) return "10:00-17:00";
+  if (/market|bazaar|shopping/.test(name)) return "10:00-22:00";
+  if (/temple|mandir|mosque|church|shrine/.test(name)) return "06:00-21:00";
+  if (/lake|tank bund|viewpoint/.test(name)) return "06:00-22:00";
+  if (/zoo|aquarium|park|garden|waterfall|fort|palace|museum|heritage/.test(name)) return "09:00-18:00";
+  return place.openingHours || "09:00-18:00";
 }
 
 function parseOpeningRanges(value?: string) {
@@ -137,14 +156,9 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     all.findIndex(candidate=>candidate.id===place.id)===index
   );
   const days=Math.max(1,Math.min(30,Math.floor(dayCount)||1));
-  // Keep a realistic sightseeing workday. Transfer time and a lunch/rest buffer
-  // count against this limit; do not pack attractions just to use every slot.
-  const MAX_DAY_WORK=420;
   const clusters:PlannerPlace[][]=Array.from({length:days},()=>[]);
-  // Prefer recognised major attractions and established visitor highlights.
-  // Keep generic/low-priority POIs out when stronger attractions are available.
-  const notablePlaces=places.filter(place=>importanceScore(place)>=40);
-  const remaining=[...(notablePlaces.length?notablePlaces:places)];
+  const notable=places.filter(place=>importanceScore(place)>=40);
+  const remaining=[...(notable.length?notable:places)];
   const fullDayPlaces=remaining.filter(isFullDay).sort((a,b)=>importanceScore(b)-importanceScore(a));
   for(const place of fullDayPlaces.slice(0,days)){
     const dayIndex=clusters.findIndex(day=>day.length===0);
@@ -153,10 +167,7 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
   }
 
   for(let dayIndex=0;dayIndex<days;dayIndex++){
-    if(clusters[dayIndex].length)continue;
-    if(!remaining.length)break;
-    // Start each day with the most important remaining attraction, preferring
-    // a place near other remaining attractions rather than an isolated detour.
+    if(clusters[dayIndex].length||!remaining.length)continue;
     const ranked=[...remaining].sort((a,b)=>{
       const score=(place:PlannerPlace)=>{
         const neighbours=remaining.filter(other=>other.id!==place.id)
@@ -169,22 +180,35 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     const first=ranked[0];
     clusters[dayIndex].push(first);
     remaining.splice(remaining.findIndex(item=>item.id===first.id),1);
-    let used=categoryDuration(first)+30; // meal/rest buffer
+    let clock=fitStart(DAY_START,categoryDuration(first),defaultOpeningHours(first));
+    let used=Math.max(0,clock-DAY_START)+categoryDuration(first)+30;
     let current=first;
+
     while(remaining.length){
-      const feasible=remaining.map(place=>({
-        place,
-        distance:haversineKm(current,place),
-        transfer:roadEstimateMinutes(haversineKm(current,place))
-      })).filter(candidate=>used+candidate.transfer+categoryDuration(candidate.place)<=MAX_DAY_WORK);
+      const feasible=remaining.map(place=>{
+        const distance=haversineKm(current,place);
+        const transfer=roadEstimateMinutes(distance);
+        const duration=categoryDuration(place);
+        const arrival=clock+transfer;
+        const startAt=fitStart(arrival,duration,defaultOpeningHours(place));
+        const waiting=Math.max(0,startAt-arrival);
+        return {place,distance,transfer,duration,startAt,waiting};
+      }).filter(candidate=>
+        candidate.startAt>=candidate.clock && candidate.startAt+candidate.duration<=DAY_END &&
+        used+candidate.transfer+candidate.waiting+candidate.duration<=MAX_DAY_WORK
+      );
       if(!feasible.length)break;
-      // Nearby attractions are preferred; importance breaks near-distance ties.
-      feasible.sort((a,b)=>(a.distance*1.2-importanceScore(a.place)*0.015)-(b.distance*1.2-importanceScore(b.place)*0.015));
-      const next=feasible[0].place;
-      clusters[dayIndex].push(next);
-      used+=roadEstimateMinutes(haversineKm(current,next))+categoryDuration(next);
-      current=next;
-      remaining.splice(remaining.findIndex(item=>item.id===next.id),1);
+      feasible.sort((a,b)=>
+        (a.distance*1.2-importanceScore(a.place)*0.015)-
+        (b.distance*1.2-importanceScore(b.place)*0.015)
+      );
+      const next=feasible[0];
+      clusters[dayIndex].push(next.place);
+      used+=next.transfer+next.waiting+next.duration;
+      clock=next.startAt+next.duration;
+      current=next.place;
+      remaining.splice(remaining.findIndex(item=>item.id===next.place.id),1);
+      if(clusters[dayIndex].length===1){clock+=30;used+=0;}
     }
   }
 
@@ -197,10 +221,11 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       const distance=previous?haversineKm(previous,place):0;
       const travelTime=previous?roadEstimateMinutes(distance):0;
       if(previous){totalDistance+=distance;clock+=travelTime;}
-      if(placeIndex===1)clock+=30; // lunch/rest break after the first stop
+      if(placeIndex===1)clock+=30;
       const durationMinutes=categoryDuration(place);
-      clock=fitStart(clock,durationMinutes,defaultOpeningHours(place));
-      const openingHoursConflict=!fitsOpeningHours(clock,durationMinutes,defaultOpeningHours(place));
+      const hours=defaultOpeningHours(place);
+      clock=fitStart(clock,durationMinutes,hours);
+      const openingHoursConflict=!fitsOpeningHours(clock,durationMinutes,hours)||clock+durationMinutes>DAY_END;
       items.push({...place,startTime:timeLabel(clock),durationMinutes,travelTimeMinutes:travelTime,openingHoursConflict});
       clock+=durationMinutes;
     });
@@ -211,8 +236,8 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
     const reason=fullDay
       ?"This attraction takes most of the day, so no other sightseeing stops are added."
       :ordered.length<=1?"A lighter day leaves enough time for travel and exploring."
-      :spread==="nearby"?"Nearby stops are grouped together; travel and a meal break are included."
-      :"Stops are grouped by proximity, with transfer time and a meal break included.";
+      :spread==="nearby"?"Nearby stops are grouped together; opening hours, travel and breaks are included."
+      :"Stops are grouped by proximity; travel, opening hours and breaks are included.";
     return {dayNumber:index+1,title,reason,items,straightLineKm:Math.round(totalDistance*10)/10};
   });
 }
@@ -223,7 +248,7 @@ export function rescheduleDay(items: PlannedPlace[], travelTimes: number[]) {
     const travelTimeMinutes = index === 0 ? 0 : Math.max(0, Math.round(travelTimes[index - 1] ?? place.travelTimeMinutes ?? 0));
     clock += travelTimeMinutes;
     clock = fitStart(clock, place.durationMinutes, defaultOpeningHours(place));
-    const openingHoursConflict = !fitsOpeningHours(clock, place.durationMinutes, defaultOpeningHours(place));
+    const openingHoursConflict = !fitsOpeningHours(clock, place.durationMinutes, defaultOpeningHours(place)) || clock + place.durationMinutes > DAY_END;
     const next = { ...place, startTime: timeLabel(clock), travelTimeMinutes, openingHoursConflict };
     clock += place.durationMinutes;
     if (index === 0 && items.length > 1) clock += 30;
