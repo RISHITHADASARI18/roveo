@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     typeof body.stayPreference === "string"
       ? body.stayPreference.trim()
       : "";
+  const destination = typeof body.destination === "string" ? body.destination.trim() : "";
 
   if (!days || !people || budget === null) {
     return NextResponse.json(
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
     days,
     people,
     budget,
+    destination,
     travelMethod,
     localTravelMethod,
     stayPreference,
