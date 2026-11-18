@@ -4,6 +4,8 @@ const BASE="https://api.stayingapi.com/v1/search";
 
 function normalizedStayType(value:string){
  const s=value.toLowerCase();
+ if(s.includes("relative")||s.includes("free"))return "free";
+ if(s.includes("lodge"))return "lodge";
  if(s.includes("hostel")||s.includes("dorm"))return "hostel";
  if(s.includes("homestay"))return "homestay";
  if(s.includes("resort"))return "resort";
@@ -14,6 +16,7 @@ function normalizedStayType(value:string){
 
 function matchesStayType(raw:string,preferred:string){
  const value=raw.toLowerCase();
+ if(preferred==="lodge")return /lodge|inn/.test(value)&&!/guest.?house/.test(value);
  if(preferred==="hostel")return /hostel|dorm/.test(value);
  if(preferred==="homestay")return /homestay|home stay/.test(value);
  if(preferred==="resort")return /resort/.test(value);
@@ -26,7 +29,7 @@ export async function searchStays(input:StaySearchInput):Promise<StaySearchResul
  const key=process.env.STAYINGAPI_KEY;
  const preferred=normalizedStayType(input.stayPreference);
  // Never substitute a random hotel list when the trip has no explicit stay preference.
- if(!key||!preferred)return [];
+ if(!key||!preferred||preferred==="free")return [];
  const params=new URLSearchParams({location:input.location,checkIn:input.checkIn,checkOut:input.checkOut,adults:String(input.adults),platforms:"google",limit:"20"});
  const response=await fetch(BASE+"?"+params.toString(),{headers:{Authorization:"Bearer "+key},cache:"no-store"});
  if(!response.ok)throw new Error("Accommodation price provider returned "+response.status+".");
