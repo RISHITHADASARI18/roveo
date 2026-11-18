@@ -224,7 +224,7 @@ function BudgetContent() {
               ))}
             </div>
 
-            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live hotel pricing is used when a start date and provider key are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
+            <div className="budget-estimate-toolbar"><div><strong>{estimateSource || "Roveo estimate"}</strong><span>Live prices are used only when dates and a matching stay type are available.</span></div><button className="page-nav secondary" type="button" onClick={generateEstimate} disabled={estimating}>{estimating ? "Refreshing…" : "Refresh estimate"}</button></div>
 
             <div className="budget-editor-footer">
               <div>
