@@ -3,12 +3,84 @@ export type BudgetComponent = "destinationTravel"|"accommodation"|"localTranspor
 export type BudgetCalculation = { items:{destinationTravel:number;accommodation:number;localTransport:number;food:number;activities:number;other:number;contingency:number}; subtotal:number; total:number; budget:number; remaining:number; currency:"INR"; confidence:"fallback"; source:"roveo"; };
 export type BudgetComponentResult = { component:BudgetComponent; amount:number; currency:"INR"; confidence:"fallback"; source:"roveo"; };
 function round(v:number){return Math.round(v*100)/100;}
-export function calculateDestinationTravel(method:string,people:number){const m=method.toLowerCase();const perPerson=m.includes("flight")?6500:m.includes("train")?1600:m.includes("bus")?1200:2200;return round(perPerson*people);}
-export function calculateAccommodation(stay:string,days:number,people:number){const nights=Math.max(0,days-1),s=stay.toLowerCase();const room=s.includes("hostel")?700:s.includes("homestay")?1800:s.includes("other")?1500:2500;return round(room*Math.max(1,Math.ceil(people/2))*nights);}
-export function calculateLocalTransport(method:string,days:number){const m=method.toLowerCase();const daily=m.includes("walking")?100:m.includes("public")?350:m.includes("bike")?600:m.includes("taxi")?1200:900;return round(daily*days);}
-export function calculateFood(days:number,people:number,destination=""){const d=destination.toLowerCase();const premium=/mumbai|delhi|new delhi|bengaluru|bangalore|hyderabad|goa|chennai|pune|kolkata|jaipur|udaipur/.test(d);const budget=/budget|hostel|backpack/.test(d);const perPersonPerDay=premium?1100:budget?650:850;return round(perPersonPerDay*days*people);}
-export function calculateActivities(days:number,people:number){return round(500*Math.max(1,Math.min(days,5))*people);}
-export function calculateOther(){return 0;}
-export function calculateContingency(subtotal:number){return round(subtotal*0.1);}
-export function calculateBudgetComponents(input:BudgetCalculationInput):BudgetComponentResult[]{const destinationTravel=calculateDestinationTravel(input.travelMethod,input.people);const accommodation=calculateAccommodation(input.stayPreference,input.days,input.people);const localTransport=calculateLocalTransport(input.localTravelMethod,input.days);const food=calculateFood(input.days,input.people,input.destination);const activities=calculateActivities(input.days,input.people);const other=calculateOther();const subtotal=round(destinationTravel+accommodation+localTransport+food+activities+other);const contingency=calculateContingency(subtotal);return [["destinationTravel",destinationTravel],["accommodation",accommodation],["localTransport",localTransport],["food",food],["activities",activities],["other",other],["contingency",contingency]].map(([component,amount])=>({component:component as BudgetComponent,amount:Number(amount),currency:"INR",confidence:"fallback",source:"roveo"}));}
-export function calculateBudget(input:BudgetCalculationInput):BudgetCalculation{const components=calculateBudgetComponents(input);const items={destinationTravel:components.find(x=>x.component==="destinationTravel")!.amount,accommodation:components.find(x=>x.component==="accommodation")!.amount,localTransport:components.find(x=>x.component==="localTransport")!.amount,food:components.find(x=>x.component==="food")!.amount,activities:components.find(x=>x.component==="activities")!.amount,other:components.find(x=>x.component==="other")!.amount,contingency:components.find(x=>x.component==="contingency")!.amount};const subtotal=round(items.destinationTravel+items.accommodation+items.localTransport+items.food+items.activities+items.other);const total=round(subtotal+items.contingency);return {items,subtotal,total,budget:round(input.budget),remaining:round(input.budget-total),currency:"INR",confidence:"fallback",source:"roveo"};}
+
+/** Average one-way group travel estimate, not a premium fare quote. */
+export function calculateDestinationTravel(method:string,people:number){
+  const m=method.toLowerCase();
+  const perPerson=m.includes("flight")?5500:m.includes("train")?1400:m.includes("bus")?1000:1800;
+  return round(perPerson*people);
+}
+
+/** Uses only the selected stay type. Unspecified stays use a moderate, mid-range average. */
+export function calculateAccommodation(stay:string,days:number,people:number){
+  const nights=Math.max(0,days-1);
+  const s=stay.toLowerCase();
+  if(!nights)return 0;
+  if(s.includes("hostel")||s.includes("dorm"))return round(500*people*nights);
+  const nightlyRoom=s.includes("luxury")?4500:s.includes("resort")?3200:s.includes("homestay")?1300:s.includes("guest")?1200:s.includes("budget")?1500:s.includes("hotel")?2200:1700;
+  return round(nightlyRoom*Math.max(1,Math.ceil(people/2))*nights);
+}
+
+export function calculateLocalTransport(method:string,days:number){
+  const m=method.toLowerCase();
+  const daily=m.includes("public")?250:m.includes("walking")?100:m.includes("bike")?400:m.includes("taxi")?800:650;
+  return round(daily*days);
+}
+
+/** Average meal allowance per traveller/day; avoids premium-city price assumptions. */
+export function calculateFood(days:number,people:number,destination=""){
+  const d=destination.toLowerCase();
+  const metro=/mumbai|delhi|new delhi|bengaluru|bangalore|hyderabad|chennai|pune/.test(d);
+  const perPersonPerDay=metro?500:450;
+  return round(perPersonPerDay*days*people);
+}
+
+export function calculateActivities(days:number,people:number){
+  return round(300*Math.max(1,Math.min(days,5))*people);
+}
+export function calculateOther(budget:number){return round(Math.min(1000,Math.max(0,budget)*0.1));}
+export function calculateContingency(subtotal:number){return round(subtotal*0.05);}
+
+/**
+ * Estimates average costs, then fits flexible local transport and activities to
+ * the user's actual budget. It never scales accommodation or food using prices
+ * from unrelated stay types. A ₹1,000 "Other" reserve is protected whenever
+ * the total budget is at least ₹10,000.
+ */
+export function calculateBudgetComponents(input:BudgetCalculationInput):BudgetComponentResult[]{
+  const destinationTravel=calculateDestinationTravel(input.travelMethod,input.people);
+  const accommodation=calculateAccommodation(input.stayPreference,input.days,input.people);
+  let localTransport=calculateLocalTransport(input.localTravelMethod,input.days);
+  const food=calculateFood(input.days,input.people,input.destination);
+  let activities=calculateActivities(input.days,input.people);
+  const other=calculateOther(input.budget);
+
+  const fixed=destinationTravel+accommodation+food+other;
+  const contingencyOnFixed=calculateContingency(fixed);
+  const flexibleBudget=Math.max(0,input.budget-fixed-contingencyOnFixed);
+  const flexibleTotal=localTransport+activities;
+  if(flexibleTotal>flexibleBudget&&flexibleTotal>0){
+    const factor=flexibleBudget/flexibleTotal;
+    localTransport=round(localTransport*factor);
+    activities=round(activities*factor);
+  }
+  const subtotal=round(destinationTravel+accommodation+localTransport+food+activities+other);
+  const contingency=calculateContingency(subtotal);
+  return [["destinationTravel",destinationTravel],["accommodation",accommodation],["localTransport",localTransport],["food",food],["activities",activities],["other",other],["contingency",contingency]]
+    .map(([component,amount])=>({component:component as BudgetComponent,amount:Number(amount),currency:"INR",confidence:"fallback",source:"roveo"}));
+}
+export function calculateBudget(input:BudgetCalculationInput):BudgetCalculation{
+  const components=calculateBudgetComponents(input);
+  const items={
+    destinationTravel:components.find(x=>x.component==="destinationTravel")!.amount,
+    accommodation:components.find(x=>x.component==="accommodation")!.amount,
+    localTransport:components.find(x=>x.component==="localTransport")!.amount,
+    food:components.find(x=>x.component==="food")!.amount,
+    activities:components.find(x=>x.component==="activities")!.amount,
+    other:components.find(x=>x.component==="other")!.amount,
+    contingency:components.find(x=>x.component==="contingency")!.amount
+  };
+  const subtotal=round(items.destinationTravel+items.accommodation+items.localTransport+items.food+items.activities+items.other);
+  const total=round(subtotal+items.contingency);
+  return {items,subtotal,total,budget:round(input.budget),remaining:round(input.budget-total),currency:"INR",confidence:"fallback",source:"roveo"};
+}
