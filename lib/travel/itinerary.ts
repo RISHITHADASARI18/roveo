@@ -189,12 +189,12 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
         const distance=haversineKm(current,place);
         const transfer=roadEstimateMinutes(distance);
         const duration=categoryDuration(place);
-        const arrival=clock+transfer;
+        const arrival=clock+transfer+(clusters[dayIndex].length===1?30:0);
         const startAt=fitStart(arrival,duration,defaultOpeningHours(place));
         const waiting=Math.max(0,startAt-arrival);
-        return {place,distance,transfer,duration,startAt,waiting};
+        return {place,distance,transfer,duration,arrival,startAt,waiting};
       }).filter(candidate=>
-        candidate.startAt>=candidate.clock && candidate.startAt+candidate.duration<=DAY_END &&
+        candidate.startAt>=candidate.arrival && candidate.startAt+candidate.duration<=DAY_END &&
         used+candidate.transfer+candidate.waiting+candidate.duration<=MAX_DAY_WORK
       );
       if(!feasible.length)break;
@@ -208,7 +208,7 @@ export function buildSmartItinerary(inputPlaces: PlannerPlace[], dayCount: numbe
       clock=next.startAt+next.duration;
       current=next.place;
       remaining.splice(remaining.findIndex(item=>item.id===next.place.id),1);
-      if(clusters[dayIndex].length===1){clock+=30;used+=0;}
+
     }
   }
 
