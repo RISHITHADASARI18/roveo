@@ -146,7 +146,7 @@ function TripContent(){
   return <main className="trip-page">
     <nav className="dashboard-nav"><a className="brand" href="/"><span className="brand-mark">R</span><span>roveo</span></a><div className="dashboard-nav-links"><a className="active" href={"/trip?" + params.toString()}>Trip</a><a href={"/budget?" + params.toString()}>Budget</a><a href={"/places?" + params.toString()}>Places</a><a href={"/itinerary?" + params.toString()}>Itinerary</a></div></nav>
 
-    <div className="page-navigation trip-page-navigation"><button type="button" className="page-nav secondary" onClick={() => window.history.back()}>← Back</button><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
+    <div className="page-navigation trip-page-navigation"><a className="page-nav secondary" href="/dashboard">← Edit trip</a><a className="page-nav home-nav" href="/">⌂ Home</a><a className="page-nav primary" href={"/places?"+params.toString()}>Next →</a></div>
     <section className="trip-hero">
       <div><span className="eyebrow">YOUR ROVEO PLAN</span><h1>{routeLabel||"Your trip"} <span>planned around you.</span></h1><p>{source||"Your starting point"} → {routeLabel||"Destination"} · {days} {days===1?"day":"days"} · {people} {people===1?"traveller":"travellers"} · {travel} to destination · {localTravel} locally</p></div>
       <div className="budget-card"><span>TRIP BUDGET</span><strong>₹{money(budget)}</strong><small>≈ ₹{money(budget/days)} / day for the group</small></div>
