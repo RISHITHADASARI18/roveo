@@ -437,3 +437,21 @@ html{scroll-behavior:smooth}
 .planned-place-links a:hover{background:#e0f5fc;border-color:#8bcde3}
 .itinerary-intro .planning-rule{margin-top:8px;max-width:680px}
 @media(max-width:600px){.planned-place{gap:9px}.planned-place-links a{font-size:10px}}
+
+
+/* Trip setup form: balanced three-column layout and clean navigation */
+.input-grid.four{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+.local-travel-field-wide{grid-column:span 2}
+.stay-field{min-width:0}
+.page-navigation{justify-content:space-between}
+.page-nav.home-nav{border:1px solid #d7eaf2;background:#eef8fc;color:#24627d}
+@media(max-width:900px){
+  .input-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .local-travel-field-wide{grid-column:span 2}
+}
+@media(max-width:600px){
+  .input-grid.four{grid-template-columns:1fr}
+  .local-travel-field-wide{grid-column:auto}
+  .page-navigation{flex-wrap:wrap;justify-content:space-between}
+  .page-nav.home-nav{order:3;width:100%}
+}
