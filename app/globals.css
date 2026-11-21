@@ -455,3 +455,8 @@ html{scroll-behavior:smooth}
   .page-navigation{flex-wrap:wrap;justify-content:space-between}
   .page-nav.home-nav{order:3;width:100%}
 }
+
+/* Prevent stray JSX whitespace escape text from rendering as a visible grid item. */
+.input-grid.four{font-size:0}
+.input-grid.four>label{font-size:11px}
+.input-grid.four>.local-travel-field{font-size:11px}
