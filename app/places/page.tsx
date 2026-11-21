@@ -387,6 +387,7 @@ function PlacesContent(){
 
     <div className="page-navigation places-navigation">
       <a className="page-nav secondary" href={"/trip?"+params.toString()}>← Back to plan</a>
+      <a className="page-nav home-nav" href="/">⌂ Home</a>
       <a className="page-nav primary" href={"/itinerary?"+params.toString()}>Next: itinerary →</a>
     </div>
 
