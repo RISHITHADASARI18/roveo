@@ -152,6 +152,7 @@ function BudgetContent() {
 
       <div className="page-navigation budget-page-navigation">
         <a className="page-nav secondary" href={"/trip?" + query}>← Back to trip</a>
+        <a className="page-nav home-nav" href="/">⌂ Home</a>
         <a className="page-nav primary" href={"/places?" + query}>Places →</a>
       </div>
 
